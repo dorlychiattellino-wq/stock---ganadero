@@ -288,7 +288,7 @@ function renderMov(){
     <thead><tr><th>Fecha</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Tipo</th><th>Subtipo</th><th>Cant.</th><th>Obs.</th><th></th></tr></thead>
     <tbody>${rows.length===0?`<tr><td colspan="9" class="empty">Sin registros</td></tr>`:rows.map(m=>`
       <tr class="${m.tipo==="ingreso"?"ri":"re"}">
-        <td>${m.fecha}</td><td>${h(m.campo)}</td><td>${h(m.cat)}</td><td>${h(m.ciclo||"—")}</td>
+        <td>${m.fecha?m.fecha.split('-').reverse().join('/'):''}</td><td>${h(m.campo)}</td><td>${h(m.cat)}</td><td>${h(m.ciclo||"—")}</td>
         <td><span class="${m.tipo==="ingreso"?"bi2":"be2"}">${m.tipo}</span></td>
         <td>${h(m.sub)}</td><td>${m.cant}</td><td class="obs">${h(m.obs||"—")}</td>
         <td><button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
@@ -341,7 +341,7 @@ function renderAct(){
     <thead><tr><th>Fecha</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Actividad</th><th>Cant.</th><th>Kg</th><th>Obs.</th><th></th></tr></thead>
     <tbody>${rows.length===0?`<tr><td colspan="9" class="empty">Sin registros</td></tr>`:rows.map(a=>`
       <tr>
-        <td>${a.fecha}</td><td>${h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
+        <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
         <td><span class="ba">${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
         <td class="obs">${h(a.obs||"—")}</td>
@@ -440,7 +440,7 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
   <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""}</h3>
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
-    <div class="kp"><div class="kl">Prenadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}%</div></div>
+    <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}%</div></div>
     <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}%</div></div>
     <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}%</div></div>
     <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg</div></div>
@@ -452,7 +452,7 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
   <div class="tw" style="margin-top:.9rem"><table>
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
     <tbody>
-      <tr><td>% Prenez</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
+      <tr><td>% Preñez</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
       <tr><td>% Nacimientos</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
       <tr><td>% Destete</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
       <tr><td>Kg/animal</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
@@ -479,7 +479,7 @@ function renderPar(){
   <h2>⚙️ Umbrales de Satisfaccion (Semaforos)</h2>
   <p class="hint">🔴 aparece cuando un indicador esta por debajo del minimo, o por encima del maximo (Cut/Descarte/2da). Los cambios se sincronizan para todo el equipo.</p>
   <div class="fg">
-    ${sl("prenez",0,100,1,"% Prenez",false)}
+    ${sl("prenez",0,100,1,"% Preñez",false)}
     ${sl("nacimiento",0,100,1,"% Nacimientos",false)}
     ${sl("destete",0,100,1,"% Destete",false)}
     ${sl("kgAnimal",50,400,5,"Kg carne/animal",false)}
@@ -490,7 +490,7 @@ function renderPar(){
   <div class="tw" style="margin:.9rem 0"><table style="width:100%;border-collapse:collapse">
     <thead><tr><th>Indicador</th><th>Umbral</th><th>Semaforo rojo si...</th></tr></thead>
     <tbody>
-      <tr><td>% Prenez</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
+      <tr><td>% Preñez</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
       <tr><td>% Nacimientos</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
       <tr><td>% Destete</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
       <tr><td>Kg/animal</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
