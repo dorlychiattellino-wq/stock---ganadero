@@ -115,7 +115,7 @@ const LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIoSUNDX1BST0Z
 const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras","Toros","Toritos"];
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Otro egreso"];
-const ACT  = ["Entore","Desentore","Tacto","Prenez","Pesaje","Destete","Vacunacion","Castracion","IATF","Senalada","Vacias","Descarte","2da oportunidad","Cut","Otro"];
+const ACT  = ["Entore","Desentore","Tacto","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Senalada","Vacias","Descarte","2da oportunidad","Cut","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","📈 Productivo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
@@ -412,7 +412,7 @@ function renderProd(){
   const gkg=(campo,ciclo)=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
   const rows=camposE.map(campo=>{
     const ent=gac(campo,f.ciclo,"Entore",["Vacas","Vaquillonas"])+gac(campo,f.ciclo,"IATF",["Vacas","Vaquillonas"]);
-    const pre=gac(campo,f.ciclo,"Prenez",["Vacas","Vaquillonas"]);
+    const pre=gac(campo,f.ciclo,"Preñez",["Vacas","Vaquillonas"]);
     const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&(!f.campo||m.campo===campo)&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
     const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&(!f.campo||m.campo===campo)&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
     const nac=nacT+nacH;
