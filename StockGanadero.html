@@ -388,20 +388,92 @@ function renderStock(){
   </div>
   ${state.showCSV?`<pre class="csvpre">${h(csv)}</pre>`:""}
 </div>
-${campos2.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:campos2.map(campo=>{
+${campos2.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:`
+${(()=>{
+  // ── RESUMEN GENERAL TOTAL ──
+  const allCats={};
+  for(const campo of campos2){
+    for(const [cat,d] of Object.entries(smap[campo])){
+      if(!allCats[cat])allCats[cat]={ing:0,egr:0,muertes:0,stock:0};
+      allCats[cat].ing+=d.ing; allCats[cat].egr+=d.egr;
+      allCats[cat].muertes+=d.muertes; allCats[cat].stock+=d.stock;
+    }
+  }
+  const gtotI=Object.values(allCats).reduce((s,d)=>s+d.ing,0);
+  const gtotE=Object.values(allCats).reduce((s,d)=>s+d.egr,0);
+  const gtotM=Object.values(allCats).reduce((s,d)=>s+d.muertes,0);
+  const gtotS=Object.values(allCats).reduce((s,d)=>s+d.stock,0);
+  // resumen por campo (una fila por campo)
+  const campoTots=campos2.map(campo=>{
+    const cats=smap[campo];
+    return{
+      campo,
+      ing:Object.values(cats).reduce((s,d)=>s+d.ing,0),
+      egr:Object.values(cats).reduce((s,d)=>s+d.egr,0),
+      muertes:Object.values(cats).reduce((s,d)=>s+d.muertes,0),
+      stock:Object.values(cats).reduce((s,d)=>s+d.stock,0)
+    };
+  });
+  return `
+<div class="card" style="border-top:4px solid #2d4a1e">
+  <h2>🌐 Resumen General${f.hasta?" al "+f.hasta.split('-').reverse().join('/'):" (stock actual)"}</h2>
+  <div class="kg" style="margin-bottom:1rem">
+    <div class="kp" style="background:#eaf5e0;border-color:#3d6428">
+      <div class="kl">Total Animales</div>
+      <div class="kv" style="font-size:2rem;color:#2d4a1e">${gtotS}</div>
+      <div class="km">${campos2.length} campo(s)</div>
+    </div>
+    ${campoTots.map(ct=>`
+    <div class="kp">
+      <div class="kl">🏡 ${h(ct.campo)}</div>
+      <div class="kv">${ct.stock}</div>
+      <div class="km">ing:+${ct.ing} egr:-${ct.egr}</div>
+    </div>`).join("")}
+  </div>
+  <h3 style="margin-bottom:.7rem">📋 Total por Categoría (todos los campos)</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock Total</th></tr></thead>
+    <tbody>
+      ${Object.entries(allCats).sort((a,b)=>b[1].stock-a[1].stock).map(([cat,d])=>{
+        const p=d.ing>0?d.muertes/d.ing*100:0;
+        return`<tr>
+          <td><strong>${h(cat)}</strong></td>
+          <td class="ni">+${d.ing}</td>
+          <td class="ne">-${d.egr}</td>
+          <td>${d.muertes}</td>
+          <td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td>
+          <td><strong style="font-size:1rem;color:#2d4a1e">${d.stock}</strong></td>
+        </tr>`;
+      }).join("")}
+      <tr class="tr">
+        <td><strong>TOTAL GENERAL</strong></td>
+        <td class="ni"><strong>+${gtotI}</strong></td>
+        <td class="ne"><strong>-${gtotE}</strong></td>
+        <td><strong>${gtotM}</strong></td>
+        <td>—</td>
+        <td><strong style="font-size:1.1rem;color:#2d4a1e">${gtotS}</strong></td>
+      </tr>
+    </tbody>
+  </table></div>
+</div>
+
+<h3 style="margin:1rem 0 .5rem;color:#2d4a1e;font-size:.95rem;padding-left:.2rem">📍 Detalle por Campo</h3>
+${campos2.map(campo=>{
   const cats=smap[campo];
   const totI=Object.values(cats).reduce((s,d)=>s+d.ing,0);
   const totE=Object.values(cats).reduce((s,d)=>s+d.egr,0);
   const totM=Object.values(cats).reduce((s,d)=>s+d.muertes,0);
   const totS=Object.values(cats).reduce((s,d)=>s+d.stock,0);
-  return `<div class="card"><h3>🏡 ${h(campo)}</h3><div class="tw"><table>
-    <thead><tr><th>Categoria</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th></tr></thead>
+  return `<div class="card"><h3>🏡 ${h(campo)} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales</span></h3><div class="tw"><table>
+    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th></tr></thead>
     <tbody>
       ${Object.entries(cats).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td></tr>`;}).join("")}
       <tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong></td><td class="ne"><strong>-${totE}</strong></td><td><strong>${totM}</strong></td><td>—</td><td><strong>${totS}</strong></td></tr>
     </tbody>
   </table></div></div>`;
 }).join("")}`;
+})()}
+`}`;
 }
 
 // ── PRODUCTIVO ──
