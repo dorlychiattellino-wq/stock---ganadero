@@ -410,8 +410,8 @@ function renderStock(){
   }
   const rows=[];
   for(const c of Object.keys(smap))for(const cat of Object.keys(smap[c])){const d=smap[c][cat];rows.push({campo:c,cat,...d,p:d.ing>0?d.muertes/d.ing*100:0})}
-  const fechaCSV=f.hasta?f.hasta.split('-').reverse().join('/'):"(stock actual)";
-  const csv="Stock al: "+fechaCSV+"\n\n"+[["Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows.map(r=>[r.campo,r.cat,r.ing,r.egr,r.muertes,r.p.toFixed(1),r.stock])].map(r=>r.join(",")).join("\n");
+  const fechaCSV=f.hasta||new Date().toISOString().slice(0,10);
+  const csv=[["Fecha","Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows.map(r=>[fechaCSV,r.campo,r.cat,r.ing,r.egr,r.muertes,r.p.toFixed(1),r.stock])].map(r=>r.join(",")).join("\n");
   const campos2=Object.keys(smap);
   return `
 <div class="card">
@@ -826,9 +826,18 @@ function doDownloadCSV(){
   for(const c of Object.keys(smap))for(const cat of Object.keys(smap[c])){const d=smap[c][cat];rows.push([c,cat,d.ing,d.egr,d.muertes,d.ing>0?(d.muertes/d.ing*100).toFixed(1)+"%":"0%",d.stock])}
   const csv=[["Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows].map(r=>r.join(",")).join("\n");
   const fechaStr=f.hasta?f.hasta:new Date().toISOString().slice(0,10);
-  const fechaLabel=fechaStr.split('-').reverse().join('/');
-  const csvConFecha="Stock al: "+fechaLabel+"\n\n"+csv;
-  const blob=new Blob(["\ufeff"+csvConFecha],{type:"text/csv;charset=utf-8"});
+  const fechaCSV2=fechaStr;
+  const smap2={};
+  for(const m of fil){
+    if(!smap2[m.campo])smap2[m.campo]={};
+    if(!smap2[m.campo][m.cat])smap2[m.campo][m.cat]={ing:0,egr:0,muertes:0,stock:0};
+    const r=smap2[m.campo][m.cat];
+    if(m.tipo==="ingreso"){r.stock+=m.cant;r.ing+=m.cant}else{r.stock-=m.cant;r.egr+=m.cant;if(m.sub==="Muerte")r.muertes+=m.cant}
+  }
+  const rows2=[];
+  for(const c of Object.keys(smap2))for(const cat of Object.keys(smap2[c])){const d=smap2[c][cat];rows2.push([fechaCSV2,c,cat,d.ing,d.egr,d.muertes,d.ing>0?(d.muertes/d.ing*100).toFixed(1):"0.0",d.stock])}
+  const csvFinal=[["Fecha","Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows2].map(r=>r.join(",")).join("\n");
+  const blob=new Blob(["\ufeff"+csvFinal],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_al_"+fechaStr+".csv";a.click();
 }
