@@ -148,7 +148,8 @@ let state = {
   filtProd: {ciclo:"",campo:""},
   showCSV: false,
   showModalCampos: false,
-  campoSelModal: null
+  campoSelModal: null,
+  editandoCampo: null
 };
 
 // ── FIREBASE LISTENERS (tiempo real) ──
@@ -284,10 +285,10 @@ function renderMov(){
   <h2>${ef?"✏️ Editar":"➕ Nuevo"} Movimiento</h2>
   <div class="fg">
     <label>Fecha<input id="mf" type="date" value="${ef?h(ef.fecha):""}"/></label>
-    <label>Campo
-      <div style="display:flex;gap:.4rem;align-items:center">
-        <select id="mc" style="flex:1">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
-        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.4rem .7rem;cursor:pointer;font-size:.8rem;white-space:nowrap">+ Admin.</button>
+    <label style="grid-column:span 2">Campo
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="mc" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Administrar Campos</button>
       </div>
     </label>
     <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
@@ -343,10 +344,10 @@ function renderAct(){
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
   <div class="fg">
     <label>Fecha<input id="af" type="date" value="${ef?h(ef.fecha):""}"/></label>
-    <label>Campo
-      <div style="display:flex;gap:.4rem;align-items:center">
-        <select id="ac" style="flex:1">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
-        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.4rem .7rem;cursor:pointer;font-size:.8rem;white-space:nowrap">+ Admin.</button>
+    <label style="grid-column:span 2">Campo
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="ac" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Administrar Campos</button>
       </div>
     </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
@@ -660,8 +661,15 @@ function buildModalCampos(){
         ${lista.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay campos aún. Agregá el primero.</p>`:
           lista.map(([id,c])=>`
           <div class="campo-item${c.activo?"":" inactivo"}${sel===id?" sel":""}" onclick="selCampoModal('${id}')">
-            <span>${h(c.nombre)}</span>
-            <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activo":"❌ Inactivo"}</span>
+            <span>${state.editandoCampo===id?
+              `<input id="editCampoInput_${id}" value="${h(c.nombre)}" onclick="event.stopPropagation()" style="border:1.5px solid #3d6428;border-radius:5px;padding:.25rem .4rem;font-size:.88rem;width:160px" onkeydown="if(event.key==='Enter')guardarEditCampo('${id}')"/>`
+              :h(c.nombre)}
+            </span>
+            <span style="display:flex;align-items:center;gap:.4rem">
+              <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activo":"❌ Inactivo"}</span>
+              ${sel===id && state.editandoCampo!==id?`<button onclick="event.stopPropagation();iniciarEditCampo('${id}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">✏️ Editar</button>`:""}
+              ${state.editandoCampo===id?`<button onclick="event.stopPropagation();guardarEditCampo('${id}')" style="background:#2d4a1e;color:#f0e6c8;border:none;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">💾 Guardar</button><button onclick="event.stopPropagation();cancelarEditCampo()" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">✕</button>`:""}
+            </span>
           </div>`).join("")}
       </div>
       <div class="modal-add">
@@ -669,7 +677,7 @@ function buildModalCampos(){
         <button class="bp" onclick="agregarCampo()">Agregar</button>
       </div>
       <div class="modal-footer-btns">
-        ${sel?`<button class="bp" style="background:${state.camposList[sel]?.activo?"#c84a28":"#3d6428"}" onclick="toggleCampo('${sel}')">
+        ${sel && state.editandoCampo!==sel?`<button class="bp" style="background:${state.camposList[sel]?.activo?"#c84a28":"#3d6428"}" onclick="toggleCampo('${sel}')">
           ${state.camposList[sel]?.activo?"❌ Desactivar seleccionado":"✅ Reactivar seleccionado"}
         </button>`:""}
         <button class="bs" onclick="cerrarModalCampos()" style="margin-left:auto">Cerrar</button>
@@ -735,6 +743,26 @@ window.agregarCampo=async function(){
   await set(ref(db,`campos/${id}`),{id,nombre,activo:true});
   if(inp)inp.value="";
   toast("✅ Campo '"+nombre+"' agregado");
+};
+window.iniciarEditCampo=function(id){state.editandoCampo=id;render();setTimeout(()=>{const inp=document.getElementById("editCampoInput_"+id);if(inp){inp.focus();inp.select();}},50);};
+window.cancelarEditCampo=function(){state.editandoCampo=null;render();};
+window.guardarEditCampo=async function(id){
+  const inp=document.getElementById("editCampoInput_"+id);
+  if(!inp)return;
+  const nuevoNombre=inp.value.trim();
+  if(!nuevoNombre)return alert("El nombre no puede estar vacío.");
+  const c=state.camposList[id];
+  if(!c)return;
+  // Update campo name in Firebase
+  await set(ref(db,`campos/${id}`),{...c,nombre:nuevoNombre});
+  // Also update all movimientos and actividades with old name
+  const oldNombre=c.nombre;
+  const movsToUpdate=Object.values(state.mov).filter(m=>m.campo===oldNombre);
+  const actsToUpdate=Object.values(state.act).filter(a=>a.campo===oldNombre);
+  for(const m of movsToUpdate) await set(ref(db,`mov/${m.id}`),{...m,campo:nuevoNombre});
+  for(const a of actsToUpdate) await set(ref(db,`act/${a.id}`),{...a,campo:nuevoNombre});
+  state.editandoCampo=null;
+  toast(`✅ Campo renombrado a "${nuevoNombre}" (${movsToUpdate.length} mov. y ${actsToUpdate.length} act. actualizados)`);
 };
 window.toggleCampo=async function(id){
   const c=state.camposList[id]; if(!c)return;
