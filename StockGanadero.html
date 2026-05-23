@@ -290,9 +290,9 @@ function renderMov(){
   <div class="fg">
     <label>Fecha<input id="mf" type="date" value="${ef?h(ef.fecha):""}"/></label>
     <label class="s2">Campo
-      <div style="display:flex;gap:.5rem;align-items:center">
+      <div style="display:flex;gap:.4rem;align-items:center">
         <select id="mc" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
-        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Administrar Campos</button>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Admin.</button>
       </div>
     </label>
     <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
@@ -349,9 +349,9 @@ function renderAct(){
   <div class="fg">
     <label>Fecha<input id="af" type="date" value="${ef?h(ef.fecha):""}"/></label>
     <label class="s2">Campo
-      <div style="display:flex;gap:.5rem;align-items:center">
+      <div style="display:flex;gap:.4rem;align-items:center">
         <select id="ac" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
-        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.45rem 1rem;cursor:pointer;font-size:.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Administrar Campos</button>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Admin.</button>
       </div>
     </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
