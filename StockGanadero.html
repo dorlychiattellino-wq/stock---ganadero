@@ -81,6 +81,18 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 .rw{display:flex;align-items:center;gap:.6rem;margin-top:.25rem}
 .rw input[type=range]{flex:1;accent-color:#3d6428}
 .rv{font-size:.95rem;font-weight:700;color:#2d4a1e;min-width:55px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem}
+.modal-box{background:#fff;border-radius:12px;padding:1.5rem;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-box h2{color:#2d4a1e;margin-bottom:.4rem;font-size:1.1rem}
+.modal-box p{font-size:.8rem;color:#888;margin-bottom:1rem}
+.campo-item{display:flex;align-items:center;justify-content:space-between;padding:.55rem .7rem;border-radius:6px;cursor:pointer;border:2px solid transparent;margin-bottom:.3rem;font-size:.9rem}
+.campo-item:hover{background:#f5f0e8}
+.campo-item.sel{border-color:#3d6428;background:#eaf5e0}
+.campo-item.inactivo{opacity:.45;text-decoration:line-through}
+.modal-add{display:flex;gap:.5rem;margin-top:.8rem}
+.modal-add input{flex:1;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem .6rem;font-size:.85rem;font-family:inherit}
+.modal-add input:focus{outline:none;border-color:#3d6428}
+.modal-footer-btns{display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap}
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:1rem;color:#3d6428;font-size:1.1rem}
 .spinner{width:40px;height:40px;border:4px solid #d4e8c0;border-top-color:#3d6428;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -125,6 +137,7 @@ let state = {
   mov: {},
   act: {},
   par: DP,
+  camposList: {},   // {id: {nombre, activo}}
   online: false,
   loaded: false,
   editMov: null,
@@ -133,7 +146,9 @@ let state = {
   filtAct: {campo:"",ciclo:"",tipo:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
-  showCSV: false
+  showCSV: false,
+  showModalCampos: false,
+  campoSelModal: null
 };
 
 // ── FIREBASE LISTENERS (tiempo real) ──
@@ -150,6 +165,10 @@ onValue(ref(db,"par"), snap => {
   if(snap.val()) state.par = snap.val();
   render();
 });
+onValue(ref(db,"campos"), snap => {
+  state.camposList = snap.val() || {};
+  render();
+});
 
 // Detectar conexión online/offline
 onValue(ref(db,".info/connected"), snap => {
@@ -159,7 +178,11 @@ onValue(ref(db,".info/connected"), snap => {
 
 // ── HELPERS ──
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-function campos(){ return [...new Set([...Object.values(state.mov).map(m=>m.campo),...Object.values(state.act).map(a=>a.campo)].filter(Boolean))]; }
+function campos(){
+  const fromList = Object.values(state.camposList).filter(c=>c.activo).map(c=>c.nombre).sort();
+  if(fromList.length>0) return fromList;
+  return [...new Set([...Object.values(state.mov).map(m=>m.campo),...Object.values(state.act).map(a=>a.campo)].filter(Boolean))].sort();
+}
 function ciclos(){ return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(Boolean))]; }
 function h(str){ return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function opts(arr,sel,empty){ return (empty?`<option value="">${empty}</option>`:"")+arr.map(v=>`<option${v===sel?" selected":""}>${h(v)}</option>`).join(""); }
@@ -211,6 +234,7 @@ function buildApp(){
     ${buildHeader()}
     ${buildSyncBar()}
     <nav id="nav">${TABS.map((t,i)=>`<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`).join("")}</nav>
+    ${buildModalCampos()}
     <main>
       ${state.tab===0 ? renderMov() : ""}
       ${state.tab===1 ? renderAct() : ""}
@@ -260,7 +284,12 @@ function renderMov(){
   <h2>${ef?"✏️ Editar":"➕ Nuevo"} Movimiento</h2>
   <div class="fg">
     <label>Fecha<input id="mf" type="date" value="${ef?h(ef.fecha):""}"/></label>
-    <label>Campo<input id="mc" list="cl1" value="${ef?h(ef.campo):""}" placeholder="Ej: La Pampa"/><datalist id="cl1">${clist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+    <label>Campo
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <select id="mc" style="flex:1">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.4rem .7rem;cursor:pointer;font-size:.8rem;white-space:nowrap">+ Admin.</button>
+      </div>
+    </label>
     <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
     <label>Ciclo/ID<input id="mci" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2022"/></label>
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===tipo?" selected":""}>${v}</option>`).join("")}</select></label>
@@ -314,7 +343,12 @@ function renderAct(){
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
   <div class="fg">
     <label>Fecha<input id="af" type="date" value="${ef?h(ef.fecha):""}"/></label>
-    <label>Campo<input id="ac" list="cl2" value="${ef?h(ef.campo):""}" placeholder="Ej: La Pampa"/><datalist id="cl2">${clist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+    <label>Campo
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <select id="ac" style="flex:1">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.4rem .7rem;cursor:pointer;font-size:.8rem;white-space:nowrap">+ Admin.</button>
+      </div>
+    </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
     <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2022"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Actividad<select id="ati" onchange="updActKg()">${opts(ACT,ef?ef.tipo:ACT[0])}</select></label>
@@ -612,6 +646,38 @@ function exportBackup(){
   toast("💾 Backup descargado");
 }
 
+// ── MODAL CAMPOS ──
+function buildModalCampos(){
+  if(!state.showModalCampos) return "";
+  const lista = Object.entries(state.camposList).sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre));
+  const sel = state.campoSelModal;
+  return `
+  <div class="modal-overlay" id="modalCamposOverlay">
+    <div class="modal-box">
+      <h2>🏡 Administrar Campos</h2>
+      <p>Seleccioná un campo para desactivarlo, o agregá uno nuevo.</p>
+      <div>
+        ${lista.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay campos aún. Agregá el primero.</p>`:
+          lista.map(([id,c])=>`
+          <div class="campo-item${c.activo?"":" inactivo"}${sel===id?" sel":""}" onclick="selCampoModal('${id}')">
+            <span>${h(c.nombre)}</span>
+            <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activo":"❌ Inactivo"}</span>
+          </div>`).join("")}
+      </div>
+      <div class="modal-add">
+        <input id="nuevoCampoInput" placeholder="Nombre del nuevo campo..." onkeydown="if(event.key==='Enter')agregarCampo()"/>
+        <button class="bp" onclick="agregarCampo()">Agregar</button>
+      </div>
+      <div class="modal-footer-btns">
+        ${sel?`<button class="bp" style="background:${state.camposList[sel]?.activo?"#c84a28":"#3d6428"}" onclick="toggleCampo('${sel}')">
+          ${state.camposList[sel]?.activo?"❌ Desactivar seleccionado":"✅ Reactivar seleccionado"}
+        </button>`:""}
+        <button class="bs" onclick="cerrarModalCampos()" style="margin-left:auto">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // ── EVENTS ──
 function attachEvents(){
   // nav tabs
@@ -656,13 +722,33 @@ window.updPar=function(k,v){
   if(el)el.textContent=v+(k==="kgAnimal"?" kg":"%");
 };
 window.editMovBtn=function(id){state.editMov=state.mov[id];render();};
+window.abrirModalCampos=function(){state.showModalCampos=true;state.campoSelModal=null;render();};
+window.cerrarModalCampos=function(){state.showModalCampos=false;state.campoSelModal=null;render();};
+window.selCampoModal=function(id){state.campoSelModal=state.campoSelModal===id?null:id;render();};
+window.agregarCampo=async function(){
+  const inp=document.getElementById("nuevoCampoInput");
+  const nombre=(inp?inp.value:"").trim();
+  if(!nombre)return alert("Escribí el nombre del campo.");
+  const existe=Object.values(state.camposList).some(c=>c.nombre.toLowerCase()===nombre.toLowerCase());
+  if(existe)return alert("Ese campo ya existe.");
+  const id=uid();
+  await set(ref(db,`campos/${id}`),{id,nombre,activo:true});
+  if(inp)inp.value="";
+  toast("✅ Campo '"+nombre+"' agregado");
+};
+window.toggleCampo=async function(id){
+  const c=state.camposList[id]; if(!c)return;
+  await set(ref(db,`campos/${id}`),{...c,activo:!c.activo});
+  toast(c.activo?"Campo desactivado":"Campo reactivado");
+  state.campoSelModal=null;
+};
 window.editActBtn=function(id){state.editAct=state.act[id];render();};
 window.delMov=delMov;
 window.delAct=delAct;
 
 function doSubmitMov(){
   const fecha=document.getElementById("mf").value;
-  const campo=document.getElementById("mc").value.trim();
+  const campo=document.getElementById("mc").value;
   const cat=document.getElementById("mcat").value;
   const ciclo=document.getElementById("mci").value.trim();
   const tipo=document.getElementById("mti").value;
@@ -675,7 +761,7 @@ function doSubmitMov(){
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
-  const campo=document.getElementById("ac").value.trim();
+  const campo=document.getElementById("ac").value;
   const cat=document.getElementById("acat").value;
   const ciclo=document.getElementById("aci").value.trim();
   const tipo=document.getElementById("ati").value;
