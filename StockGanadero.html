@@ -296,7 +296,7 @@ function renderMov(){
       </div>
     </label>
     <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
-    <label>Ciclo/ID<input id="mci" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2026/2027"/></label>
+    <label>Ciclo/ID<input id="mci" list="ciclos-list-m" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2026/2027"/><datalist id="ciclos-list-m">${ciclos().map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===tipo?" selected":""}>${v}</option>`).join("")}</select></label>
     <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:"")}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:""}" min="1"/></label>
