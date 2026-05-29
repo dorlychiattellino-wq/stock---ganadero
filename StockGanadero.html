@@ -527,18 +527,28 @@ function renderProd(){
   const rows=camposE.map(campo=>{
     const ent=gac(campo,f.ciclo,"Entore",["Vacas","Vaquillonas"])+gac(campo,f.ciclo,"IATF",["Vacas","Vaquillonas"]);
     const pre=gac(campo,f.ciclo,"Preñez",["Vacas","Vaquillonas"]);
-    const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&(!f.campo||m.campo===campo)&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
-    const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&(!f.campo||m.campo===campo)&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
+    const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&m.campo===campo&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
+    const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&m.campo===campo&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
     const nac=nacT+nacH;
     const dest=gac(campo,f.ciclo,"Destete",["Terneros","Terneras"]);
     const kgt=gkg(campo,f.ciclo);
     const cut=gac(campo,f.ciclo,"Cut",["Vacas","Vaquillonas"]);
     const dsc=gac(campo,f.ciclo,"Descarte",["Vacas","Vaquillonas"]);
     const seg=gac(campo,f.ciclo,"2da oportunidad",["Vacas","Vaquillonas"]);
+    // Bases de calculo corregidas:
+    // 1. Preñez: preñadas / entoradas
+    // 2. Nacimientos: nacidos / preñadas
+    // 3. Destete: destetados / preñadas
+    // 4. Kg/animal: kg totales / preñadas
+    // 5. Cut, Descarte, 2da oportunidad: / preñadas
     return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,
-      pPre:pct(pre,ent),pNac:pct(nac,pre),pDest:pct(dest,nac),
-      kgA:dest>0&&kgt>0?kgt/dest:null,
-      pCut:pct(cut,ent),pDsc:pct(dsc,ent),pSeg:pct(seg,ent)};
+      pPre:pct(pre,ent),
+      pNac:pct(nac,pre),
+      pDest:pct(dest,pre),
+      kgA:pre>0&&kgt>0?kgt/pre:null,
+      pCut:pct(cut,pre),
+      pDsc:pct(dsc,pre),
+      pSeg:pct(seg,pre)};
   });
   const fv=(v)=>v!==null&&!isNaN(v)?v.toFixed(1)+"%":"—";
   return `
@@ -556,23 +566,23 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
     <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}%</div></div>
     <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}%</div></div>
-    <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}%</div></div>
-    <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg</div></div>
+    <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}% / preñadas</div></div>
+    <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / preñadas</div></div>
     <div class="kp"><div class="kl">Kg totales</div><div class="kv">${r.kgt>0?r.kgt.toLocaleString():"—"} kg</div></div>
-    <div class="kp"><div class="kl">Cut</div><div class="kv">${r.cut}</div><div class="ks">${semMax(r.pCut,p.cut)}</div><div class="km">max: ${p.cut}%</div></div>
-    <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}%</div></div>
-    <div class="kp"><div class="kl">2da Oportunidad</div><div class="kv">${r.seg}</div><div class="ks">${semMax(r.pSeg,p.seg)}</div><div class="km">max: ${p.seg}%</div></div>
+    <div class="kp"><div class="kl">Cut</div><div class="kv">${r.cut}</div><div class="ks">${semMax(r.pCut,p.cut)}</div><div class="km">max: ${p.cut}% / preñadas</div></div>
+    <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}% / preñadas</div></div>
+    <div class="kp"><div class="kl">2da Oportunidad</div><div class="kv">${r.seg}</div><div class="ks">${semMax(r.pSeg,p.seg)}</div><div class="km">max: ${p.seg}% / preñadas</div></div>
   </div>
   <div class="tw" style="margin-top:.9rem"><table>
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
     <tbody>
       <tr><td>% Preñez</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
       <tr><td>% Nacimientos</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
-      <tr><td>% Destete</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
-      <tr><td>Kg/animal</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
-      <tr><td>% Cut</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
-      <tr><td>% Descarte</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
-      <tr><td>% 2da Oportunidad</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
+      <tr><td>% Destete (s/preñadas)</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
+      <tr><td>Kg/animal (s/preñadas)</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
+      <tr><td>% Cut (s/preñadas)</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
+      <tr><td>% Descarte (s/preñadas)</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
+      <tr><td>% 2da Oportunidad (s/preñadas)</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
     </tbody>
   </table></div>
 </div>`).join("")}`;
