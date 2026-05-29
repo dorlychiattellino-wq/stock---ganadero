@@ -547,8 +547,8 @@ function renderProd(){
       pDest:pct(dest,pre),
       kgA:pre>0&&kgt>0?kgt/pre:null,
       pCut:pct(cut,pre),
-      pDsc:pct(dsc,pre),
-      pSeg:pct(seg,pre)};
+      pDsc:pct(dsc,ent),
+      pSeg:pct(seg,ent)};
   });
   const fv=(v)=>v!==null&&!isNaN(v)?v.toFixed(1)+"%":"—";
   return `
@@ -570,8 +570,8 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
     <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / preñadas</div></div>
     <div class="kp"><div class="kl">Kg totales</div><div class="kv">${r.kgt>0?r.kgt.toLocaleString():"—"} kg</div></div>
     <div class="kp"><div class="kl">Cut</div><div class="kv">${r.cut}</div><div class="ks">${semMax(r.pCut,p.cut)}</div><div class="km">max: ${p.cut}% / preñadas</div></div>
-    <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}% / preñadas</div></div>
-    <div class="kp"><div class="kl">2da Oportunidad</div><div class="kv">${r.seg}</div><div class="ks">${semMax(r.pSeg,p.seg)}</div><div class="km">max: ${p.seg}% / preñadas</div></div>
+    <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}% / entoradas</div></div>
+    <div class="kp"><div class="kl">2da Oportunidad</div><div class="kv">${r.seg}</div><div class="ks">${semMax(r.pSeg,p.seg)}</div><div class="km">max: ${p.seg}% / entoradas</div></div>
   </div>
   <div class="tw" style="margin-top:.9rem"><table>
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
@@ -581,8 +581,8 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
       <tr><td>% Destete (s/preñadas)</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
       <tr><td>Kg/animal (s/preñadas)</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
       <tr><td>% Cut (s/preñadas)</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
-      <tr><td>% Descarte (s/preñadas)</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
-      <tr><td>% 2da Oportunidad (s/preñadas)</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
+      <tr><td>% Descarte (s/entoradas)</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
+      <tr><td>% 2da Oportunidad (s/entoradas)</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
     </tbody>
   </table></div>
 </div>`).join("")}`;
