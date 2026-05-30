@@ -558,6 +558,16 @@ function renderProd(){
     <label>Ciclo/ID<select onchange="setFP('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
     <label>Campo<select onchange="setFP('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
   </div>
+  <div style="background:#f0f5e8;border:1px solid #b8d4a0;border-radius:8px;padding:.7rem 1rem;font-size:.8rem;color:#3a5a1a;line-height:1.7">
+    <strong>Bases de cálculo:</strong><br>
+    % Preñez: meta <strong>${p.prenez}%</strong> — sobre <em>entoradas/IATF</em> &nbsp;|&nbsp;
+    % Nacimientos: meta <strong>${p.nacimiento}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
+    % Destete: meta <strong>${p.destete}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
+    Kg/animal: meta <strong>${p.kgAnimal} kg</strong> — sobre <em>preñadas</em><br>
+    % Cut: max <strong>${p.cut}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
+    % Descarte: max <strong>${p.descarte}%</strong> — sobre <em>entoradas</em> &nbsp;|&nbsp;
+    % 2da Oportunidad: max <strong>${p.seg}%</strong> — sobre <em>entoradas</em>
+  </div>
 </div>
 ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows.map(r=>`
 <div class="card pc">
@@ -604,23 +614,23 @@ function renderPar(){
   <p class="hint">🔴 aparece cuando un indicador esta por debajo del minimo, o por encima del maximo (Cut/Descarte/2da). Los cambios se sincronizan para todo el equipo.</p>
   <div class="fg">
     ${sl("prenez",0,100,1,"% Preñez",false)}
-    ${sl("nacimiento",0,100,1,"% Nacimientos",false)}
-    ${sl("destete",0,100,1,"% Destete",false)}
-    ${sl("kgAnimal",50,400,5,"Kg carne/animal",false)}
-    ${sl("cut",0,50,1,"% Cut",true)}
-    ${sl("descarte",0,50,1,"% Descarte",true)}
-    ${sl("seg",0,50,1,"% 2da Oportunidad",true)}
+    ${sl("nacimiento",0,100,1,"% Nacimientos — sobre preñadas",false)}
+    ${sl("destete",0,100,1,"% Destete — sobre preñadas",false)}
+    ${sl("kgAnimal",50,400,5,"Kg carne/animal — sobre preñadas",false)}
+    ${sl("cut",0,50,1,"% Cut — sobre preñadas",true)}
+    ${sl("descarte",0,50,1,"% Descarte — sobre entoradas",true)}
+    ${sl("seg",0,50,1,"% 2da Oportunidad — sobre entoradas",true)}
   </div>
   <div class="tw" style="margin:.9rem 0"><table style="width:100%;border-collapse:collapse">
     <thead><tr><th>Indicador</th><th>Umbral</th><th>Semaforo rojo si...</th></tr></thead>
     <tbody>
       <tr><td>% Preñez</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
-      <tr><td>% Nacimientos</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
-      <tr><td>% Destete</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
-      <tr><td>Kg/animal</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
-      <tr><td>% Cut</td><td>max ${p.cut}%</td><td>supera el umbral</td></tr>
-      <tr><td>% Descarte</td><td>max ${p.descarte}%</td><td>supera el umbral</td></tr>
-      <tr><td>% 2da Oportunidad</td><td>max ${p.seg}%</td><td>supera el umbral</td></tr>
+      <tr><td>% Nacimientos (s/preñadas)</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
+      <tr><td>% Destete (s/preñadas)</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
+      <tr><td>Kg/animal (s/preñadas)</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
+      <tr><td>% Cut (s/preñadas)</td><td>max ${p.cut}%</td><td>supera el umbral</td></tr>
+      <tr><td>% Descarte (s/entoradas)</td><td>max ${p.descarte}%</td><td>supera el umbral</td></tr>
+      <tr><td>% 2da Oportunidad (s/entoradas)</td><td>max ${p.seg}%</td><td>supera el umbral</td></tr>
     </tbody>
   </table></div>
   <div class="br"><button class="bp" id="savePar">💾 Guardar y sincronizar parametros</button></div>
