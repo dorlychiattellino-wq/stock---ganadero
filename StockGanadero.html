@@ -132,7 +132,7 @@ const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Entore","Desentore","Tacto","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Otro"];
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","📈 Productivo","⚙️ Parametros"];
+const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
 // ── STATE ──
@@ -150,6 +150,7 @@ let state = {
   filtAct: {campo:"",ciclo:"",tipo:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
+  comparativos: [],   // [{campo, ciclo}, ...]
   showCSV: false,
   showModalCampos: false,
   campoSelModal: null,
@@ -245,7 +246,8 @@ function buildApp(){
       ${state.tab===1 ? renderAct() : ""}
       ${state.tab===2 ? renderStock() : ""}
       ${state.tab===3 ? renderProd() : ""}
-      ${state.tab===4 ? renderPar() : ""}
+      ${state.tab===4 ? renderComp() : ""}
+      ${state.tab===5 ? renderPar() : ""}
     </main>`;
 }
 
@@ -589,6 +591,223 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
 </div>`).join("")}`;
 }
 
+// ── COMPARATIVO ──
+function calcKPIsCampoCiclo(campo, ciclo){
+  const gac=(tipo,cats)=>Object.values(state.act).filter(a=>a.tipo===tipo&&a.campo===campo&&a.ciclo===ciclo&&cats.includes(a.cat)).reduce((s,a)=>s+(a.cant||0),0);
+  const gkg=()=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&a.campo===campo&&a.ciclo===ciclo&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
+  const ent=gac("Entore",["Vacas","Vaquillonas"])+gac("IATF",["Vacas","Vaquillonas"]);
+  const pre=gac("Preñez",["Vacas","Vaquillonas"]);
+  const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&m.campo===campo&&m.ciclo===ciclo).reduce((s,m)=>s+m.cant,0);
+  const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&m.campo===campo&&m.ciclo===ciclo).reduce((s,m)=>s+m.cant,0);
+  const nac=nacT+nacH;
+  const dest=gac("Destete",["Terneros","Terneras"]);
+  const kgt=gkg();
+  const cut=gac("Cut",["Vacas","Vaquillonas"]);
+  const dsc=gac("Descarte",["Vacas","Vaquillonas"]);
+  const seg=gac("2da oportunidad",["Vacas","Vaquillonas"]);
+  return{
+    ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,
+    pPre:pct(pre,ent), pNac:pct(nac,pre), pDest:pct(dest,pre),
+    kgA:pre>0&&kgt>0?kgt/pre:null,
+    pCut:pct(cut,pre), pDsc:pct(dsc,ent), pSeg:pct(seg,ent)
+  };
+}
+
+function renderComp(){
+  const clist=campos(); const cilist=ciclos(); const p=state.par;
+  // Indicadores configurados
+  const indicadores=[
+    {key:"pPre",   label:"% Preñez",         meta:p.prenez,     suffix:"%",   tipo:"min",  base:"entoradas"},
+    {key:"pNac",   label:"% Nacimientos",    meta:p.nacimiento, suffix:"%",   tipo:"min",  base:"preñadas"},
+    {key:"pDest",  label:"% Destete",        meta:p.destete,    suffix:"%",   tipo:"min",  base:"preñadas"},
+    {key:"kgA",    label:"Kg/animal",        meta:p.kgAnimal,   suffix:" kg", tipo:"min",  base:"preñadas"},
+    {key:"pCut",   label:"% Cut",            meta:p.cut,        suffix:"%",   tipo:"max",  base:"preñadas"},
+    {key:"pDsc",   label:"% Descarte",       meta:p.descarte,   suffix:"%",   tipo:"max",  base:"entoradas"},
+    {key:"pSeg",   label:"% 2da Oportunidad",meta:p.seg,        suffix:"%",   tipo:"max",  base:"entoradas"}
+  ];
+
+  // Datos de cada comparativo seleccionado
+  const datos = state.comparativos.map((c,i)=>({
+    idx:i, campo:c.campo, ciclo:c.ciclo,
+    kpis: c.campo && c.ciclo ? calcKPIsCampoCiclo(c.campo,c.ciclo) : null
+  }));
+  const datosValid = datos.filter(d=>d.kpis);
+
+  // Colores para cada serie
+  const palette=["#2d4a1e","#a06a1f","#1e4a6a","#6a1e4a","#4a1e6a","#1e6a4a","#6a4a1e","#4a6a1e"];
+
+  return `
+<div class="card">
+  <h2>🔀 Comparativo de Campañas</h2>
+  <p class="hint">Seleccioná 2 o más combinaciones de campo + ciclo para comparar visualmente los indicadores productivos contra las metas. Sirve para detectar qué campos o ciclos están funcionando mejor.</p>
+  <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1rem">
+    ${state.comparativos.map((c,i)=>`
+      <div style="display:flex;gap:.5rem;align-items:center;background:${palette[i%palette.length]}15;border-left:5px solid ${palette[i%palette.length]};padding:.6rem .8rem;border-radius:6px;flex-wrap:wrap">
+        <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${palette[i%palette.length]};flex-shrink:0"></span>
+        <strong style="color:${palette[i%palette.length]};font-size:.85rem">Serie ${i+1}</strong>
+        <select onchange="setComp(${i},'campo',this.value)" style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem">${opts(clist,c.campo,"-- Campo --")}</select>
+        <select onchange="setComp(${i},'ciclo',this.value)" style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem">${opts(cilist,c.ciclo,"-- Ciclo --")}</select>
+        <button onclick="removeComp(${i})" class="bs" style="padding:.3rem .7rem;background:#fad0c0;border-color:#c84a28;color:#8c2810;margin-left:auto;font-size:.78rem">🗑️ Quitar</button>
+      </div>`).join("")}
+  </div>
+  <div class="br">
+    <button class="bp" onclick="addComp()">➕ Agregar serie a comparar</button>
+    ${state.comparativos.length>0?`<button class="bs" onclick="clearComp()">Limpiar todo</button>`:""}
+  </div>
+</div>
+
+${state.comparativos.length<1 ? `<div class="card"><p class="empty">Agregá al menos una serie para comenzar la comparación.</p></div>` :
+  datosValid.length<1 ? `<div class="card"><p class="empty">Seleccioná campo y ciclo en cada serie para ver los resultados.</p></div>` : `
+
+<div class="card">
+  <h2>📊 Dashboard Comparativo</h2>
+  <p class="hint">Cada barra representa una serie. La línea punteada es la meta del parámetro. 🟢 cumple meta · 🔴 no cumple.</p>
+  ${indicadores.map(ind=>{
+    // Calcular valores y rango
+    const vals = datosValid.map(d=>d.kpis[ind.key]);
+    const validVals = vals.filter(v=>v!==null&&v!==undefined&&!isNaN(v));
+    if(validVals.length===0) return "";
+    const maxVal = Math.max(...validVals, ind.meta);
+    const escala = maxVal>0 ? maxVal*1.1 : 100;
+    const metaPos = (ind.meta/escala)*100;
+
+    // Conteo de cumplimientos
+    const cumplen = validVals.filter(v=>ind.tipo==="min"?v>=ind.meta:v<=ind.meta).length;
+    const noCumplen = validVals.length - cumplen;
+
+    return `
+    <div style="margin-bottom:1.6rem;border:1px solid #ddd8cc;border-radius:8px;padding:.9rem 1rem;background:#fafaf5">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.7rem;flex-wrap:wrap;gap:.5rem">
+        <div>
+          <div style="font-weight:700;color:#2d4a1e;font-size:.95rem">${ind.label}</div>
+          <div style="font-size:.72rem;color:#888">Meta: ${ind.tipo==="min"?"≥":"≤"} ${ind.meta}${ind.suffix} / ${ind.base}</div>
+        </div>
+        <div style="font-size:.75rem;color:#666">
+          <span style="color:#2a6010">🟢 ${cumplen}</span> · <span style="color:#c82010">🔴 ${noCumplen}</span>
+        </div>
+      </div>
+      <!-- Barras horizontales -->
+      <div style="position:relative;padding-left:0;padding-right:0">
+        ${datosValid.map((d,i)=>{
+          const v = d.kpis[ind.key];
+          const validVal = v!==null&&v!==undefined&&!isNaN(v);
+          const pctBar = validVal ? Math.min((v/escala)*100, 100) : 0;
+          const cumple = validVal ? (ind.tipo==="min"?v>=ind.meta:v<=ind.meta) : false;
+          const color = palette[d.idx%palette.length];
+          return `
+          <div style="margin-bottom:.5rem">
+            <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:.15rem">
+              <span style="color:${color};font-weight:600">${h(d.campo)} · ${h(d.ciclo)}</span>
+              <span style="font-weight:700;color:${validVal?(cumple?"#2a6010":"#c82010"):"#888"}">${validVal?(cumple?"🟢":"🔴")+" "+v.toFixed(1)+ind.suffix:"—"}</span>
+            </div>
+            <div style="background:#e8e0d0;border-radius:4px;height:18px;position:relative;overflow:hidden">
+              <div style="width:${pctBar}%;height:100%;background:${color};border-radius:4px;transition:width .5s"></div>
+              <!-- Línea meta -->
+              <div style="position:absolute;left:${Math.min(metaPos,100)}%;top:-2px;bottom:-2px;width:2px;background:#c82010;border-left:1px dashed #c82010" title="Meta: ${ind.meta}${ind.suffix}"></div>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+  }).join("")}
+</div>
+
+<div class="card">
+  <h2>📋 Tabla Comparativa</h2>
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Indicador (base)</th>
+      <th>Meta</th>
+      ${datosValid.map(d=>`<th style="background:${palette[d.idx%palette.length]}">${h(d.campo)}<br><small>${h(d.ciclo)}</small></th>`).join("")}
+    </tr></thead>
+    <tbody>
+      <tr><td><strong>Entoradas/IATF</strong></td><td>—</td>${datosValid.map(d=>`<td>${d.kpis.ent}</td>`).join("")}</tr>
+      <tr><td><strong>Preñadas</strong></td><td>—</td>${datosValid.map(d=>`<td>${d.kpis.pre}</td>`).join("")}</tr>
+      <tr><td><strong>Nacimientos</strong></td><td>—</td>${datosValid.map(d=>`<td>${d.kpis.nac}</td>`).join("")}</tr>
+      <tr><td><strong>Destetados</strong></td><td>—</td>${datosValid.map(d=>`<td>${d.kpis.dest}</td>`).join("")}</tr>
+      <tr style="background:#f5f0e8"><td colspan="${datosValid.length+2}" style="font-weight:700;color:#2d4a1e">📊 Indicadores vs Meta</td></tr>
+      ${indicadores.map(ind=>`
+        <tr>
+          <td><strong>${ind.label}</strong><br><small style="color:#888">(s/${ind.base})</small></td>
+          <td><small>${ind.tipo==="min"?"≥":"≤"} ${ind.meta}${ind.suffix}</small></td>
+          ${datosValid.map(d=>{
+            const v=d.kpis[ind.key];
+            const valid=v!==null&&v!==undefined&&!isNaN(v);
+            const cumple=valid?(ind.tipo==="min"?v>=ind.meta:v<=ind.meta):false;
+            return `<td><span class="${valid?(cumple?"sg":"sr"):"sg2"}" style="font-weight:700">${valid?(cumple?"🟢":"🔴")+" "+v.toFixed(1)+ind.suffix:"—"}</span></td>`;
+          }).join("")}
+        </tr>`).join("")}
+      <tr style="background:#eaf5e0;border-top:2px solid #3d6428">
+        <td colspan="2"><strong>🏆 Total indicadores cumplidos</strong></td>
+        ${datosValid.map(d=>{
+          let cumple=0,total=0;
+          for(const ind of indicadores){
+            const v=d.kpis[ind.key];
+            if(v!==null&&v!==undefined&&!isNaN(v)){
+              total++;
+              if(ind.tipo==="min"?v>=ind.meta:v<=ind.meta) cumple++;
+            }
+          }
+          const pct=total>0?(cumple/total*100):0;
+          const color=pct>=70?"#2a6010":pct>=40?"#a06a1f":"#c82010";
+          return `<td style="color:${color};font-weight:700;font-size:1rem">${cumple}/${total} <small style="font-weight:400">(${pct.toFixed(0)}%)</small></td>`;
+        }).join("")}
+      </tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" style="background:#f0f5e8;border-left:4px solid #3d6428">
+  <h2 style="color:#2d4a1e">💡 Conclusiones</h2>
+  ${(()=>{
+    // Calcular el mejor y peor en términos de cumplimiento
+    const ranking = datosValid.map(d=>{
+      let cumple=0,total=0;
+      for(const ind of indicadores){
+        const v=d.kpis[ind.key];
+        if(v!==null&&v!==undefined&&!isNaN(v)){
+          total++;
+          if(ind.tipo==="min"?v>=ind.meta:v<=ind.meta) cumple++;
+        }
+      }
+      return {...d,cumple,total,pct:total>0?(cumple/total*100):0};
+    }).sort((a,b)=>b.pct-a.pct);
+
+    if(ranking.length===0) return "<p>Sin datos para conclusiones.</p>";
+    const mejor=ranking[0]; const peor=ranking[ranking.length-1];
+
+    // Detectar indicadores con mayor variación
+    const variacionInds=[];
+    for(const ind of indicadores){
+      const vs=datosValid.map(d=>d.kpis[ind.key]).filter(v=>v!==null&&!isNaN(v));
+      if(vs.length>=2){
+        const mn=Math.min(...vs); const mx=Math.max(...vs);
+        const variacion=mx-mn;
+        if(variacion>0.1) variacionInds.push({label:ind.label,min:mn,max:mx,variacion,suffix:ind.suffix,base:ind.base});
+      }
+    }
+    variacionInds.sort((a,b)=>b.variacion-a.variacion);
+    const topVar=variacionInds.slice(0,3);
+
+    return `
+    <div style="display:flex;flex-direction:column;gap:.7rem;font-size:.88rem">
+      ${ranking.length>1?`
+      <div>🏆 <strong>Mejor desempeño:</strong> ${h(mejor.campo)} · ${h(mejor.ciclo)} con <strong>${mejor.cumple}/${mejor.total}</strong> indicadores cumplidos (${mejor.pct.toFixed(0)}%)</div>
+      <div>⚠️ <strong>Menor desempeño:</strong> ${h(peor.campo)} · ${h(peor.ciclo)} con <strong>${peor.cumple}/${peor.total}</strong> indicadores cumplidos (${peor.pct.toFixed(0)}%)</div>
+      `:`<div>📊 <strong>${h(ranking[0].campo)} · ${h(ranking[0].ciclo)}</strong>: cumple <strong>${ranking[0].cumple}/${ranking[0].total}</strong> indicadores (${ranking[0].pct.toFixed(0)}%)</div>`}
+      ${topVar.length>0?`
+      <div style="margin-top:.4rem;padding-top:.7rem;border-top:1px solid #b8d4a0">
+        <strong>🔍 Mayores diferencias entre series:</strong>
+        <ul style="margin-top:.4rem;padding-left:1.3rem;list-style:disc">
+          ${topVar.map(v=>`<li><strong>${v.label}</strong> (s/${v.base}): mín ${v.min.toFixed(1)}${v.suffix} / máx ${v.max.toFixed(1)}${v.suffix} — diferencia ${v.variacion.toFixed(1)}${v.suffix}</li>`).join("")}
+        </ul>
+      </div>`:""}
+    </div>`;
+  })()}
+</div>
+`}`;
+}
+
 // ── PARAMETROS ──
 function renderPar(){
   const p=state.par;
@@ -748,6 +967,10 @@ window.updPar=function(k,v){
   if(el)el.textContent=v+(k==="kgAnimal"?" kg":"%");
 };
 window.editMovBtn=function(id){state.editMov=state.mov[id];render();};
+window.addComp=function(){state.comparativos.push({campo:"",ciclo:""});render();};
+window.removeComp=function(i){state.comparativos.splice(i,1);render();};
+window.clearComp=function(){if(confirm("¿Limpiar todas las series?")){state.comparativos=[];render();}};
+window.setComp=function(i,k,v){state.comparativos[i][k]=v;render();};
 window.abrirModalCampos=function(){state.showModalCampos=true;state.campoSelModal=null;render();};
 window.cerrarModalCampos=function(){state.showModalCampos=false;state.campoSelModal=null;render();};
 window.selCampoModal=function(id){state.campoSelModal=state.campoSelModal===id?null:id;render();};
