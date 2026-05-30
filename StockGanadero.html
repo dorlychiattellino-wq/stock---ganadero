@@ -558,24 +558,15 @@ function renderProd(){
     <label>Ciclo/ID<select onchange="setFP('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
     <label>Campo<select onchange="setFP('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
   </div>
-  <div style="background:#f0f5e8;border:1px solid #b8d4a0;border-radius:8px;padding:.7rem 1rem;font-size:.8rem;color:#3a5a1a;line-height:1.7">
-    <strong>Bases de cálculo:</strong><br>
-    % Preñez: meta <strong>${p.prenez}%</strong> — sobre <em>entoradas/IATF</em> &nbsp;|&nbsp;
-    % Nacimientos: meta <strong>${p.nacimiento}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
-    % Destete: meta <strong>${p.destete}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
-    Kg/animal: meta <strong>${p.kgAnimal} kg</strong> — sobre <em>preñadas</em><br>
-    % Cut: max <strong>${p.cut}%</strong> — sobre <em>preñadas</em> &nbsp;|&nbsp;
-    % Descarte: max <strong>${p.descarte}%</strong> — sobre <em>entoradas</em> &nbsp;|&nbsp;
-    % 2da Oportunidad: max <strong>${p.seg}%</strong> — sobre <em>entoradas</em>
-  </div>
+
 </div>
 ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows.map(r=>`
 <div class="card pc">
   <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""}</h3>
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
-    <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}%</div></div>
-    <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}%</div></div>
+    <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div></div>
+    <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}% / preñadas</div></div>
     <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}% / preñadas</div></div>
     <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / preñadas</div></div>
     <div class="kp"><div class="kl">Kg totales</div><div class="kv">${r.kgt>0?r.kgt.toLocaleString():"—"} kg</div></div>
