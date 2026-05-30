@@ -577,8 +577,8 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
   <div class="tw" style="margin-top:.9rem"><table>
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
     <tbody>
-      <tr><td>% Preñez</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
-      <tr><td>% Nacimientos</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
+      <tr><td>% Preñez (s/entoradas)</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
+      <tr><td>% Nacimientos (s/preñadas)</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
       <tr><td>% Destete (s/preñadas)</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
       <tr><td>Kg/animal (s/preñadas)</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
       <tr><td>% Cut (s/preñadas)</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
@@ -615,7 +615,7 @@ function renderPar(){
   <div class="tw" style="margin:.9rem 0"><table style="width:100%;border-collapse:collapse">
     <thead><tr><th>Indicador</th><th>Umbral</th><th>Semaforo rojo si...</th></tr></thead>
     <tbody>
-      <tr><td>% Preñez</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
+      <tr><td>% Preñez (s/entoradas)</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
       <tr><td>% Nacimientos (s/preñadas)</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
       <tr><td>% Destete (s/preñadas)</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
       <tr><td>Kg/animal (s/preñadas)</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
