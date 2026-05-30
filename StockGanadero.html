@@ -190,6 +190,11 @@ function campos(){
   return [...new Set([...Object.values(state.mov).map(m=>m.campo),...Object.values(state.act).map(a=>a.campo)].filter(Boolean))].sort();
 }
 function ciclos(){ return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(Boolean))]; }
+function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
+function actividadesAll(){
+  const custom=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
+  return [...ACT,...new Set(custom)];
+}
 function h(str){ return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function opts(arr,sel,empty){ return (empty?`<option value="">${empty}</option>`:"")+arr.map(v=>`<option${v===sel?" selected":""}>${h(v)}</option>`).join(""); }
 function sem(val,min,suffix){
@@ -303,7 +308,7 @@ function renderMov(){
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===tipo?" selected":""}>${v}</option>`).join("")}</select></label>
     <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:"")}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:""}" min="1"/></label>
-    <label class="s2">Observaciones<input id="mob" value="${ef?h(ef.obs||""):""}" placeholder="Opcional..."/></label>
+    <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):""}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
   <div class="br">
     <button class="bp" id="submitMov">💾 ${ef?"Guardar cambios":"Agregar movimiento"}</button>
@@ -360,10 +365,10 @@ function renderAct(){
     </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
     <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2026/2027"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-    <label>Actividad<select id="ati" onchange="updActKg()">${opts(ACT,ef?ef.tipo:ACT[0])}</select></label>
+    <label>Actividad<input id="ati" list="act-list" value="${ef?h(ef.tipo):ACT[0]}" oninput="updActKg()" autocomplete="off" placeholder="Elegí o escribí una nueva..."/><datalist id="act-list">${actividadesAll().map(t=>`<option value="${h(t)}"/>`).join("")}</datalist></label>
     <label>Cantidad<input id="aca" type="number" value="${ef&&ef.cant!=null?ef.cant:""}" min="0" placeholder="Opcional"/></label>
     <label id="kglabel" style="${showKg?"":"display:none"}">Kg totales<input id="akg" type="number" step="0.1" value="${ef&&ef.kg!=null?ef.kg:""}"/></label>
-    <label class="s2">Observaciones<input id="aob" value="${ef?h(ef.obs||""):""}"/></label>
+    <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):""}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
   <div class="br">
     <button class="bp" id="submitAct">💾 ${ef?"Guardar":"Agregar actividad"}</button>
@@ -375,7 +380,7 @@ function renderAct(){
   <div class="fg">
     <label>Campo<select onchange="setFA('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Ciclo<select onchange="setFA('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
-    <label>Actividad<select onchange="setFA('tipo',this.value)">${opts(ACT,f.tipo,"Todas")}</select></label>
+    <label>Actividad<select onchange="setFA('tipo',this.value)">${opts(actividadesAll(),f.tipo,"Todas")}</select></label>
   </div>
 </div>
 <div class="card">
