@@ -153,6 +153,8 @@ let state = {
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
   editAlerta: undefined,
+  formMov: {fecha:"",campo:"",cat:"",ciclo:"",tipo:"ingreso",sub:"",cant:"",obs:""},
+  formAct: {fecha:"",campo:"",cat:"",ciclo:"",tipo:"",cant:"",kg:"",obs:""},
   showCSV: false,
   showModalCampos: false,
   campoSelModal: null,
@@ -197,13 +199,37 @@ function campos(){
 }
 function ciclos(){
   const re=/^\d{4}\/\d{4}$/;
-  return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(c=>c&&re.test(c)))].sort();
+  return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(c=>{
+    if(!c||!re.test(c))return false;
+    const anio=parseInt(c.split('/')[0]);
+    return anio>=2023;
+  }))].sort();
 }
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
 function actividadesAll(){
   const custom=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
   return [...ACT,...new Set(custom)];
 }
+
+// Captura el estado del formulario antes de un re-render o cambio de pestaña
+function saveFormMov(){
+  const ids=["mf","mc","mcat","mci","mti","msu","mca","mob"];
+  const keys=["fecha","campo","cat","ciclo","tipo","sub","cant","obs"];
+  for(let i=0;i<ids.length;i++){
+    const el=document.getElementById(ids[i]);
+    if(el)state.formMov[keys[i]]=el.value;
+  }
+}
+function saveFormAct(){
+  const ids=["af","ac","acat","aci","ati","aca","akg","aob"];
+  const keys=["fecha","campo","cat","ciclo","tipo","cant","kg","obs"];
+  for(let i=0;i<ids.length;i++){
+    const el=document.getElementById(ids[i]);
+    if(el)state.formAct[keys[i]]=el.value;
+  }
+}
+function clearFormMov(){state.formMov={fecha:"",campo:"",cat:"",ciclo:"",tipo:"ingreso",sub:"",cant:"",obs:""};}
+function clearFormAct(){state.formAct={fecha:"",campo:"",cat:"",ciclo:"",tipo:"",cant:"",kg:"",obs:""};}
 function h(str){ return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function opts(arr,sel,empty){ return (empty?`<option value="">${empty}</option>`:"")+arr.map(v=>`<option${v===sel?" selected":""}>${h(v)}</option>`).join(""); }
 function sem(val,min,suffix){
@@ -291,7 +317,7 @@ function buildSyncBar(){
 // ── MOVIMIENTOS ──
 function renderMov(){
   const f=state.filtMov; const ef=state.editMov;
-  const tipo=ef?ef.tipo:"ingreso";
+  const tipo=ef?ef.tipo:(state.formMov.tipo||"ingreso");
   const clist=campos();
   const alertasList=Object.values(state.alertas).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
   const rows=Object.values(state.mov).filter(m=>{
@@ -350,19 +376,19 @@ function renderMov(){
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nuevo"} Movimiento</h2>
   <div class="fg">
-    <label>Fecha<input id="mf" type="date" value="${ef?h(ef.fecha):""}"/></label>
+    <label>Fecha<input id="mf" type="date" value="${ef?h(ef.fecha):h(state.formMov.fecha)}"/></label>
     <label class="s2">Campo
       <div style="display:flex;gap:.4rem;align-items:center">
-        <select id="mc" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <select id="mc" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:state.formMov.campo,"-- Seleccionar --")}</select>
         <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Admin.</button>
       </div>
     </label>
-    <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
-    <label class="s2">Ciclo/ID<input id="mci" list="ciclos-list-m" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2026/2027"/><datalist id="ciclos-list-m">${ciclos().map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-    <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===tipo?" selected":""}>${v}</option>`).join("")}</select></label>
-    <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:"")}</select></label>
-    <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:""}" min="1"/></label>
-    <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):""}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
+    <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:state.formMov.cat,"-- Seleccionar --")}</select></label>
+    <label class="s2">Ciclo/ID<input id="mci" list="ciclos-list-m" value="${ef?h(ef.ciclo||""):h(state.formMov.ciclo)}" placeholder="Ej: 2026/2027"/><datalist id="ciclos-list-m">${ciclos().map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+    <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===(ef?ef.tipo:(state.formMov.tipo||"ingreso"))?" selected":""}>${v}</option>`).join("")}</select></label>
+    <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
+    <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
+    <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):h(state.formMov.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
   <div class="br">
     <button class="bp" id="submitMov">💾 ${ef?"Guardar cambios":"Agregar movimiento"}</button>
@@ -410,19 +436,19 @@ function renderAct(){
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
   <div class="fg">
-    <label>Fecha<input id="af" type="date" value="${ef?h(ef.fecha):""}"/></label>
+    <label>Fecha<input id="af" type="date" value="${ef?h(ef.fecha):h(state.formAct.fecha)}"/></label>
     <label class="s2">Campo
       <div style="display:flex;gap:.4rem;align-items:center">
-        <select id="ac" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:"","-- Seleccionar --")}</select>
+        <select id="ac" style="flex:1;min-width:0">${opts(clist,ef?ef.campo:state.formAct.campo,"-- Seleccionar --")}</select>
         <button type="button" onclick="abrirModalCampos()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">🏡 Admin.</button>
       </div>
     </label>
-    <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:"","-- Seleccionar --")}</select></label>
-    <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):""}" placeholder="Ej: 2026/2027"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-    <label>Actividad<input id="ati" list="act-list" value="${ef?h(ef.tipo):""}" oninput="updActKg()" autocomplete="off" placeholder="Elegí o escribí..."/><datalist id="act-list">${actividadesAll().map(t=>`<option value="${h(t)}"/>`).join("")}</datalist></label>
-    <label>Cantidad<input id="aca" type="number" value="${ef&&ef.cant!=null?ef.cant:""}" min="0" placeholder="Opcional"/></label>
+    <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:state.formAct.cat,"-- Seleccionar --")}</select></label>
+    <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):h(state.formAct.ciclo)}" placeholder="Ej: 2026/2027"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+    <label>Actividad<input id="ati" list="act-list" value="${ef?h(ef.tipo):h(state.formAct.tipo)}" oninput="updActKg()" autocomplete="off" placeholder="Elegí o escribí..."/><datalist id="act-list">${actividadesAll().map(t=>`<option value="${h(t)}"/>`).join("")}</datalist></label>
+    <label>Cantidad<input id="aca" type="number" value="${ef&&ef.cant!=null?ef.cant:h(state.formAct.cant)}" min="0" placeholder="Opcional"/></label>
     <label id="kglabel" style="${showKg?"":"display:none"}">Kg totales<input id="akg" type="number" step="0.1" value="${ef&&ef.kg!=null?ef.kg:""}"/></label>
-    <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):""}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
+    <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):h(state.formAct.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
   <div class="br">
     <button class="bp" id="submitAct">💾 ${ef?"Guardar":"Agregar actividad"}</button>
@@ -986,7 +1012,11 @@ function buildModalCampos(){
 function attachEvents(){
   // nav tabs
   document.querySelectorAll("[data-tab]").forEach(btn=>{
-    btn.addEventListener("click",()=>{state.tab=parseInt(btn.dataset.tab);state.editMov=null;state.editAct=null;render();});
+    btn.addEventListener("click",()=>{
+      if(state.tab===0)saveFormMov();
+      if(state.tab===1)saveFormAct();
+      state.tab=parseInt(btn.dataset.tab);state.editMov=null;state.editAct=null;render();
+    });
   });
   // header buttons
   const bx=document.getElementById("btnExcel"); if(bx)bx.onclick=exportExcel;
@@ -1016,8 +1046,8 @@ window.updActKg=function(){
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
 };
-window.setFM=function(k,v){state.filtMov[k]=v;render();};
-window.setFA=function(k,v){state.filtAct[k]=v;render();};
+window.setFM=function(k,v){saveFormMov();state.filtMov[k]=v;render();};
+window.setFA=function(k,v){saveFormAct();state.filtAct[k]=v;render();};
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
 window.setFP=function(k,v){state.filtProd[k]=v;render();};
 window.updPar=function(k,v){
@@ -1104,7 +1134,7 @@ function doSubmitMov(){
   const obs=document.getElementById("mob").value.trim();
   if(!fecha||!campo||!cat||!cant)return alert("Completa: fecha, campo, categoria y cantidad.");
   const e={fecha,campo,cat,ciclo,tipo,sub,cant,obs,id:state.editMov?state.editMov.id:uid()};
-  saveMov(e).then(()=>{state.editMov=null;});
+  saveMov(e).then(()=>{state.editMov=null;clearFormMov();render();});
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
@@ -1119,7 +1149,7 @@ function doSubmitAct(){
   const obs=document.getElementById("aob").value.trim();
   if(!fecha||!campo||!cat||!tipo)return alert("Completa: fecha, campo, categoria y actividad.");
   const e={fecha,campo,cat,ciclo,tipo,cant:isNaN(cant)?null:cant,kg,obs,id:state.editAct?state.editAct.id:uid()};
-  saveAct(e).then(()=>{state.editAct=null;});
+  saveAct(e).then(()=>{state.editAct=null;clearFormAct();render();});
 }
 function doDownloadCSV(){
   const f=state.filtStock;
