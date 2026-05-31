@@ -151,6 +151,8 @@ let state = {
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
   comparativos: [],   // [{campo, ciclo}, ...]
+  alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
+  editAlerta: undefined,
   showCSV: false,
   showModalCampos: false,
   campoSelModal: null,
@@ -175,6 +177,10 @@ onValue(ref(db,"campos"), snap => {
   state.camposList = snap.val() || {};
   render();
 });
+onValue(ref(db,"alertas"), snap => {
+  state.alertas = snap.val() || {};
+  render();
+});
 
 // Detectar conexión online/offline
 onValue(ref(db,".info/connected"), snap => {
@@ -189,7 +195,10 @@ function campos(){
   if(fromList.length>0) return fromList;
   return [...new Set([...Object.values(state.mov).map(m=>m.campo),...Object.values(state.act).map(a=>a.campo)].filter(Boolean))].sort();
 }
-function ciclos(){ return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(Boolean))]; }
+function ciclos(){
+  const re=/^\d{4}\/\d{4}$/;
+  return [...new Set([...Object.values(state.mov).map(m=>m.ciclo),...Object.values(state.act).map(a=>a.ciclo)].filter(c=>c&&re.test(c)))].sort();
+}
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
 function actividadesAll(){
   const custom=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
@@ -284,6 +293,7 @@ function renderMov(){
   const f=state.filtMov; const ef=state.editMov;
   const tipo=ef?ef.tipo:"ingreso";
   const clist=campos();
+  const alertasList=Object.values(state.alertas).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
   const rows=Object.values(state.mov).filter(m=>{
     if(f.campo&&m.campo!==f.campo)return false;
     if(f.cat&&m.cat!==f.cat)return false;
@@ -293,6 +303,50 @@ function renderMov(){
     return true;
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   return `
+<div class="card" style="background:#fff8e1;border:2px solid #f59e0b">
+  <h2 style="color:#92400e;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <span>⚠️ Avisos / Alertas (${alertasList.length})</span>
+    <button class="bp" style="background:#92400e;font-size:.8rem;padding:.35rem .8rem" onclick="abrirNuevaAlerta()">➕ Nueva alerta</button>
+  </h2>
+  ${state.editAlerta!==undefined?`
+  <div style="background:#fff;border:1px solid #f59e0b;border-radius:8px;padding:.9rem;margin-bottom:.8rem">
+    <h3 style="color:#92400e">${state.editAlerta.id?"✏️ Editar":"➕ Nueva"} alerta</h3>
+    <div class="fg">
+      <label>Fecha<input id="al_fecha" type="date" value="${state.editAlerta.fecha||new Date().toISOString().slice(0,10)}"/></label>
+      <label>Prioridad<select id="al_color">
+        <option value="urgente" ${state.editAlerta.color==="urgente"?"selected":""}>🔴 Urgente</option>
+        <option value="atencion" ${(!state.editAlerta.color||state.editAlerta.color==="atencion")?"selected":""}>🟡 Atención</option>
+        <option value="info" ${state.editAlerta.color==="info"?"selected":""}>🔵 Informativo</option>
+      </select></label>
+      <label class="s2">Título<input id="al_titulo" value="${h(state.editAlerta.titulo||"")}" placeholder="Ej: Stock real vs ejecutivo no coincide"/></label>
+      <label class="s2">Mensaje / Detalle<input id="al_mensaje" value="${h(state.editAlerta.mensaje||"")}" placeholder="Detalle de la alerta..."/></label>
+    </div>
+    <div class="br">
+      <button class="bp" onclick="guardarAlerta()">💾 Guardar alerta</button>
+      <button class="bs" onclick="cancelarAlerta()">Cancelar</button>
+    </div>
+  </div>`:""}
+  ${alertasList.length===0 && state.editAlerta===undefined?`<p style="color:#92400e;font-size:.85rem;text-align:center;padding:.5rem">Sin alertas activas. Tocá "➕ Nueva alerta" para agregar.</p>`:""}
+  ${alertasList.map(al=>{
+    const colors={urgente:{bg:"#fee2e2",border:"#c84a28",text:"#8c2810",icon:"🔴"},
+                  atencion:{bg:"#fef3c7",border:"#f59e0b",text:"#92400e",icon:"🟡"},
+                  info:{bg:"#dbeafe",border:"#3b82f6",text:"#1e40af",icon:"🔵"}};
+    const c=colors[al.color]||colors.atencion;
+    return `
+    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.7rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:${c.text};font-size:.92rem">${c.icon} ${h(al.titulo||"(sin título)")}</div>
+        ${al.mensaje?`<div style="color:${c.text};font-size:.82rem;margin-top:.2rem">${h(al.mensaje)}</div>`:""}
+        ${al.fecha?`<div style="color:#888;font-size:.72rem;margin-top:.25rem">📅 ${al.fecha.split('-').reverse().join('/')}</div>`:""}
+      </div>
+      <div style="display:flex;gap:.3rem;flex-shrink:0">
+        <button class="bi" onclick="editarAlerta('${al.id}')">✏️</button>
+        <button class="bi" onclick="eliminarAlerta('${al.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join("")}
+</div>
+
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nuevo"} Movimiento</h2>
   <div class="fg">
@@ -972,6 +1026,25 @@ window.updPar=function(k,v){
   if(el)el.textContent=v+(k==="kgAnimal"?" kg":"%");
 };
 window.editMovBtn=function(id){state.editMov=state.mov[id];render();};
+window.abrirNuevaAlerta=function(){state.editAlerta={fecha:new Date().toISOString().slice(0,10),color:"atencion",titulo:"",mensaje:""};render();};
+window.cancelarAlerta=function(){state.editAlerta=undefined;render();};
+window.editarAlerta=function(id){state.editAlerta={...state.alertas[id]};render();};
+window.eliminarAlerta=async function(id){
+  if(!confirm("¿Eliminar esta alerta?"))return;
+  await remove(ref(db,`alertas/${id}`));
+  toast("Alerta eliminada");
+};
+window.guardarAlerta=async function(){
+  const fecha=document.getElementById("al_fecha").value;
+  const color=document.getElementById("al_color").value;
+  const titulo=document.getElementById("al_titulo").value.trim();
+  const mensaje=document.getElementById("al_mensaje").value.trim();
+  if(!titulo)return alert("Escribí un título para la alerta.");
+  const id=state.editAlerta.id||uid();
+  await set(ref(db,`alertas/${id}`),{id,fecha,color,titulo,mensaje});
+  state.editAlerta=undefined;
+  toast("✅ Alerta guardada");
+};
 window.addComp=function(){state.comparativos.push({campo:"",ciclo:""});render();};
 window.removeComp=function(i){state.comparativos.splice(i,1);render();};
 window.clearComp=function(){if(confirm("¿Limpiar todas las series?")){state.comparativos=[];render();}};
