@@ -498,7 +498,7 @@ function renderAct(){
         <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':''}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
         <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—"))}</td>
-        <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar todo el tacto" onclick="delTacto('${a.tactoId}')">🗑️🐄</button>`:""}</td>
+        <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar TODO el tacto (todos los registros generados)" onclick="delTacto('${a.tactoId}')" style="font-size:.85rem">🐄❌</button>`:""}</td>
       </tr>`).join("")}
     </tbody>
   </table></div>
