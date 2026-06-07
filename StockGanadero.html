@@ -621,7 +621,10 @@ ${campos2.map(campo=>{
 // ── PRODUCTIVO ──
 function renderProd(){
   const f=state.filtProd; const clist=campos(); const cilist=ciclos(); const p=state.par;
-  const camposE=f.campo?[f.campo]:[...new Set(Object.values(state.act).filter(a=>!f.ciclo||a.ciclo===f.ciclo).map(a=>a.campo).filter(Boolean))];
+  const camposE=f.campo?[f.campo]:[...new Set([
+    ...Object.values(state.act).filter(a=>!f.ciclo||a.ciclo===f.ciclo).map(a=>a.campo),
+    ...Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&(!f.ciclo||a.ciclo===f.ciclo)).map(a=>a.trDestino)
+  ].filter(Boolean))];
   const gac=(campo,ciclo,tipo,cats)=>Object.values(state.act).filter(a=>a.tipo===tipo&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&cats.includes(a.cat)).reduce((s,a)=>s+(a.cant||0),0);
   const gkg=(campo,ciclo)=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
   const rows=camposE.map(campo=>{
