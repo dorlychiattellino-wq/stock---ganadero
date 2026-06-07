@@ -131,7 +131,7 @@ const LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIoSUNDX1BST0Z
 const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras","Toros","Toritos"];
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
-const ACT  = ["Entore","Desentore","Tacto","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Otro"];
+const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
@@ -463,6 +463,18 @@ function renderAct(){
       <label>Descarte<input id="tr_dsc" type="number" min="0" value="${ef&&ef.trDsc!=null?ef.trDsc:""}" placeholder="0"/></label>
     </div>
   </div>
+  <div id="tactoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Tacto"?"":"display:none"};background:#eef5e8;border:1.5px solid #6a9a3a;border-radius:8px;padding:1rem;margin-top:.5rem">
+    <h3 style="color:#2d4a1e;margin-bottom:.7rem">🐄 Resultado del Tacto</h3>
+    <p class="hint" style="color:#3a5a2a">Cargá el resultado del tacto y al guardar se crean automáticamente los registros (Preñez, Cut, Vacías, 2da oportunidad, Descarte) visibles y filtrables en el listado.</p>
+    <div class="fg">
+      <label>Preñadas<input id="tt_pre" type="number" min="0" value="" placeholder="0" oninput="updTactoTotal()"/></label>
+      <label>de las cuales Cut<input id="tt_cut" type="number" min="0" value="" placeholder="0"/></label>
+      <label>Vacías<input id="tt_vac" type="number" min="0" value="" placeholder="0" oninput="updTactoTotal()"/></label>
+      <label>de ellas: 2da oportunidad<input id="tt_seg" type="number" min="0" value="" placeholder="0"/></label>
+      <label>de ellas: Descarte<input id="tt_dsc" type="number" min="0" value="" placeholder="0"/></label>
+    </div>
+    <div id="tt_total" style="font-size:.85rem;color:#3a5a2a;font-weight:600;margin-top:.3rem"></div>
+  </div>
   <div class="br">
     <button class="bp" id="submitAct">💾 ${ef?"Guardar":"Agregar actividad"}</button>
     ${ef?`<button class="bs" id="cancelAct">Cancelar</button>`:""}
@@ -485,8 +497,8 @@ function renderAct(){
         <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${a.tipo==="Traslado de rodeo"?h(a.campo)+" → "+h(a.trDestino||"?"):h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
         <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':''}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
-        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:h(a.obs||"—")}</td>
-        <td><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button></td>
+        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—"))}</td>
+        <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar todo el tacto" onclick="delTacto('${a.tactoId}')">🗑️🐄</button>`:""}</td>
       </tr>`).join("")}
     </tbody>
   </table></div>
@@ -659,6 +671,8 @@ function renderProd(){
     const huboTraslado=(dEnt!==0||dPre!==0||dCut!==0||dDsc!==0||dSeg!==0);
     // Bases: Preñez=preñadas/entoradas | Nac,Dest,Kg=/preñadas | Cut=/preñadas | Dsc,2da=/entoradas
     return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,huboTraslado,
+      entBase,preBase,
+      pPreTacto:pct(preBase,entBase),
       pPre:pct(pre,ent),
       pNac:pct(nac,pre),
       pDest:pct(dest,pre),
@@ -682,7 +696,7 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
   <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""} ${r.huboTraslado?`<span class="bc" style="background:#cfe0f5;color:#1e4a6a" title="Los valores estan ajustados por traslados de rodeo">🔀 Ajustado por traslado</span>`:""}</h3>
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
-    <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div></div>
+    <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div>${r.huboTraslado&&r.pPreTacto!==null?`<div class="km" style="margin-top:.3rem;color:#1e4a6a;border-top:1px dashed #b8c8d8;padding-top:.25rem">📌 Tacto original: ${r.pPreTacto.toFixed(1)}% (${r.preBase}/${r.entBase})</div>`:""}</div>
     <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}% / preñadas</div></div>
     <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}% / preñadas</div></div>
     <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / preñadas</div></div>
@@ -1109,6 +1123,8 @@ window.updActKg=function(){
   const tp=document.getElementById("trasladoPanel");
   const tipoEl=document.getElementById("ati");
   if(tp&&tipoEl)tp.style.display=tipoEl.value==="Traslado de rodeo"?"block":"none";
+  const tt=document.getElementById("tactoPanel");
+  if(tt&&tipoEl)tt.style.display=tipoEl.value==="Tacto"?"block":"none";
   const t=document.getElementById("ati").value;
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
@@ -1148,6 +1164,12 @@ window.clearComp=function(){if(confirm("¿Limpiar todas las series?")){state.com
 window.setComp=function(i,k,v){state.comparativos[i][k]=v;render();};
 window.abrirModalCampos=function(){state.showModalCampos=true;state.campoSelModal=null;render();};
 window.cerrarModalCampos=function(){state.showModalCampos=false;state.campoSelModal=null;render();};
+window.updTactoTotal=function(){
+  const pre=parseInt(document.getElementById("tt_pre").value)||0;
+  const vac=parseInt(document.getElementById("tt_vac").value)||0;
+  const el=document.getElementById("tt_total");
+  if(el)el.textContent="Total tactadas: "+(pre+vac)+" (Preñadas "+pre+" + Vacías "+vac+")";
+};
 window.selCampoModal=function(id){state.campoSelModal=state.campoSelModal===id?null:id;render();};
 window.agregarCampo=async function(){
   const inp=document.getElementById("nuevoCampoInput");
@@ -1189,6 +1211,13 @@ window.toggleCampo=async function(id){
 window.editActBtn=function(id){state.editAct=state.act[id];render();};
 window.delMov=delMov;
 window.delAct=delAct;
+window.delTacto=async function(tactoId){
+  const regs=Object.values(state.act).filter(a=>a.tactoId===tactoId);
+  if(regs.length===0)return;
+  if(!confirm("¿Eliminar TODO el tacto? Se borrarán los "+regs.length+" registros generados (Preñez, Cut, Vacías, etc.) de una sola vez."))return;
+  await Promise.all(regs.map(r=>remove(ref(db,`act/${r.id}`))));
+  toast("Tacto completo eliminado ("+regs.length+" registros)");
+};
 
 function doSubmitMov(){
   const fecha=document.getElementById("mf").value;
@@ -1215,6 +1244,31 @@ function doSubmitAct(){
   const kg=kgEl&&kgEl.value?parseFloat(kgEl.value):null;
   const obs=document.getElementById("aob").value.trim();
   if(!fecha||!campo||!cat||!tipo)return alert("Completa: fecha, campo, categoria y actividad.");
+  // ── TACTO UNIFICADO: genera varios registros sueltos ──
+  if(tipo==="Tacto" && !state.editAct){
+    const pre=parseInt(document.getElementById("tt_pre").value)||0;
+    const cut=parseInt(document.getElementById("tt_cut").value)||0;
+    const vac=parseInt(document.getElementById("tt_vac").value)||0;
+    const seg=parseInt(document.getElementById("tt_seg").value)||0;
+    const dsc=parseInt(document.getElementById("tt_dsc").value)||0;
+    if(!ciclo)return alert("Completá el Ciclo para el tacto.");
+    if(pre+vac===0)return alert("Indicá al menos preñadas o vacías.");
+    if(cut>pre)return alert("Las Cut no pueden ser más que las Preñadas.");
+    if(seg+dsc>vac)return alert("2da oportunidad + Descarte no puede superar las Vacías.");
+    const tactoId="T"+uid(); // marca comun para agrupar los registros del mismo tacto
+    const base={fecha,campo,cat,ciclo,obs,tactoId};
+    const regs=[];
+    if(pre>0) regs.push({...base,tipo:"Preñez",cant:pre,id:uid()});
+    if(cut>0) regs.push({...base,tipo:"Cut",cant:cut,id:uid()});
+    if(vac>0) regs.push({...base,tipo:"Vacias",cant:vac,id:uid()});
+    if(seg>0) regs.push({...base,tipo:"2da oportunidad",cant:seg,id:uid()});
+    if(dsc>0) regs.push({...base,tipo:"Descarte",cant:dsc,id:uid()});
+    Promise.all(regs.map(r=>set(ref(db,`act/${r.id}`),r))).then(()=>{
+      state.editAct=null;clearFormAct();render();
+      toast("✅ Tacto guardado ("+regs.length+" registros creados)");
+    });
+    return;
+  }
   const e={fecha,campo,cat,ciclo,tipo,cant:isNaN(cant)?null:cant,kg,obs,id:state.editAct?state.editAct.id:uid()};
   // Si es Traslado de rodeo, capturar los campos extra
   if(tipo==="Traslado de rodeo"){
