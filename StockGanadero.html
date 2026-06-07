@@ -299,6 +299,8 @@ function buildHeader(){
       <button class="hbtn grn" id="btnExcel">📊 Excel</button>
       <button class="hbtn blu" id="btnPDF">🖨️ PDF</button>
       <button class="hbtn org" id="btnBackup">💾 Backup</button>
+      <button class="hbtn" style="background:rgba(120,60,160,.5);border-color:rgba(160,100,220,.4)" id="btnRestaurar">♻️ Restaurar</button>
+      <input type="file" id="fileRestaurar" accept=".json" style="display:none"/>
     </div>
   </header>`;
 }
@@ -961,8 +963,26 @@ function exportExcel(){
   toast("✅ Excel exportado");
 }
 
+async function restaurarBackup(file){
+  if(!confirm("⚠️ Restaurar un backup REEMPLAZARÁ todos los datos actuales (movimientos, actividades, parámetros) con los del archivo. ¿Continuar?"))return;
+  const reader=new FileReader();
+  reader.onload=async function(ev){
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(data.mov) await set(ref(db,"mov"),data.mov);
+      if(data.act) await set(ref(db,"act"),data.act);
+      if(data.par) await set(ref(db,"par"),data.par);
+      if(data.campos) await set(ref(db,"campos"),data.campos);
+      if(data.alertas) await set(ref(db,"alertas"),data.alertas);
+      toast("✅ Backup restaurado correctamente");
+    }catch(err){
+      alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
+    }
+  };
+  reader.readAsText(file);
+}
 function exportBackup(){
-  const data={version:"2.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1022,6 +1042,8 @@ function attachEvents(){
   const bx=document.getElementById("btnExcel"); if(bx)bx.onclick=exportExcel;
   const bp=document.getElementById("btnPDF"); if(bp)bp.onclick=()=>{toast("🖨️ Abriendo impresion...");setTimeout(()=>window.print(),400);};
   const bb=document.getElementById("btnBackup"); if(bb)bb.onclick=exportBackup;
+  const br=document.getElementById("btnRestaurar"); if(br)br.onclick=()=>{const fi=document.getElementById("fileRestaurar");if(fi)fi.click();};
+  const fi=document.getElementById("fileRestaurar"); if(fi)fi.onchange=(e)=>{if(e.target.files&&e.target.files[0])restaurarBackup(e.target.files[0]);};
   // mov
   const sm=document.getElementById("submitMov"); if(sm)sm.onclick=doSubmitMov;
   const cm=document.getElementById("cancelMov"); if(cm)cm.onclick=()=>{state.editMov=null;render();};
