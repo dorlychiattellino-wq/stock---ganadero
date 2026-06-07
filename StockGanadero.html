@@ -131,7 +131,7 @@ const LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIoSUNDX1BST0Z
 const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras","Toros","Toritos"];
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
-const ACT  = ["Entore","Desentore","Tacto","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Otro"];
+const ACT  = ["Entore","Desentore","Tacto","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
@@ -452,6 +452,17 @@ function renderAct(){
     <label id="kglabel" style="${showKg?"":"display:none"}">Kg totales<input id="akg" type="number" step="0.1" value="${ef&&ef.kg!=null?ef.kg:""}"/></label>
     <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):h(state.formAct.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
+  <div id="trasladoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Traslado de rodeo"?"":"display:none"};background:#eaf0f8;border:1.5px solid #5a8fc0;border-radius:8px;padding:1rem;margin-top:.5rem">
+    <h3 style="color:#1e4a6a;margin-bottom:.7rem">🔀 Datos del Traslado de Rodeo</h3>
+    <p class="hint" style="color:#3a5a7a">El campo de arriba "Campo" es el ORIGEN. Indicá acá el destino y qué se traslada. Mueve la cadena productiva completa (no toca el stock de Movimientos).</p>
+    <div class="fg">
+      <label class="s2">Campo destino<select id="tr_destino">${opts(campos(),ef?ef.trDestino:"","-- Seleccionar destino --")}</select></label>
+      <label>Preñadas trasladadas<input id="tr_pre" type="number" min="0" value="${ef&&ef.trPre!=null?ef.trPre:""}" placeholder="0"/></label>
+      <label>de las cuales Cut<input id="tr_cut" type="number" min="0" value="${ef&&ef.trCut!=null?ef.trCut:""}" placeholder="0"/></label>
+      <label>2da oportunidad<input id="tr_seg" type="number" min="0" value="${ef&&ef.trSeg!=null?ef.trSeg:""}" placeholder="0"/></label>
+      <label>Descarte<input id="tr_dsc" type="number" min="0" value="${ef&&ef.trDsc!=null?ef.trDsc:""}" placeholder="0"/></label>
+    </div>
+  </div>
   <div class="br">
     <button class="bp" id="submitAct">💾 ${ef?"Guardar":"Agregar actividad"}</button>
     ${ef?`<button class="bs" id="cancelAct">Cancelar</button>`:""}
@@ -471,10 +482,10 @@ function renderAct(){
     <thead><tr><th>Fecha</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Actividad</th><th>Cant.</th><th>Kg</th><th>Obs.</th><th></th></tr></thead>
     <tbody>${rows.length===0?`<tr><td colspan="9" class="empty">Sin registros</td></tr>`:rows.map(a=>`
       <tr>
-        <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
-        <td><span class="ba">${h(a.tipo)}</span></td>
+        <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${a.tipo==="Traslado de rodeo"?h(a.campo)+" → "+h(a.trDestino||"?"):h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
+        <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':''}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
-        <td class="obs">${h(a.obs||"—")}</td>
+        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:h(a.obs||"—")}</td>
         <td><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button></td>
       </tr>`).join("")}
     </tbody>
@@ -614,23 +625,37 @@ function renderProd(){
   const gac=(campo,ciclo,tipo,cats)=>Object.values(state.act).filter(a=>a.tipo===tipo&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&cats.includes(a.cat)).reduce((s,a)=>s+(a.cant||0),0);
   const gkg=(campo,ciclo)=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
   const rows=camposE.map(campo=>{
-    const ent=gac(campo,f.ciclo,"Entore",["Vacas","Vaquillonas"])+gac(campo,f.ciclo,"IATF",["Vacas","Vaquillonas"]);
-    const pre=gac(campo,f.ciclo,"Preñez",["Vacas","Vaquillonas"]);
+    const entBase=gac(campo,f.ciclo,"Entore",["Vacas","Vaquillonas"])+gac(campo,f.ciclo,"IATF",["Vacas","Vaquillonas"]);
+    const preBase=gac(campo,f.ciclo,"Preñez",["Vacas","Vaquillonas"]);
+    const cutBase=gac(campo,f.ciclo,"Cut",["Vacas","Vaquillonas"]);
+    const dscBase=gac(campo,f.ciclo,"Descarte",["Vacas","Vaquillonas"]);
+    const segBase=gac(campo,f.ciclo,"2da oportunidad",["Vacas","Vaquillonas"]);
+    // Ajustes por Traslados de rodeo (Opcion 2: mueve cadena completa)
+    const traslados=Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&(!f.ciclo||a.ciclo===f.ciclo));
+    let dEnt=0,dPre=0,dCut=0,dDsc=0,dSeg=0;
+    for(const t of traslados){
+      const tPre=t.trPre||0, tCut=t.trCut||0, tSeg=t.trSeg||0, tDsc=t.trDsc||0;
+      const tEnt=tPre+tSeg+tDsc; // todas las trasladadas fueron entoradas
+      if(t.campo===campo){ // sale de este campo
+        dEnt-=tEnt; dPre-=tPre; dCut-=tCut; dDsc-=tDsc; dSeg-=tSeg;
+      }
+      if(t.trDestino===campo){ // entra a este campo
+        dEnt+=tEnt; dPre+=tPre; dCut+=tCut; dDsc+=tDsc; dSeg+=tSeg;
+      }
+    }
+    const ent=entBase+dEnt;
+    const pre=preBase+dPre;
+    const cut=cutBase+dCut;
+    const dsc=dscBase+dDsc;
+    const seg=segBase+dSeg;
     const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&m.campo===campo&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
     const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&m.campo===campo&&(!f.ciclo||m.ciclo===f.ciclo)).reduce((s,m)=>s+m.cant,0);
     const nac=nacT+nacH;
     const dest=gac(campo,f.ciclo,"Destete",["Terneros","Terneras"]);
     const kgt=gkg(campo,f.ciclo);
-    const cut=gac(campo,f.ciclo,"Cut",["Vacas","Vaquillonas"]);
-    const dsc=gac(campo,f.ciclo,"Descarte",["Vacas","Vaquillonas"]);
-    const seg=gac(campo,f.ciclo,"2da oportunidad",["Vacas","Vaquillonas"]);
-    // Bases de calculo corregidas:
-    // 1. Preñez: preñadas / entoradas
-    // 2. Nacimientos: nacidos / preñadas
-    // 3. Destete: destetados / preñadas
-    // 4. Kg/animal: kg totales / preñadas
-    // 5. Cut, Descarte, 2da oportunidad: / preñadas
-    return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,
+    const huboTraslado=(dEnt!==0||dPre!==0||dCut!==0||dDsc!==0||dSeg!==0);
+    // Bases: Preñez=preñadas/entoradas | Nac,Dest,Kg=/preñadas | Cut=/preñadas | Dsc,2da=/entoradas
+    return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,huboTraslado,
       pPre:pct(pre,ent),
       pNac:pct(nac,pre),
       pDest:pct(dest,pre),
@@ -651,7 +676,7 @@ function renderProd(){
 </div>
 ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows.map(r=>`
 <div class="card pc">
-  <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""}</h3>
+  <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""} ${r.huboTraslado?`<span class="bc" style="background:#cfe0f5;color:#1e4a6a" title="Los valores estan ajustados por traslados de rodeo">🔀 Ajustado por traslado</span>`:""}</h3>
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
     <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div></div>
@@ -682,16 +707,30 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
 function calcKPIsCampoCiclo(campo, ciclo){
   const gac=(tipo,cats)=>Object.values(state.act).filter(a=>a.tipo===tipo&&a.campo===campo&&a.ciclo===ciclo&&cats.includes(a.cat)).reduce((s,a)=>s+(a.cant||0),0);
   const gkg=()=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&a.campo===campo&&a.ciclo===ciclo&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
-  const ent=gac("Entore",["Vacas","Vaquillonas"])+gac("IATF",["Vacas","Vaquillonas"]);
-  const pre=gac("Preñez",["Vacas","Vaquillonas"]);
+  const entBase=gac("Entore",["Vacas","Vaquillonas"])+gac("IATF",["Vacas","Vaquillonas"]);
+  const preBase=gac("Preñez",["Vacas","Vaquillonas"]);
+  const cutBase=gac("Cut",["Vacas","Vaquillonas"]);
+  const dscBase=gac("Descarte",["Vacas","Vaquillonas"]);
+  const segBase=gac("2da oportunidad",["Vacas","Vaquillonas"]);
+  // Ajustes por Traslados de rodeo
+  const traslados=Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&a.ciclo===ciclo);
+  let dEnt=0,dPre=0,dCut=0,dDsc=0,dSeg=0;
+  for(const t of traslados){
+    const tPre=t.trPre||0, tCut=t.trCut||0, tSeg=t.trSeg||0, tDsc=t.trDsc||0;
+    const tEnt=tPre+tSeg+tDsc;
+    if(t.campo===campo){ dEnt-=tEnt; dPre-=tPre; dCut-=tCut; dDsc-=tDsc; dSeg-=tSeg; }
+    if(t.trDestino===campo){ dEnt+=tEnt; dPre+=tPre; dCut+=tCut; dDsc+=tDsc; dSeg+=tSeg; }
+  }
+  const ent=entBase+dEnt;
+  const pre=preBase+dPre;
+  const cut=cutBase+dCut;
+  const dsc=dscBase+dDsc;
+  const seg=segBase+dSeg;
   const nacT=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneros"&&m.campo===campo&&m.ciclo===ciclo).reduce((s,m)=>s+m.cant,0);
   const nacH=Object.values(state.mov).filter(m=>m.tipo==="ingreso"&&m.sub==="Nacimiento"&&m.cat==="Terneras"&&m.campo===campo&&m.ciclo===ciclo).reduce((s,m)=>s+m.cant,0);
   const nac=nacT+nacH;
   const dest=gac("Destete",["Terneros","Terneras"]);
   const kgt=gkg();
-  const cut=gac("Cut",["Vacas","Vaquillonas"]);
-  const dsc=gac("Descarte",["Vacas","Vaquillonas"]);
-  const seg=gac("2da oportunidad",["Vacas","Vaquillonas"]);
   return{
     ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,
     pPre:pct(pre,ent), pNac:pct(nac,pre), pDest:pct(dest,pre),
@@ -1064,6 +1103,9 @@ window.updMovSub=function(){
   if(s)s.innerHTML=opts(t==="ingreso"?ING:EGR,"");
 };
 window.updActKg=function(){
+  const tp=document.getElementById("trasladoPanel");
+  const tipoEl=document.getElementById("ati");
+  if(tp&&tipoEl)tp.style.display=tipoEl.value==="Traslado de rodeo"?"block":"none";
   const t=document.getElementById("ati").value;
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
@@ -1171,6 +1213,20 @@ function doSubmitAct(){
   const obs=document.getElementById("aob").value.trim();
   if(!fecha||!campo||!cat||!tipo)return alert("Completa: fecha, campo, categoria y actividad.");
   const e={fecha,campo,cat,ciclo,tipo,cant:isNaN(cant)?null:cant,kg,obs,id:state.editAct?state.editAct.id:uid()};
+  // Si es Traslado de rodeo, capturar los campos extra
+  if(tipo==="Traslado de rodeo"){
+    const dest=document.getElementById("tr_destino").value;
+    const trPre=parseInt(document.getElementById("tr_pre").value)||0;
+    const trCut=parseInt(document.getElementById("tr_cut").value)||0;
+    const trSeg=parseInt(document.getElementById("tr_seg").value)||0;
+    const trDsc=parseInt(document.getElementById("tr_dsc").value)||0;
+    if(!dest)return alert("Seleccioná el campo destino del traslado.");
+    if(dest===campo)return alert("El campo destino debe ser distinto al origen.");
+    if(trPre+trSeg+trDsc===0)return alert("Indicá al menos una cantidad a trasladar.");
+    if(trCut>trPre)return alert("Las Cut no pueden ser más que las Preñadas trasladadas.");
+    e.trDestino=dest; e.trPre=trPre; e.trCut=trCut; e.trSeg=trSeg; e.trDsc=trDsc;
+    e.cant=trPre+trSeg+trDsc; // cantidad total trasladada (informativo)
+  }
   saveAct(e).then(()=>{state.editAct=null;clearFormAct();render();});
 }
 function doDownloadCSV(){
