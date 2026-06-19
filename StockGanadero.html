@@ -637,7 +637,7 @@ function renderStockRep(){
   const f=state.filtStockRep;
   const clist=campos();
   const cilist=ciclos();
-  const ESTADOS=["Preñez","Cut","Vacias","2da oportunidad","IATF","Descarte"];
+  const ESTADOS=["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"];
   const CATS_REP=["Vacas","Vaquillonas"];
 
   // Suma acumulada de un estado a la fecha de corte, por campo/ciclo/categoria
@@ -653,7 +653,7 @@ function renderStockRep(){
     ).reduce((s,a)=>s+(a.cant||0),0);
 
     // Ajuste por traslados de rodeo (mueven Preñez, Cut, 2da oportunidad, Descarte)
-    if(estado!=="IATF"){
+    if(estado!=="Selección a IATF"){
       const traslados=Object.values(state.act).filter(a=>
         a.tipo==="Traslado de rodeo" &&
         a.cat===cat &&
