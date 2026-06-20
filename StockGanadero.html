@@ -131,7 +131,7 @@ const LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIoSUNDX1BST0Z
 const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras","Toros","Toritos"];
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
-const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Otro"];
+const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Cambio de estado","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
@@ -478,6 +478,16 @@ function renderAct(){
     </div>
     <div id="tt_total" style="font-size:.85rem;color:#3a5a2a;font-weight:600;margin-top:.3rem"></div>
   </div>
+  <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
+    <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
+    <p class="hint" style="color:#5a3a6a">Mueve animales de un estado a otro SIN tocar el stock físico ni el Productivo histórico. Solo actualiza el Stock Reproductivo. Para ventas/muertes usá destino "Baja".</p>
+    <div class="fg">
+      <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
+      <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
+      <label>Cantidad<input id="ce_cant" type="number" min="1" value="${ef&&ef.ceCant!=null?ef.ceCant:""}" placeholder="0"/></label>
+      <label class="s2">Nota recordatoria<input id="ce_nota" value="${ef?h(ef.ceNota||""):""}" placeholder="Ej: Toro vecino saltó la cerca"/></label>
+    </div>
+  </div>
   <div class="br">
     <button class="bp" id="submitAct">💾 ${ef?"Guardar":"Agregar actividad"}</button>
     ${ef?`<button class="bs" id="cancelAct">Cancelar</button>`:""}
@@ -499,9 +509,9 @@ function renderAct(){
     <tbody>${rows.length===0?`<tr><td colspan="9" class="empty">Sin registros</td></tr>`:rows.map(a=>`
       <tr>
         <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${a.tipo==="Traslado de rodeo"?h(a.campo)+" → "+h(a.trDestino||"?"):h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
-        <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':''}>${h(a.tipo)}</span></td>
+        <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':(a.tipo==="Cambio de estado"?' style="background:#ead4f5;color:#5a1e6a"':'')}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
-        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—"))}</td>
+        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tipo==="Cambio de estado"?`${h(a.ceOrigen||"?")} → ${h(a.ceDestino||"?")}: ${a.ceCant||0}${a.ceNota?" · "+h(a.ceNota):""}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—")))}</td>
         <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar TODO el tacto (todos los registros generados)" onclick="delTacto('${a.tactoId}')" style="font-size:.85rem">🐄❌</button>`:""}</td>
       </tr>`).join("")}
     </tbody>
@@ -638,7 +648,7 @@ ${campos2.map(campo=>{
 function renderStockRep(){
   const f=state.filtStockRep;
   const clist=campos();
-  const cilist=ciclos();
+  const cilist=ciclos().filter(c=>{const a=parseInt(c.split('/')[0]);return a>=2026;});
   const ESTADOS=["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"];
   const CATS_REP=["Vacas","Vaquillonas"];
 
@@ -677,6 +687,18 @@ function renderStockRep(){
           if(t.trDestino===campo) total+=mueve;
         }
       }
+    }
+    // Ajuste por Cambios de estado reproductivo (mueven de un estado a otro, mismo campo)
+    const cambios=Object.values(state.act).filter(a=>
+      a.tipo==="Cambio de estado" &&
+      a.campo===campo &&
+      a.cat===cat &&
+      enCiclo(a.ciclo) &&
+      (!f.hasta||(a.fecha&&a.fecha<=f.hasta))
+    );
+    for(const c of cambios){
+      if(c.ceDestino===estado) total+=(c.ceCant||0); // entra a este estado
+      if(c.ceOrigen===estado) total-=(c.ceCant||0);  // sale de este estado
     }
     return total;
   }
@@ -1244,6 +1266,8 @@ window.updActKg=function(){
   if(tp&&tipoEl)tp.style.display=tipoEl.value==="Traslado de rodeo"?"block":"none";
   const tt=document.getElementById("tactoPanel");
   if(tt&&tipoEl)tt.style.display=tipoEl.value==="Tacto"?"block":"none";
+  const ce=document.getElementById("cambioPanel");
+  if(ce&&tipoEl)ce.style.display=tipoEl.value==="Cambio de estado"?"block":"none";
   const t=document.getElementById("ati").value;
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
@@ -1398,6 +1422,19 @@ function doSubmitAct(){
     return;
   }
   const e={fecha,campo,cat,ciclo,tipo,cant:isNaN(cant)?null:cant,kg,obs,id:state.editAct?state.editAct.id:uid()};
+  // Si es Cambio de estado, capturar los campos extra
+  if(tipo==="Cambio de estado"){
+    const origen=document.getElementById("ce_origen").value;
+    const destino=document.getElementById("ce_destino").value;
+    const ceCant=parseInt(document.getElementById("ce_cant").value)||0;
+    const ceNota=document.getElementById("ce_nota").value.trim();
+    if(!origen||!destino)return alert("Seleccioná estado origen y destino.");
+    if(origen===destino)return alert("El estado origen y destino deben ser distintos.");
+    if(ceCant<=0)return alert("Indicá una cantidad mayor a 0.");
+    if(!ciclo)return alert("Completá el Ciclo.");
+    e.ceOrigen=origen; e.ceDestino=destino; e.ceCant=ceCant; e.ceNota=ceNota;
+    e.cant=ceCant; // informativo
+  }
   // Si es Traslado de rodeo, capturar los campos extra
   if(tipo==="Traslado de rodeo"){
     const dest=document.getElementById("tr_destino").value;
