@@ -131,7 +131,7 @@ const LOGO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIoSUNDX1BST0Z
 const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras","Toros","Toritos"];
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
-const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Traslado de rodeo","Cambio de estado","Otro"];
+const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
 
@@ -154,6 +154,8 @@ let state = {
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
   editAlerta: undefined,
+  alertasAct: {},     // alertas de la pestaña actividades
+  editAlertaAct: undefined,
   formMov: {fecha:"",campo:"",cat:"",ciclo:"",tipo:"ingreso",sub:"",cant:"",obs:""},
   formAct: {fecha:"",campo:"",cat:"",ciclo:"",tipo:"",cant:"",kg:"",obs:""},
   showCSV: false,
@@ -182,6 +184,10 @@ onValue(ref(db,"campos"), snap => {
 });
 onValue(ref(db,"alertas"), snap => {
   state.alertas = snap.val() || {};
+  render();
+});
+onValue(ref(db,"alertasAct"), snap => {
+  state.alertasAct = snap.val() || {};
   render();
 });
 
@@ -437,7 +443,53 @@ function renderAct(){
     if(f.tipo&&a.tipo!==f.tipo)return false;
     return true;
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const alertasActList=Object.values(state.alertasAct).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+  const tipoSel=ef?ef.tipo:state.formAct.tipo;
   return `
+<div class="card" style="background:#fff8e1;border:2px solid #f59e0b">
+  <h2 style="color:#92400e;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <span>⚠️ Avisos / Alertas (${alertasActList.length})</span>
+    <button class="bp" style="background:#92400e;font-size:.8rem;padding:.35rem .8rem" onclick="abrirNuevaAlertaAct()">➕ Nueva alerta</button>
+  </h2>
+  ${state.editAlertaAct!==undefined?`
+  <div style="background:#fff;border:1px solid #f59e0b;border-radius:8px;padding:.9rem;margin-bottom:.8rem">
+    <h3 style="color:#92400e">${state.editAlertaAct.id?"✏️ Editar":"➕ Nueva"} alerta</h3>
+    <div class="fg">
+      <label>Fecha<input id="ala_fecha" type="date" value="${state.editAlertaAct.fecha||new Date().toISOString().slice(0,10)}"/></label>
+      <label>Prioridad<select id="ala_color">
+        <option value="urgente" ${state.editAlertaAct.color==="urgente"?"selected":""}>🔴 Urgente</option>
+        <option value="atencion" ${(!state.editAlertaAct.color||state.editAlertaAct.color==="atencion")?"selected":""}>🟡 Atención</option>
+        <option value="info" ${state.editAlertaAct.color==="info"?"selected":""}>🔵 Informativo</option>
+      </select></label>
+      <label class="s2">Título<input id="ala_titulo" value="${h(state.editAlertaAct.titulo||"")}" placeholder="Ej: Revisar preñez El Rincón"/></label>
+      <label class="s2">Mensaje / Detalle<input id="ala_mensaje" value="${h(state.editAlertaAct.mensaje||"")}" placeholder="Detalle del aviso..."/></label>
+    </div>
+    <div class="br">
+      <button class="bp" onclick="guardarAlertaAct()">💾 Guardar alerta</button>
+      <button class="bs" onclick="cancelarAlertaAct()">Cancelar</button>
+    </div>
+  </div>`:""}
+  ${alertasActList.length===0 && state.editAlertaAct===undefined?`<p style="color:#92400e;font-size:.85rem;text-align:center;padding:.5rem">Sin alertas activas. Tocá "➕ Nueva alerta" para agregar.</p>`:""}
+  ${alertasActList.map(al=>{
+    const colors={urgente:{bg:"#fee2e2",border:"#c84a28",text:"#8c2810",icon:"🔴"},
+                  atencion:{bg:"#fef3c7",border:"#f59e0b",text:"#92400e",icon:"🟡"},
+                  info:{bg:"#dbeafe",border:"#3b82f6",text:"#1e40af",icon:"🔵"}};
+    const c=colors[al.color]||colors.atencion;
+    return `
+    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.7rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:${c.text};font-size:.92rem">${c.icon} ${h(al.titulo||"(sin título)")}</div>
+        ${al.mensaje?`<div style="color:${c.text};font-size:.82rem;margin-top:.2rem">${h(al.mensaje)}</div>`:""}
+        ${al.fecha?`<div style="color:#888;font-size:.72rem;margin-top:.25rem">📅 ${al.fecha.split('-').reverse().join('/')}</div>`:""}
+      </div>
+      <div style="display:flex;gap:.3rem;flex-shrink:0">
+        <button class="bi" onclick="editarAlertaAct('${al.id}')">✏️</button>
+        <button class="bi" onclick="eliminarAlertaAct('${al.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join("")}
+</div>
+
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
   <div class="fg">
@@ -457,7 +509,7 @@ function renderAct(){
   </div>
   <div id="trasladoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Traslado de rodeo"?"":"display:none"};background:#eaf0f8;border:1.5px solid #5a8fc0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#1e4a6a;margin-bottom:.7rem">🔀 Datos del Traslado de Rodeo</h3>
-    <p class="hint" style="color:#3a5a7a">El campo de arriba "Campo" es el ORIGEN. Indicá acá el destino y qué se traslada. Mueve la cadena productiva completa (no toca el stock de Movimientos).</p>
+    <p class="hint" style="color:#3a5a7a"><strong>ℹ️ Qué hace:</strong> mueve la cadena productiva (entoradas + preñadas + cut + 2da op + descarte) de un campo a otro. El campo de arriba es el ORIGEN, abajo elegís el destino. <strong>Ajusta los % del Productivo y el Stock Reproductivo</strong> de ambos campos, pero NO toca el stock físico de Movimientos (eso lo cargás aparte).</p>
     <div class="fg">
       <label class="s2">Campo destino<select id="tr_destino">${opts(campos(),ef?ef.trDestino:"","-- Seleccionar destino --")}</select></label>
       <label>Preñadas trasladadas<input id="tr_pre" type="number" min="0" value="${ef&&ef.trPre!=null?ef.trPre:""}" placeholder="0"/></label>
@@ -468,7 +520,7 @@ function renderAct(){
   </div>
   <div id="tactoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Tacto"?"":"display:none"};background:#eef5e8;border:1.5px solid #6a9a3a;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#2d4a1e;margin-bottom:.7rem">🐄 Resultado del Tacto</h3>
-    <p class="hint" style="color:#3a5a2a">Cargá el resultado del tacto y al guardar se crean automáticamente los registros (Preñez, Cut, Vacías, 2da oportunidad, Descarte) visibles y filtrables en el listado.</p>
+    <p class="hint" style="color:#3a5a2a"><strong>ℹ️ Qué hace:</strong> cargás el resultado del tacto una sola vez y al guardar <strong>crea automáticamente los registros</strong> (Preñez, Cut, Vacías, 2da oportunidad, Descarte), visibles y filtrables en el listado. Alimenta el <strong>Productivo</strong> (% preñez, etc.) y el <strong>Stock Reproductivo</strong>. Las Cut van dentro de Preñadas; 2da op y Descarte dentro de Vacías.</p>
     <div class="fg">
       <label>Preñadas<input id="tt_pre" type="number" min="0" value="" placeholder="0" oninput="updTactoTotal()"/></label>
       <label>de las cuales Cut<input id="tt_cut" type="number" min="0" value="" placeholder="0"/></label>
@@ -480,7 +532,7 @@ function renderAct(){
   </div>
   <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
-    <p class="hint" style="color:#5a3a6a">Mueve animales de un estado a otro SIN tocar el stock físico ni el Productivo histórico. Solo actualiza el Stock Reproductivo. Para ventas/muertes usá destino "Baja".</p>
+    <p class="hint" style="color:#5a3a6a"><strong>ℹ️ Qué hace:</strong> mueve animales de un estado reproductivo a otro (ej: una vaca vacía que se preñó después del tacto). <strong>SOLO actualiza el Stock Reproductivo</strong> — NO toca el Productivo histórico (el % del tacto queda fijo) ni el stock físico de Movimientos. Para ventas o muertes usá destino "Baja".</p>
     <div class="fg">
       <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
       <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
@@ -1171,6 +1223,7 @@ async function restaurarBackup(file){
       if(data.par) await set(ref(db,"par"),data.par);
       if(data.campos) await set(ref(db,"campos"),data.campos);
       if(data.alertas) await set(ref(db,"alertas"),data.alertas);
+      if(data.alertasAct) await set(ref(db,"alertasAct"),data.alertasAct);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -1179,7 +1232,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1308,6 +1361,26 @@ window.guardarAlerta=async function(){
   const id=state.editAlerta.id||uid();
   await set(ref(db,`alertas/${id}`),{id,fecha,color,titulo,mensaje});
   state.editAlerta=undefined;
+  toast("✅ Alerta guardada");
+};
+// ── Alertas de Actividades ──
+window.abrirNuevaAlertaAct=function(){state.editAlertaAct={fecha:new Date().toISOString().slice(0,10),color:"atencion",titulo:"",mensaje:""};render();};
+window.cancelarAlertaAct=function(){state.editAlertaAct=undefined;render();};
+window.editarAlertaAct=function(id){state.editAlertaAct={...state.alertasAct[id]};render();};
+window.eliminarAlertaAct=async function(id){
+  if(!confirm("¿Eliminar esta alerta?"))return;
+  await remove(ref(db,`alertasAct/${id}`));
+  toast("Alerta eliminada");
+};
+window.guardarAlertaAct=async function(){
+  const fecha=document.getElementById("ala_fecha").value;
+  const color=document.getElementById("ala_color").value;
+  const titulo=document.getElementById("ala_titulo").value.trim();
+  const mensaje=document.getElementById("ala_mensaje").value.trim();
+  if(!titulo)return alert("Escribí un título para la alerta.");
+  const id=state.editAlertaAct.id||uid();
+  await set(ref(db,`alertasAct/${id}`),{id,fecha,color,titulo,mensaje});
+  state.editAlertaAct=undefined;
   toast("✅ Alerta guardada");
 };
 window.addComp=function(){state.comparativos.push({campo:"",ciclo:""});render();};
