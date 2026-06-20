@@ -150,7 +150,7 @@ let state = {
   filtAct: {campo:"",ciclo:"",tipo:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
-  filtStockRep: {hasta:"",ciclo:"",campo:"",cat:"",estado:""},
+  filtStockRep: {hasta:"",ciclos:[],campo:"",cat:"",estados:[]},
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
   editAlerta: undefined,
@@ -640,24 +640,28 @@ function renderStockRep(){
   const ESTADOS=["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"];
   const CATS_REP=["Vacas","Vaquillonas"];
 
-  // Suma acumulada de un estado a la fecha de corte, por campo/ciclo/categoria
-  // Incluye ajuste por traslados de rodeo (excepto IATF que no se mueve)
-  function saldo(campo,ciclo,cat,estado){
-    // Base: actividades de ese estado
+  // Si el array esta vacio = todos
+  const ciclosSel = (f.ciclos&&f.ciclos.length>0) ? f.ciclos : cilist;
+  const estadosSel = (f.estados&&f.estados.length>0) ? f.estados : ESTADOS;
+
+  function enCiclo(c){ return (!f.ciclos||f.ciclos.length===0) ? true : f.ciclos.includes(c); }
+
+  // Suma acumulada de un estado a la fecha de corte, por campo/categoria (sumando los ciclos seleccionados)
+  function saldo(campo,cat,estado){
     let total=Object.values(state.act).filter(a=>
       a.tipo===estado &&
       a.campo===campo &&
-      (!ciclo||a.ciclo===ciclo) &&
+      enCiclo(a.ciclo) &&
       a.cat===cat &&
       (!f.hasta||(a.fecha&&a.fecha<=f.hasta))
     ).reduce((s,a)=>s+(a.cant||0),0);
 
-    // Ajuste por traslados de rodeo (mueven Preñez, Cut, 2da oportunidad, Descarte)
+    // Ajuste por traslados de rodeo (mueven Preñez, Cut, 2da oportunidad, Descarte; NO Selección a IATF)
     if(estado!=="Selección a IATF"){
       const traslados=Object.values(state.act).filter(a=>
         a.tipo==="Traslado de rodeo" &&
         a.cat===cat &&
-        (!ciclo||a.ciclo===ciclo) &&
+        enCiclo(a.ciclo) &&
         (!f.hasta||(a.fecha&&a.fecha<=f.hasta))
       );
       for(const t of traslados){
@@ -667,48 +671,58 @@ function renderStockRep(){
         else if(estado==="2da oportunidad") mueve=t.trSeg||0;
         else if(estado==="Descarte") mueve=t.trDsc||0;
         if(mueve>0){
-          if(t.campo===campo) total-=mueve;       // sale del origen
-          if(t.trDestino===campo) total+=mueve;   // entra al destino
+          if(t.campo===campo) total-=mueve;
+          if(t.trDestino===campo) total+=mueve;
         }
       }
     }
     return total;
   }
 
-  // Campos a mostrar (incluye destinos de traslado)
   const camposShow = f.campo ? [f.campo] : [...new Set([
-    ...Object.values(state.act).filter(a=>(!f.ciclo||a.ciclo===f.ciclo)).map(a=>a.campo),
-    ...Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&(!f.ciclo||a.ciclo===f.ciclo)).map(a=>a.trDestino)
+    ...Object.values(state.act).filter(a=>enCiclo(a.ciclo)).map(a=>a.campo),
+    ...Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&enCiclo(a.ciclo)).map(a=>a.trDestino)
   ].filter(Boolean))];
 
   const catsShow = f.cat ? [f.cat] : CATS_REP;
-  const estadosShow = f.estado ? [f.estado] : ESTADOS;
+  const estadosShow = estadosSel;
 
   return `
 <div class="card">
   <h2>🐄 Stock Reproductivo</h2>
-  <p class="hint">Cantidad de animales en cada estado reproductivo (preñez, cut, vacías, 2da oportunidad, IATF, descarte) a la fecha de corte. Incluye los movimientos por traslado de rodeo. No afecta el resumen Productivo.</p>
+  <p class="hint">Cantidad de animales en cada estado reproductivo a la fecha de corte. Incluye los movimientos por traslado de rodeo. No afecta el resumen Productivo. En Ciclo y Estado podés marcar varios; si no marcás ninguno, se muestran todos.</p>
   <div class="fg">
     <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFSR('hasta',this.value)"/></label>
-    <label>Ciclo<select onchange="setFSR('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
     <label>Campo<select onchange="setFSR('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoria<select onchange="setFSR('cat',this.value)">${opts(CATS_REP,f.cat,"Todas")}</select></label>
-    <label>Estado<select onchange="setFSR('estado',this.value)">${opts(ESTADOS,f.estado||"","Todos")}</select></label>
+  </div>
+  <div style="margin-top:.6rem">
+    <div style="font-size:.8rem;font-weight:600;color:#4a3820;margin-bottom:.35rem">Ciclo ${f.ciclos&&f.ciclos.length>0?`<button class="bs" style="padding:.1rem .5rem;font-size:.7rem;margin-left:.5rem" onclick="limpiarFSR('ciclos')">limpiar</button>`:""}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+      ${cilist.map(c=>`<label style="display:flex;align-items:center;gap:.25rem;font-size:.82rem;font-weight:500;background:${(f.ciclos||[]).includes(c)?"#eaf5e0":"#faf8f4"};border:1.5px solid ${(f.ciclos||[]).includes(c)?"#3d6428":"#c8c0b0"};border-radius:6px;padding:.3rem .6rem;cursor:pointer">
+        <input type="checkbox" ${(f.ciclos||[]).includes(c)?"checked":""} onchange="toggleFSR('ciclos','${h(c)}')" style="width:auto;cursor:pointer"/>${h(c)}</label>`).join("")}
+    </div>
+  </div>
+  <div style="margin-top:.7rem">
+    <div style="font-size:.8rem;font-weight:600;color:#4a3820;margin-bottom:.35rem">Estado ${f.estados&&f.estados.length>0?`<button class="bs" style="padding:.1rem .5rem;font-size:.7rem;margin-left:.5rem" onclick="limpiarFSR('estados')">limpiar</button>`:""}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+      ${ESTADOS.map(e=>`<label style="display:flex;align-items:center;gap:.25rem;font-size:.82rem;font-weight:500;background:${(f.estados||[]).includes(e)?"#eaf5e0":"#faf8f4"};border:1.5px solid ${(f.estados||[]).includes(e)?"#3d6428":"#c8c0b0"};border-radius:6px;padding:.3rem .6rem;cursor:pointer">
+        <input type="checkbox" ${(f.estados||[]).includes(e)?"checked":""} onchange="toggleFSR('estados','${e==="Selección a IATF"?"Selección a IATF":h(e)}')" style="width:auto;cursor:pointer"/>${e==="Vacias"?"Vacías":h(e)}</label>`).join("")}
+    </div>
   </div>
 </div>
 ${camposShow.length===0?`<div class="card"><p class="empty">Sin datos para los filtros seleccionados.</p></div>`:`
 ${(()=>{
-  // Resumen general (todos los campos sumados)
   const totG={};
   for(const est of estadosShow){
     totG[est]=0;
     for(const campo of camposShow)
       for(const cat of catsShow)
-        totG[est]+=saldo(campo,f.ciclo,cat,est);
+        totG[est]+=saldo(campo,cat,est);
   }
   return `
 <div class="card" style="border-top:4px solid #2d4a1e">
-  <h3>🌐 Total General${f.hasta?" al "+f.hasta.split('-').reverse().join('/'):""}${f.ciclo?" — Ciclo "+f.ciclo:""}</h3>
+  <h3>🌐 Total General${f.hasta?" al "+f.hasta.split('-').reverse().join('/'):""}${f.ciclos&&f.ciclos.length>0?" — Ciclos: "+f.ciclos.join(", "):""}</h3>
   <div class="kg">
     ${estadosShow.map(est=>`
     <div class="kp"><div class="kl">${est==="Vacias"?"Vacías":est}</div><div class="kv">${totG[est]}</div></div>`).join("")}
@@ -716,9 +730,7 @@ ${(()=>{
 </div>`;
 })()}
 ${camposShow.map(campo=>{
-  // tabla por categoria x estado
-  const filas=catsShow.map(cat=>({cat, vals:estadosShow.map(est=>saldo(campo,f.ciclo,cat,est))}));
-  const totalCampo=filas.reduce((s,fila)=>s+fila.vals.reduce((a,b)=>a+b,0),0);
+  const filas=catsShow.map(cat=>({cat, vals:estadosShow.map(est=>saldo(campo,cat,est))}));
   if(filas.every(fila=>fila.vals.every(v=>v===0))) return "";
   return `
   <div class="card">
@@ -1239,6 +1251,14 @@ window.setFA=function(k,v){saveFormAct();state.filtAct[k]=v;render();};
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
 window.setFP=function(k,v){state.filtProd[k]=v;render();};
 window.setFSR=function(k,v){state.filtStockRep[k]=v;render();};
+window.toggleFSR=function(k,v){
+  const arr=state.filtStockRep[k]||[];
+  const i=arr.indexOf(v);
+  if(i>=0)arr.splice(i,1); else arr.push(v);
+  state.filtStockRep[k]=arr;
+  render();
+};
+window.limpiarFSR=function(k){state.filtStockRep[k]=[];render();};
 window.updPar=function(k,v){
   state.par[k]=+v;
   const el=document.getElementById("rv_"+k);
