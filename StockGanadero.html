@@ -147,7 +147,7 @@ let state = {
   editMov: null,
   editAct: null,
   filtMov: {campo:"",cat:"",ciclo:"",desde:"",hasta:""},
-  filtAct: {campo:"",ciclo:"",tipo:""},
+  filtAct: {campo:"",ciclo:"",cat:"",tipo:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
   filtStockRep: {hasta:"",ciclos:[],campo:"",cat:"",estados:[]},
@@ -433,6 +433,7 @@ function renderAct(){
   const rows=Object.values(state.act).filter(a=>{
     if(f.campo&&a.campo!==f.campo)return false;
     if(f.ciclo&&a.ciclo!==f.ciclo)return false;
+    if(f.cat&&a.cat!==f.cat)return false;
     if(f.tipo&&a.tipo!==f.tipo)return false;
     return true;
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
@@ -487,6 +488,7 @@ function renderAct(){
   <div class="fg">
     <label>Campo<select onchange="setFA('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Ciclo<select onchange="setFA('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
+    <label>Categoria<select onchange="setFA('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
     <label>Actividad<select onchange="setFA('tipo',this.value)">${opts(actividadesAll(),f.tipo,"Todas")}</select></label>
   </div>
 </div>
