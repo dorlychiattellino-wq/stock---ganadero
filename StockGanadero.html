@@ -517,7 +517,20 @@ function renderAct(){
     </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:state.formAct.cat,"-- Seleccionar --")}</select></label>
     <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):h(state.formAct.ciclo)}" placeholder="Ej: 2026/2027"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-    <label>Actividad<input id="ati" list="act-list" value="${ef?h(ef.tipo):h(state.formAct.tipo)}" oninput="updActKg()" autocomplete="off" placeholder="Elegí o escribí..."/><datalist id="act-list">${actividadesAll().map(t=>`<option value="${h(t)}"/>`).join("")}</datalist></label>
+    <label>Actividad<select id="ati" onchange="updActKg()">
+      ${(()=>{
+        const sel=ef?ef.tipo:state.formAct.tipo;
+        const colores={
+          "Tacto":"color:#2d4a1e;font-weight:700",
+          "Traslado de rodeo":"color:#1e4a6a;font-weight:700",
+          "Cambio de estado":"color:#5a1e6a;font-weight:700",
+          "Entore":"color:#b5651d;font-weight:700",
+          "Desentore":"color:#b5651d;font-weight:700",
+          "IATF":"color:#b5651d;font-weight:700"
+        };
+        return `<option value="">-- Seleccionar --</option>`+actividadesAll().map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(t)}</option>`).join("");
+      })()}
+    </select></label>
     <label>Cantidad<input id="aca" type="number" value="${ef&&ef.cant!=null?ef.cant:h(state.formAct.cant)}" min="0" placeholder="Opcional"/></label>
     <label id="kglabel" style="${showKg?"":"display:none"}">Kg totales<input id="akg" type="number" step="0.1" value="${ef&&ef.kg!=null?ef.kg:""}"/></label>
     <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):h(state.formAct.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
