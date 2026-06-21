@@ -490,6 +490,21 @@ function renderAct(){
   }).join("")}
 </div>
 
+<div class="card" style="background:#f0f5f9;border:1.5px solid #8ab0d0">
+  <h2 style="color:#1e4a6a;font-size:1rem">📖 Guía rápida de actividades especiales</h2>
+  <div style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem;font-size:.84rem">
+    <div style="background:#eef5e8;border-left:4px solid #6a9a3a;border-radius:6px;padding:.6rem .8rem">
+      <strong style="color:#2d4a1e">🐄 Tacto</strong> — Usala en mayo para cargar el resultado del tacto de una sola vez. Indicás Preñadas (de las cuales Cut) y Vacías (de ellas: 2da oportunidad y Descarte). <strong>Crea automáticamente</strong> los registros de Preñez, Cut, Vacías, 2da op y Descarte. Alimenta el Productivo y el Stock Reproductivo.
+    </div>
+    <div style="background:#eaf0f8;border-left:4px solid #5a8fc0;border-radius:6px;padding:.6rem .8rem">
+      <strong style="color:#1e4a6a">🔀 Traslado de rodeo</strong> — Usala cuando movés vacas preñadas/vacías de un campo a otro después del tacto. Mueve la cadena productiva completa entre campos. <strong>Ajusta los % del Productivo y el Stock Reproductivo</strong> de origen y destino. NO toca el stock físico (el traslado de cantidad se carga aparte en Movimientos).
+    </div>
+    <div style="background:#f5eef8;border-left:4px solid #9a5ac0;border-radius:6px;padding:.6rem .8rem">
+      <strong style="color:#5a1e6a">🔄 Cambio de estado</strong> — Usala cuando un animal cambia de estado reproductivo después del tacto (ej: una vaca vacía que quedó preñada, o vender vacas Cut con destino "Baja"). <strong>SOLO actualiza el Stock Reproductivo</strong> — no toca el Productivo histórico ni el stock físico.
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
   <div class="fg">
@@ -509,7 +524,7 @@ function renderAct(){
   </div>
   <div id="trasladoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Traslado de rodeo"?"":"display:none"};background:#eaf0f8;border:1.5px solid #5a8fc0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#1e4a6a;margin-bottom:.7rem">🔀 Datos del Traslado de Rodeo</h3>
-    <p class="hint" style="color:#3a5a7a"><strong>ℹ️ Qué hace:</strong> mueve la cadena productiva (entoradas + preñadas + cut + 2da op + descarte) de un campo a otro. El campo de arriba es el ORIGEN, abajo elegís el destino. <strong>Ajusta los % del Productivo y el Stock Reproductivo</strong> de ambos campos, pero NO toca el stock físico de Movimientos (eso lo cargás aparte).</p>
+    <p class="hint" style="color:#3a5a7a">El campo de arriba "Campo" es el ORIGEN. Indicá el destino y qué se traslada.</p>
     <div class="fg">
       <label class="s2">Campo destino<select id="tr_destino">${opts(campos(),ef?ef.trDestino:"","-- Seleccionar destino --")}</select></label>
       <label>Preñadas trasladadas<input id="tr_pre" type="number" min="0" value="${ef&&ef.trPre!=null?ef.trPre:""}" placeholder="0"/></label>
@@ -520,7 +535,7 @@ function renderAct(){
   </div>
   <div id="tactoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Tacto"?"":"display:none"};background:#eef5e8;border:1.5px solid #6a9a3a;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#2d4a1e;margin-bottom:.7rem">🐄 Resultado del Tacto</h3>
-    <p class="hint" style="color:#3a5a2a"><strong>ℹ️ Qué hace:</strong> cargás el resultado del tacto una sola vez y al guardar <strong>crea automáticamente los registros</strong> (Preñez, Cut, Vacías, 2da oportunidad, Descarte), visibles y filtrables en el listado. Alimenta el <strong>Productivo</strong> (% preñez, etc.) y el <strong>Stock Reproductivo</strong>. Las Cut van dentro de Preñadas; 2da op y Descarte dentro de Vacías.</p>
+    <p class="hint" style="color:#3a5a2a">Las Cut van dentro de Preñadas; 2da oportunidad y Descarte dentro de Vacías.</p>
     <div class="fg">
       <label>Preñadas<input id="tt_pre" type="number" min="0" value="" placeholder="0" oninput="updTactoTotal()"/></label>
       <label>de las cuales Cut<input id="tt_cut" type="number" min="0" value="" placeholder="0"/></label>
@@ -532,7 +547,7 @@ function renderAct(){
   </div>
   <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
-    <p class="hint" style="color:#5a3a6a"><strong>ℹ️ Qué hace:</strong> mueve animales de un estado reproductivo a otro (ej: una vaca vacía que se preñó después del tacto). <strong>SOLO actualiza el Stock Reproductivo</strong> — NO toca el Productivo histórico (el % del tacto queda fijo) ni el stock físico de Movimientos. Para ventas o muertes usá destino "Baja".</p>
+    <p class="hint" style="color:#5a3a6a">Para ventas o muertes usá destino "Baja". Solo afecta el Stock Reproductivo.</p>
     <div class="fg">
       <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
       <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
