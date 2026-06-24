@@ -150,7 +150,7 @@ let state = {
   filtAct: {campo:"",ciclo:"",cat:"",tipo:"",buscar:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtProd: {ciclo:"",campo:""},
-  filtStockRep: {hasta:"",ciclos:[],campo:"",cat:"",estados:[]},
+  filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
   editAlerta: undefined,
@@ -1395,15 +1395,17 @@ window.setFABuscar=function(v){
 };
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
 window.setFP=function(k,v){state.filtProd[k]=v;render();};
-window.setFSR=function(k,v){state.filtStockRep[k]=v;render();};
+function guardarFiltStockRep(){try{localStorage.setItem("sg_filtStockRep",JSON.stringify(state.filtStockRep));}catch(e){}}
+window.setFSR=function(k,v){state.filtStockRep[k]=v;guardarFiltStockRep();render();};
 window.toggleFSR=function(k,v){
   const arr=state.filtStockRep[k]||[];
   const i=arr.indexOf(v);
   if(i>=0)arr.splice(i,1); else arr.push(v);
   state.filtStockRep[k]=arr;
+  guardarFiltStockRep();
   render();
 };
-window.limpiarFSR=function(k){state.filtStockRep[k]=[];render();};
+window.limpiarFSR=function(k){state.filtStockRep[k]=[];guardarFiltStockRep();render();};
 window.updPar=function(k,v){
   state.par[k]=+v;
   const el=document.getElementById("rv_"+k);
