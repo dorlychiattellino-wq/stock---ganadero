@@ -175,7 +175,7 @@ onValue(ref(db,"act"), snap => {
   render();
 });
 onValue(ref(db,"par"), snap => {
-  if(snap.val()) state.par = snap.val();
+  if(snap.val()) state.par = {...DP, ...snap.val()};
   render();
 });
 onValue(ref(db,"campos"), snap => {
