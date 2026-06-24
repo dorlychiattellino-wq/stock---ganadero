@@ -133,7 +133,7 @@ const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Catego
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","⚙️ Parametros"];
-const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15};
+const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3};
 
 // ── STATE ──
 let state = {
@@ -443,7 +443,7 @@ function renderAct(){
     if(f.tipo&&a.tipo!==f.tipo)return false;
     if(f.buscar){
       const q=f.buscar.toLowerCase();
-      const texto=[a.obs,a.ceNota,a.ceOrigen,a.ceDestino,a.tipo,a.trDestino].filter(Boolean).join(" ").toLowerCase();
+      const texto=[a.obs,a.ceNota,a.ceOrigen,a.ceDestino,a.ceMotivo,a.tipo,a.trDestino].filter(Boolean).join(" ").toLowerCase();
       if(!texto.includes(q))return false;
     }
     return true;
@@ -570,6 +570,7 @@ function renderAct(){
       <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
       <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
       <label>Cantidad<input id="ce_cant" type="number" min="1" value="${ef&&ef.ceCant!=null?ef.ceCant:""}" placeholder="0"/></label>
+      <label>Motivo<select id="ce_motivo">${opts(["Aborto","Muerte al parto","Muerte post-parto","Venta","Otro"],ef?ef.ceMotivo:"","(sin motivo especial)")}</select></label>
       <label class="s2">Nota recordatoria<input id="ce_nota" value="${ef?h(ef.ceNota||""):""}" placeholder="Ej: Toro vecino saltó la cerca"/></label>
     </div>
   </div>
@@ -597,7 +598,7 @@ function renderAct(){
         <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${a.tipo==="Traslado de rodeo"?h(a.campo)+" → "+h(a.trDestino||"?"):h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
         <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':(a.tipo==="Cambio de estado"?' style="background:#ead4f5;color:#5a1e6a"':'')}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
-        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tipo==="Cambio de estado"?`${h(a.ceOrigen||"?")} → ${h(a.ceDestino||"?")}: ${a.ceCant||0}${a.ceNota?" · "+h(a.ceNota):""}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—")))}</td>
+        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tipo==="Cambio de estado"?`${h(a.ceOrigen||"?")} → ${h(a.ceDestino||"?")}: ${a.ceCant||0}${a.ceMotivo?" ["+h(a.ceMotivo)+"]":""}${a.ceNota?" · "+h(a.ceNota):""}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—")))}</td>
         <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar TODO el tacto (todos los registros generados)" onclick="delTacto('${a.tactoId}')" style="font-size:.85rem">🐄❌</button>`:""}</td>
       </tr>`).join("")}
     </tbody>
@@ -896,9 +897,18 @@ function renderProd(){
     const dest=gac(campo,f.ciclo,"Destete",["Terneros","Terneras"]);
     const kgt=gkg(campo,f.ciclo);
     const huboTraslado=(dEnt!==0||dPre!==0||dCut!==0||dDsc!==0||dSeg!==0);
+    // Abortos y muertes: contados desde Cambios de estado segun su motivo
+    const gMotivo=(motivo)=>Object.values(state.act).filter(a=>
+      a.tipo==="Cambio de estado" && a.ceMotivo===motivo &&
+      a.campo===campo && (!f.ciclo||a.ciclo===f.ciclo) &&
+      ["Vacas","Vaquillonas"].includes(a.cat)
+    ).reduce((s,a)=>s+(a.ceCant||0),0);
+    const abortos=gMotivo("Aborto");
+    const mParto=gMotivo("Muerte al parto");
+    const mPost=gMotivo("Muerte post-parto");
     // Bases: Preñez=preñadas/entoradas | Nac,Dest,Kg=/preñadas | Cut=/preñadas | Dsc,2da=/entoradas
     return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,huboTraslado,
-      entBase,preBase,
+      entBase,preBase,abortos,mParto,mPost,
       pPreTacto:pct(preBase,entBase),
       pPre:pct(pre,ent),
       pNac:pct(nac,pre),
@@ -906,7 +916,10 @@ function renderProd(){
       kgA:pre>0&&kgt>0?kgt/pre:null,
       pCut:pct(cut,pre),
       pDsc:pct(dsc,ent),
-      pSeg:pct(seg,ent)};
+      pSeg:pct(seg,ent),
+      pAborto:pct(abortos,pre),
+      pMParto:pct(mParto,pre),
+      pMPost:pct(mPost,pre)};
   });
   const fv=(v)=>v!==null&&!isNaN(v)?v.toFixed(1)+"%":"—";
   return `
@@ -931,6 +944,9 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
     <div class="kp"><div class="kl">Cut</div><div class="kv">${r.cut}</div><div class="ks">${semMax(r.pCut,p.cut)}</div><div class="km">max: ${p.cut}% / preñadas</div></div>
     <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}% / entoradas</div></div>
     <div class="kp"><div class="kl">2da Oportunidad</div><div class="kv">${r.seg}</div><div class="ks">${semMax(r.pSeg,p.seg)}</div><div class="km">max: ${p.seg}% / entoradas</div></div>
+    <div class="kp"><div class="kl">Abortos</div><div class="kv">${r.abortos}</div><div class="ks">${semMax(r.pAborto,p.aborto)}</div><div class="km">max: ${p.aborto}% / preñadas</div></div>
+    <div class="kp"><div class="kl">Muerte al parto</div><div class="kv">${r.mParto}</div><div class="ks">${semMax(r.pMParto,p.muerteParto)}</div><div class="km">max: ${p.muerteParto}% / preñadas</div></div>
+    <div class="kp"><div class="kl">Muerte post-parto</div><div class="kv">${r.mPost}</div><div class="ks">${semMax(r.pMPost,p.muertePost)}</div><div class="km">max: ${p.muertePost}% / preñadas</div></div>
   </div>
   <div class="tw" style="margin-top:.9rem"><table>
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
@@ -942,6 +958,9 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
       <tr><td>% Cut (s/preñadas)</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
       <tr><td>% Descarte (s/entoradas)</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
       <tr><td>% 2da Oportunidad (s/entoradas)</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
+      <tr><td>% Abortos (s/preñadas)</td><td>${fv(r.pAborto)}</td><td>max ${p.aborto}%</td><td>${semMax(r.pAborto,p.aborto)}</td></tr>
+      <tr><td>% Muerte al parto (s/preñadas)</td><td>${fv(r.pMParto)}</td><td>max ${p.muerteParto}%</td><td>${semMax(r.pMParto,p.muerteParto)}</td></tr>
+      <tr><td>% Muerte post-parto (s/preñadas)</td><td>${fv(r.pMPost)}</td><td>max ${p.muertePost}%</td><td>${semMax(r.pMPost,p.muertePost)}</td></tr>
     </tbody>
   </table></div>
 </div>`).join("")}`;
@@ -1200,6 +1219,9 @@ function renderPar(){
     ${sl("cut",0,50,1,"% Cut — sobre preñadas",true)}
     ${sl("descarte",0,50,1,"% Descarte — sobre entoradas",true)}
     ${sl("seg",0,50,1,"% 2da Oportunidad — sobre entoradas",true)}
+    ${sl("aborto",0,30,1,"% Abortos — sobre preñadas",true)}
+    ${sl("muerteParto",0,30,1,"% Muerte al parto — sobre preñadas",true)}
+    ${sl("muertePost",0,30,1,"% Muerte post-parto — sobre preñadas",true)}
   </div>
   <div class="tw" style="margin:.9rem 0"><table style="width:100%;border-collapse:collapse">
     <thead><tr><th>Indicador</th><th>Umbral</th><th>Semaforo rojo si...</th></tr></thead>
@@ -1211,6 +1233,9 @@ function renderPar(){
       <tr><td>% Cut (s/preñadas)</td><td>max ${p.cut}%</td><td>supera el umbral</td></tr>
       <tr><td>% Descarte (s/entoradas)</td><td>max ${p.descarte}%</td><td>supera el umbral</td></tr>
       <tr><td>% 2da Oportunidad (s/entoradas)</td><td>max ${p.seg}%</td><td>supera el umbral</td></tr>
+      <tr><td>% Abortos (s/preñadas)</td><td>max ${p.aborto}%</td><td>supera el umbral</td></tr>
+      <tr><td>% Muerte al parto (s/preñadas)</td><td>max ${p.muerteParto}%</td><td>supera el umbral</td></tr>
+      <tr><td>% Muerte post-parto (s/preñadas)</td><td>max ${p.muertePost}%</td><td>supera el umbral</td></tr>
     </tbody>
   </table></div>
   <div class="br"><button class="bp" id="savePar">💾 Guardar y sincronizar parametros</button></div>
@@ -1541,12 +1566,13 @@ function doSubmitAct(){
     const origen=document.getElementById("ce_origen").value;
     const destino=document.getElementById("ce_destino").value;
     const ceCant=parseInt(document.getElementById("ce_cant").value)||0;
+    const ceMotivo=document.getElementById("ce_motivo").value;
     const ceNota=document.getElementById("ce_nota").value.trim();
     if(!origen||!destino)return alert("Seleccioná estado origen y destino.");
     if(origen===destino)return alert("El estado origen y destino deben ser distintos.");
     if(ceCant<=0)return alert("Indicá una cantidad mayor a 0.");
     if(!ciclo)return alert("Completá el Ciclo.");
-    e.ceOrigen=origen; e.ceDestino=destino; e.ceCant=ceCant; e.ceNota=ceNota;
+    e.ceOrigen=origen; e.ceDestino=destino; e.ceCant=ceCant; e.ceMotivo=ceMotivo; e.ceNota=ceNota;
     e.cant=ceCant; // informativo
   }
   // Si es Traslado de rodeo, capturar los campos extra
