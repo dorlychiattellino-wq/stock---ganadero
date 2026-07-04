@@ -156,6 +156,7 @@ let state = {
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
   filtTactoIatf: {ciclo:"",campo:""},
   editToro: undefined,
+  editIatf: undefined,
   filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
@@ -1386,6 +1387,27 @@ function renderIatf(){
   </table></div>
   <p class="hint" style="margin-top:.5rem">% Preñez = preñadas ÷ (preñadas + vacías). Semáforo: 🟢 ≥ ${state.par.iatfVerde}% · 🟡 ≥ ${state.par.iatfAmarillo}% · 🔴 menor (editable en Parámetros). Las pendientes de tacto no cuentan hasta confirmar su resultado.</p>`}
 
+  ${state.editIatf!==undefined?`
+  <div style="background:#f8f4fc;border:1.5px solid #a080c0;border-radius:8px;padding:.9rem;margin-top:1rem">
+    <h3 style="color:#4a2a6a">✏️ Editar registro IATF</h3>
+    <div class="fg">
+      <label>Caravana<input id="ei_caravana" value="${h(state.editIatf.caravana||"")}"/></label>
+      <label>Toro<select id="ei_toro">${Object.values(state.toros).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(t=>`<option value="${t.id}"${state.editIatf.toroId===t.id?" selected":""}>${h(t.nombre)}</option>`).join("")}</select></label>
+      <label>Ciclo<input id="ei_ciclo" value="${h(state.editIatf.ciclo||"")}" placeholder="aaaa/aaaa"/></label>
+      <label>Campo<select id="ei_campo">${opts(clist,state.editIatf.campo,"-- Seleccionar --")}</select></label>
+      <label>Categoria<select id="ei_cat">${opts(["Vacas","Vaquillonas"],state.editIatf.cat,"-- Seleccionar --")}</select></label>
+      <label>Fecha IATF<input id="ei_fecha" type="date" value="${state.editIatf.fecha||""}"/></label>
+      <label>Resultado<select id="ei_resultado">
+        <option value="pendiente"${state.editIatf.resultado==="pendiente"?" selected":""}>⏳ Pendiente</option>
+        <option value="prenada"${state.editIatf.resultado==="prenada"?" selected":""}>🟢 Preñada</option>
+        <option value="vacia"${state.editIatf.resultado==="vacia"?" selected":""}>🔴 Vacía</option>
+      </select></label>
+    </div>
+    <div class="br">
+      <button class="bp" onclick="guardarEditIatf()">💾 Guardar cambios</button>
+      <button class="bs" onclick="cancelarEditIatf()">Cancelar</button>
+    </div>
+  </div>`:""}
   ${regs.length>0?`
   <h3 style="margin-top:1.2rem;color:#2d4a1e">📋 Detalle por caravana (${regs.length})</h3>
   <div class="tw"><table>
@@ -1402,7 +1424,7 @@ function renderIatf(){
         <td>${h(r.cat)}</td>
         <td>${r.fecha?r.fecha.split('-').reverse().join('/'):"—"}</td>
         <td>${r.resultado==="prenada"?'<span class="sg">🟢 Preñada</span>':r.resultado==="vacia"?'<span class="sr">🔴 Vacía</span>':'<span style="color:#a06a1f">⏳ Pendiente</span>'}</td>
-        <td style="white-space:nowrap">${r.resultado!=="pendiente"?`<button class="bi" title="Volver a pendiente" onclick="resetResultadoIatf('${r.id}')">↩️</button>`:""}<button class="bi" onclick="delIatf('${r.id}')">🗑️</button></td>
+        <td style="white-space:nowrap"><button class="bi" onclick="editarIatf('${r.id}')">✏️</button>${r.resultado!=="pendiente"?`<button class="bi" title="Volver a pendiente" onclick="resetResultadoIatf('${r.id}')">↩️</button>`:""}<button class="bi" onclick="delIatf('${r.id}')">🗑️</button></td>
       </tr>`;}).join("")}
     </tbody>
   </table></div>`:""}
@@ -1728,6 +1750,24 @@ window.resetResultadoIatf=async function(id){
   if(!confirm("¿Volver la caravana "+r.caravana+" a estado pendiente de tacto?"))return;
   await set(ref(db,`iatf/${id}`),{...r,resultado:"pendiente"});
   toast("Caravana vuelta a pendiente");
+};
+window.editarIatf=function(id){state.editIatf={...state.iatf[id]};render();window.scrollTo({top:document.body.scrollHeight*0.6,behavior:"smooth"});};
+window.cancelarEditIatf=function(){state.editIatf=undefined;render();};
+window.guardarEditIatf=async function(){
+  const e=state.editIatf; if(!e)return;
+  const caravana=document.getElementById("ei_caravana").value.trim();
+  const toroId=document.getElementById("ei_toro").value;
+  const ciclo=document.getElementById("ei_ciclo").value.trim();
+  const campo=document.getElementById("ei_campo").value;
+  const cat=document.getElementById("ei_cat").value;
+  const fecha=document.getElementById("ei_fecha").value;
+  const resultado=document.getElementById("ei_resultado").value;
+  if(!caravana)return alert("La caravana no puede quedar vacía.");
+  if(!/^\d{4}\/\d{4}$/.test(ciclo))return alert("El ciclo debe tener formato aaaa/aaaa.");
+  if(!campo||!cat||!fecha)return alert("Completá campo, categoría y fecha.");
+  await set(ref(db,`iatf/${e.id}`),{id:e.id,caravana,toroId,ciclo,campo,cat,fecha,resultado});
+  state.editIatf=undefined;
+  toast("✅ Registro actualizado");
 };
 window.delIatf=async function(id){
   const r=state.iatf[id]; if(!r)return;
