@@ -1269,8 +1269,27 @@ function renderIatf(){
       <label>Nombre *<input id="to_nombre" value="${h(et.nombre||"")}" placeholder="Ej: Remolino"/></label>
       <label>Raza<input id="to_raza" value="${h(et.raza||"")}" placeholder="Ej: Angus Colorado"/></label>
       <label>Cabaña / Origen<input id="to_cabana" value="${h(et.cabana||"")}" placeholder="Ej: Cabaña La Paz"/></label>
-      <label>Precio dosis ($)<input id="to_precio" type="number" min="0" value="${et.precio!=null?et.precio:""}" placeholder="Opcional"/></label>
+      <label>Precio dosis ($ IVA incluido)<input id="to_precio" type="number" min="0" value="${et.precio!=null?et.precio:""}" placeholder="Opcional"/></label>
+      <label>Dosis compradas<input id="to_dosis" type="number" min="0" value="${et.dosisCompradas!=null?et.dosisCompradas:""}" placeholder="Ej: 40"/></label>
       <label class="s2">Observaciones<input id="to_obs" value="${h(et.obs||"")}" placeholder="Opcional..."/></label>
+    </div>
+    <div style="background:#f8f4fc;border:1px dashed #a080c0;border-radius:8px;padding:.7rem .9rem;margin-top:.5rem">
+      <div style="font-size:.85rem;font-weight:700;color:#4a2a6a;margin-bottom:.4rem">💉 Dosis utilizadas por ciclo</div>
+      ${(et.usos||[]).length===0?`<p style="font-size:.78rem;color:#8a7aa0;margin-bottom:.4rem">Sin usos anotados aún.</p>`:`
+      <table style="width:auto;margin-bottom:.5rem"><tbody>
+        ${(et.usos||[]).map((u,i)=>`<tr><td style="padding:.15rem .8rem .15rem 0;font-size:.85rem"><strong>${h(u.ciclo)}</strong></td><td style="padding:.15rem .8rem .15rem 0;font-size:.85rem">${u.cant} dosis</td><td><button class="bi" onclick="quitarUsoToro(${i})">🗑️</button></td></tr>`).join("")}
+      </tbody></table>`}
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        <input id="to_uso_ciclo" list="to-uso-ciclos" placeholder="Ciclo (ej: 2027/2028)" style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:150px"/>
+        <datalist id="to-uso-ciclos">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist>
+        <input id="to_uso_cant" type="number" min="1" placeholder="Cant." style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:80px"/>
+        <button class="bs" style="padding:.3rem .7rem;font-size:.78rem" onclick="agregarUsoToro()">➕ Anotar uso</button>
+      </div>
+      ${(()=>{
+        const comp=parseFloat(et.dosisCompradas)||0;
+        const usadas=(et.usos||[]).reduce((s,u)=>s+(u.cant||0),0);
+        return comp>0||usadas>0?`<div style="margin-top:.5rem;font-size:.85rem;font-weight:700;color:${comp-usadas<0?"#c82010":"#2d4a1e"}">Restan: ${comp-usadas} de ${comp} compradas (${usadas} usadas)</div>`:"";
+      })()}
     </div>
     <div class="br">
       <button class="bp" onclick="guardarToro()">💾 Guardar toro</button>
@@ -1280,7 +1299,7 @@ function renderIatf(){
   ${torosList.length===0&&et===undefined?`<p style="color:#4a2a6a;font-size:.85rem;text-align:center;padding:.5rem">Sin toros cargados. Tocá "➕ Nuevo toro" para empezar.</p>`:""}
   ${torosList.length>0?`
   <div class="tw"><table>
-    <thead><tr><th>Nombre</th><th>Raza</th><th>Cabaña</th><th>Precio dosis</th><th>Obs.</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>Nombre</th><th>Raza</th><th>Cabaña</th><th>Precio dosis (IVA inc.)</th><th>Dosis (restan/compradas)</th><th>Obs.</th><th>Estado</th><th></th></tr></thead>
     <tbody>
       ${torosList.map(t=>`
       <tr style="${t.activo?"":"opacity:.45"}">
@@ -1288,6 +1307,13 @@ function renderIatf(){
         <td>${h(t.raza||"—")}</td>
         <td>${h(t.cabana||"—")}</td>
         <td>${t.precio!=null&&t.precio!==""?"$ "+Number(t.precio).toLocaleString("es-AR"):"—"}</td>
+        <td>${(()=>{
+          const comp=parseFloat(t.dosisCompradas)||0;
+          const usadas=(t.usos||[]).reduce((s,u)=>s+(u.cant||0),0);
+          if(comp===0&&usadas===0)return "—";
+          const restan=comp-usadas;
+          return `<strong style="color:${restan<=0?"#c82010":restan<=5?"#a06a1f":"#2d4a1e"}">${restan}</strong> / ${comp}`;
+        })()}</td>
         <td class="obs">${h(t.obs||"—")}</td>
         <td style="font-size:.75rem;color:${t.activo?"#3d6428":"#c84a28"}">${t.activo?"✅ Activo":"❌ Inactivo"}</td>
         <td style="white-space:nowrap"><button class="bi" onclick="editarToro('${t.id}')">✏️</button><button class="bi" title="${t.activo?"Desactivar":"Reactivar"}" onclick="toggleToro('${t.id}')">${t.activo?"🚫":"♻️"}</button></td>
@@ -1616,14 +1642,45 @@ window.guardarToro=async function(){
   const cabana=document.getElementById("to_cabana").value.trim();
   const precioVal=document.getElementById("to_precio").value;
   const precio=precioVal?parseFloat(precioVal):null;
+  const dosisVal=document.getElementById("to_dosis").value;
+  const dosisCompradas=dosisVal?parseInt(dosisVal):null;
   const obs=document.getElementById("to_obs").value.trim();
   const existe=Object.values(state.toros).some(t=>t.nombre.toLowerCase()===nombre.toLowerCase()&&t.id!==(state.editToro.id||""));
   if(existe)return alert("Ya existe un toro con ese nombre.");
   const id=state.editToro.id||uid();
   const activo=state.editToro.activo!==undefined?state.editToro.activo:true;
-  await set(ref(db,`toros/${id}`),{id,nombre,raza,cabana,precio,obs,activo});
+  const usos=state.editToro.usos||[];
+  await set(ref(db,`toros/${id}`),{id,nombre,raza,cabana,precio,dosisCompradas,usos,obs,activo});
   state.editToro=undefined;
   toast("✅ Toro guardado");
+};
+window.agregarUsoToro=function(){
+  const ciclo=document.getElementById("to_uso_ciclo").value.trim();
+  const cant=parseInt(document.getElementById("to_uso_cant").value)||0;
+  if(!ciclo)return alert("Indicá el ciclo del uso.");
+  if(!/^\d{4}\/\d{4}$/.test(ciclo))return alert("El ciclo debe tener formato aaaa/aaaa.");
+  if(cant<=0)return alert("Indicá la cantidad de dosis usadas.");
+  // Guardar tambien los valores actuales del form para no perderlos en el re-render
+  state.editToro.nombre=document.getElementById("to_nombre").value;
+  state.editToro.raza=document.getElementById("to_raza").value;
+  state.editToro.cabana=document.getElementById("to_cabana").value;
+  state.editToro.precio=document.getElementById("to_precio").value;
+  state.editToro.dosisCompradas=document.getElementById("to_dosis").value;
+  state.editToro.obs=document.getElementById("to_obs").value;
+  if(!state.editToro.usos)state.editToro.usos=[];
+  state.editToro.usos.push({ciclo,cant});
+  render();
+};
+window.quitarUsoToro=function(i){
+  // preservar form
+  state.editToro.nombre=document.getElementById("to_nombre").value;
+  state.editToro.raza=document.getElementById("to_raza").value;
+  state.editToro.cabana=document.getElementById("to_cabana").value;
+  state.editToro.precio=document.getElementById("to_precio").value;
+  state.editToro.dosisCompradas=document.getElementById("to_dosis").value;
+  state.editToro.obs=document.getElementById("to_obs").value;
+  (state.editToro.usos||[]).splice(i,1);
+  render();
 };
 window.guardarIatf=async function(){
   const fecha=document.getElementById("ia_fecha").value;
