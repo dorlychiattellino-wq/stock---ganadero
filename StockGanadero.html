@@ -152,7 +152,7 @@ let state = {
   filtProd: {ciclo:"",campo:""},
   toros: {},          // {id: {id, nombre, raza, cabana, precio, obs, activo}}
   iatf: {},           // {id: {id, fecha, campo, cat, ciclo, toroId, caravana, resultado}} resultado: "pendiente"|"prenada"|"vacia"
-  filtIatf: {ciclo:"",campo:"",cat:"",toro:""},
+  filtIatf: {ciclo:"",campo:"",cat:"",toro:"",caravana:""},
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
   filtTactoIatf: {ciclo:"",campo:""},
   editToro: undefined,
@@ -1230,6 +1230,7 @@ function renderIatf(){
     if(f.campo&&r.campo!==f.campo)return false;
     if(f.cat&&r.cat!==f.cat)return false;
     if(f.toro&&r.toroId!==f.toro)return false;
+    if(f.caravana&&!(r.caravana||"").toLowerCase().includes(f.caravana.toLowerCase()))return false;
     return true;
   });
 
@@ -1368,6 +1369,7 @@ function renderIatf(){
     <label>Campo<select onchange="setFI('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoria<select onchange="setFI('cat',this.value)">${opts(["Vacas","Vaquillonas"],f.cat,"Todas")}</select></label>
     <label>Toro<select onchange="setFI('toro',this.value)"><option value="">Todos</option>${torosList.map(t=>`<option value="${t.id}"${f.toro===t.id?" selected":""}>${h(t.nombre)}</option>`).join("")}</select></label>
+    <label class="s2">🔍 Buscar caravana<input id="iBuscarCaravana" value="${h(f.caravana||"")}" placeholder="Ej: BT627A180 o solo 180..." oninput="setFICaravana(this.value)"/></label>
   </div>
   ${ranking.length===0?`<p class="empty">Sin inseminaciones registradas para estos filtros.</p>`:`
   <div class="tw"><table>
@@ -1648,6 +1650,11 @@ window.toggleFSR=function(k,v){
 window.limpiarFSR=function(k){state.filtStockRep[k]=[];guardarFiltStockRep();render();};
 // ── IATF / Toros ──
 window.setFI=function(k,v){state.filtIatf[k]=v;render();};
+window.setFICaravana=function(v){
+  state.filtIatf.caravana=v;
+  render();
+  setTimeout(()=>{const el=document.getElementById("iBuscarCaravana");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
+};
 window.setFTI=function(k,v){state.filtTactoIatf[k]=v;state.tactoIatfSel={};render();};
 window.abrirNuevoToro=function(){state.editToro={nombre:"",raza:"",cabana:"",precio:"",obs:"",activo:true};render();};
 window.cancelarToro=function(){state.editToro=undefined;render();};
