@@ -157,6 +157,8 @@ let state = {
   filtTactoIatf: {ciclo:"",campo:""},
   editToro: undefined,
   editIatf: undefined,
+  actividadesCustom: {},
+  showModalActs: false,
   filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
@@ -205,6 +207,10 @@ onValue(ref(db,"iatf"), snap => {
   state.iatf = snap.val() || {};
   render();
 });
+onValue(ref(db,"actividadesCustom"), snap => {
+  state.actividadesCustom = snap.val() || {};
+  render();
+});
 
 // Detectar conexión online/offline
 onValue(ref(db,".info/connected"), snap => {
@@ -229,8 +235,9 @@ function ciclos(){
 }
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
 function actividadesAll(){
-  const custom=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
-  return [...ACT,...new Set(custom)];
+  const enRegistros=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
+  const customActivas=Object.values(state.actividadesCustom||{}).filter(c=>c.activo).map(c=>c.nombre);
+  return [...new Set([...ACT,...customActivas,...enRegistros])];
 }
 
 // Captura el estado del formulario antes de un re-render o cambio de pestaña
@@ -303,6 +310,7 @@ function buildApp(){
     ${buildSyncBar()}
     <nav id="nav">${TABS.map((t,i)=>`<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`).join("")}</nav>
     ${buildModalCampos()}
+    ${buildModalActs()}
     <main>
       ${state.tab===0 ? renderMov() : ""}
       ${state.tab===1 ? renderAct() : ""}
@@ -538,7 +546,9 @@ function renderAct(){
     </label>
     <label>Categoria<select id="acat">${opts(CATS,ef?ef.cat:state.formAct.cat,"-- Seleccionar --")}</select></label>
     <label>Ciclo/ID<input id="aci" list="cl3" value="${ef?h(ef.ciclo||""):h(state.formAct.ciclo)}" placeholder="Ej: 2026/2027"/><datalist id="cl3">${cilist.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-    <label>Actividad<select id="ati" onchange="updActKg()">
+    <label>Actividad
+      <div style="display:flex;gap:.4rem;align-items:center">
+      <select id="ati" onchange="updActKg()" style="flex:1;min-width:0">
       ${(()=>{
         const sel=ef?ef.tipo:state.formAct.tipo;
         const colores={
@@ -551,7 +561,10 @@ function renderAct(){
         };
         return `<option value="">-- Seleccionar --</option>`+actividadesAll().map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(t)}</option>`).join("");
       })()}
-    </select></label>
+    </select>
+      <button type="button" onclick="abrirModalActs()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">➕ Admin.</button>
+      </div>
+    </label>
     <label>Cantidad<input id="aca" type="number" value="${ef&&ef.cant!=null?ef.cant:h(state.formAct.cant)}" min="0" placeholder="Opcional"/></label>
     <label id="kglabel" style="${showKg?"":"display:none"}">Kg totales<input id="akg" type="number" step="0.1" value="${ef&&ef.kg!=null?ef.kg:""}"/></label>
     <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):h(state.formAct.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
@@ -1525,6 +1538,7 @@ async function restaurarBackup(file){
       if(data.alertasAct) await set(ref(db,"alertasAct"),data.alertasAct);
       if(data.toros) await set(ref(db,"toros"),data.toros);
       if(data.iatf) await set(ref(db,"iatf"),data.iatf);
+      if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -1533,7 +1547,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1541,6 +1555,36 @@ function exportBackup(){
 }
 
 // ── MODAL CAMPOS ──
+function buildModalActs(){
+  if(!state.showModalActs) return "";
+  const lista = Object.entries(state.actividadesCustom).sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre));
+  return `
+  <div class="modal-overlay">
+    <div class="modal-box">
+      <h2>📋 Administrar Actividades</h2>
+      <p>Las actividades base del sistema no se pueden modificar. Acá agregás actividades propias o desactivás las que ya no usás.</p>
+      <div>
+        ${lista.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay actividades propias aún. Agregá la primera.</p>`:
+          lista.map(([id,c])=>`
+          <div class="campo-item${c.activo?"":" inactivo"}">
+            <span>${h(c.nombre)}</span>
+            <span style="display:flex;align-items:center;gap:.4rem">
+              <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activa":"❌ Inactiva"}</span>
+              <button onclick="toggleActividadCustom('${id}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">${c.activo?"🚫 Desactivar":"♻️ Reactivar"}</button>
+            </span>
+          </div>`).join("")}
+      </div>
+      <div class="modal-add">
+        <input id="nuevaActInput" placeholder="Nombre de la nueva actividad..." onkeydown="if(event.key==='Enter')agregarActividadCustom()"/>
+        <button class="bp" onclick="agregarActividadCustom()">Agregar</button>
+      </div>
+      <div class="modal-footer-btns">
+        <button class="bs" onclick="cerrarModalActs()" style="margin-left:auto">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function buildModalCampos(){
   if(!state.showModalCampos) return "";
   const lista = Object.entries(state.camposList).sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre));
@@ -1831,6 +1875,24 @@ window.addComp=function(){state.comparativos.push({campo:"",ciclo:""});render();
 window.removeComp=function(i){state.comparativos.splice(i,1);render();};
 window.clearComp=function(){if(confirm("¿Limpiar todas las series?")){state.comparativos=[];render();}};
 window.setComp=function(i,k,v){state.comparativos[i][k]=v;render();};
+window.abrirModalActs=function(){saveFormAct();state.showModalActs=true;render();};
+window.cerrarModalActs=function(){state.showModalActs=false;render();};
+window.agregarActividadCustom=async function(){
+  const inp=document.getElementById("nuevaActInput");
+  const nombre=(inp?inp.value:"").trim();
+  if(!nombre)return alert("Escribí el nombre de la actividad.");
+  const existe=actividadesAll().some(a=>a.toLowerCase()===nombre.toLowerCase());
+  if(existe)return alert("Esa actividad ya existe.");
+  const id=uid();
+  await set(ref(db,`actividadesCustom/${id}`),{id,nombre,activo:true});
+  if(inp)inp.value="";
+  toast("✅ Actividad '"+nombre+"' agregada");
+};
+window.toggleActividadCustom=async function(id){
+  const c=state.actividadesCustom[id]; if(!c)return;
+  await set(ref(db,`actividadesCustom/${id}`),{...c,activo:!c.activo});
+  toast(c.activo?"Actividad desactivada":"Actividad reactivada");
+};
 window.abrirModalCampos=function(){state.showModalCampos=true;state.campoSelModal=null;render();};
 window.cerrarModalCampos=function(){state.showModalCampos=false;state.campoSelModal=null;render();};
 window.updTactoTotal=function(){
