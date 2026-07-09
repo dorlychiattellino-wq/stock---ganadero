@@ -235,8 +235,11 @@ function ciclos(){
 }
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
 function actividadesAll(){
-  const enRegistros=Object.values(state.act).map(a=>a.tipo).filter(t=>t&&!ACT.includes(t));
-  const customActivas=Object.values(state.actividadesCustom||{}).filter(c=>c.activo).map(c=>c.nombre);
+  const custom=Object.values(state.actividadesCustom||{});
+  const inactivas=custom.filter(c=>!c.activo).map(c=>c.nombre.toLowerCase());
+  const customActivas=custom.filter(c=>c.activo).map(c=>c.nombre);
+  const enRegistros=Object.values(state.act).map(a=>a.tipo)
+    .filter(t=>t&&!ACT.includes(t)&&!inactivas.includes(t.toLowerCase()));
   return [...new Set([...ACT,...customActivas,...enRegistros])];
 }
 
@@ -1557,20 +1560,32 @@ function exportBackup(){
 // ── MODAL CAMPOS ──
 function buildModalActs(){
   if(!state.showModalActs) return "";
-  const lista = Object.entries(state.actividadesCustom).sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre));
+  const custom = Object.entries(state.actividadesCustom).sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre));
+  const nombresCustom = custom.map(([id,c])=>c.nombre.toLowerCase());
+  // Actividades heredadas: estan en registros pero no son base ni estan en el nodo custom
+  const heredadas = [...new Set(Object.values(state.act).map(a=>a.tipo)
+    .filter(t=>t&&!ACT.includes(t)&&!nombresCustom.includes(t.toLowerCase())))].sort();
   return `
   <div class="modal-overlay">
     <div class="modal-box">
       <h2>📋 Administrar Actividades</h2>
-      <p>Las actividades base del sistema no se pueden modificar. Acá agregás actividades propias o desactivás las que ya no usás.</p>
+      <p>Las actividades base del sistema no se pueden modificar. Acá agregás actividades propias o desactivás las que ya no usás (los registros viejos no se tocan).</p>
       <div>
-        ${lista.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay actividades propias aún. Agregá la primera.</p>`:
-          lista.map(([id,c])=>`
+        ${custom.length===0&&heredadas.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay actividades propias aún. Agregá la primera.</p>`:""}
+        ${custom.map(([id,c])=>`
           <div class="campo-item${c.activo?"":" inactivo"}">
             <span>${h(c.nombre)}</span>
             <span style="display:flex;align-items:center;gap:.4rem">
               <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activa":"❌ Inactiva"}</span>
               <button onclick="toggleActividadCustom('${id}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">${c.activo?"🚫 Desactivar":"♻️ Reactivar"}</button>
+            </span>
+          </div>`).join("")}
+        ${heredadas.map(nombre=>`
+          <div class="campo-item">
+            <span>${h(nombre)} <small style="color:#a08a60">(de registros)</small></span>
+            <span style="display:flex;align-items:center;gap:.4rem">
+              <span style="font-size:.75rem;color:#3d6428">✅ Activa</span>
+              <button onclick="desactivarHeredada('${h(nombre)}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">🚫 Desactivar</button>
             </span>
           </div>`).join("")}
       </div>
@@ -1887,6 +1902,11 @@ window.agregarActividadCustom=async function(){
   await set(ref(db,`actividadesCustom/${id}`),{id,nombre,activo:true});
   if(inp)inp.value="";
   toast("✅ Actividad '"+nombre+"' agregada");
+};
+window.desactivarHeredada=async function(nombre){
+  const id=uid();
+  await set(ref(db,`actividadesCustom/${id}`),{id,nombre,activo:false});
+  toast("Actividad '"+nombre+"' desactivada");
 };
 window.toggleActividadCustom=async function(id){
   const c=state.actividadesCustom[id]; if(!c)return;
