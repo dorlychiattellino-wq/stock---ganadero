@@ -2064,15 +2064,14 @@ window.pdfSenasa=function(){
     for(const e of extras)filas.push([e.cat,e.cant,e.obs||""]);
     if(filas.length===0)continue;
     const total=filas.reduce((s,x)=>s+x[1],0);
-    const hayObs=filas.some(x=>x[2]);
     cuerpo+=`
     <div class="campo">
       <div class="ctitle">${campo}${renspa?` — Renspa: ${renspa}`:""}</div>
       <table>
-        <thead><tr><th>Categoría</th><th>Cantidad</th>${hayObs?"<th>Observaciones</th>":""}</tr></thead>
+        <thead><tr><th>Categoría</th><th>Cantidad</th><th>Observaciones</th></tr></thead>
         <tbody>
-          ${filas.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td>${hayObs?`<td class="obs2">${x[2]||""}</td>`:""}</tr>`).join("")}
-          <tr class="tot"><td>TOTAL</td><td>${total}</td>${hayObs?"<td></td>":""}</tr>
+          ${filas.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td><td class="obs2">${x[2]||""}</td></tr>`).join("")}
+          <tr class="tot"><td>TOTAL</td><td>${total}</td><td></td></tr>
         </tbody>
       </table>
     </div>`;
@@ -2089,14 +2088,21 @@ window.pdfSenasa=function(){
     table{width:100%;border-collapse:collapse;font-size:.85rem}
     th,td{border:1px solid #999;padding:.3rem .55rem;text-align:left}
     th{background:#f0ede4}
+    td:nth-child(1),th:nth-child(1){width:160px}
     td:nth-child(2),th:nth-child(2){text-align:right;width:90px}
     .obs2{font-size:.75rem;color:#555}
     .tot td{font-weight:700;background:#f5f2ea}
     .pie{margin-top:2rem;font-size:.75rem;color:#888}
     @media print{body{padding:0}}
   </style></head><body>
-  <h1>Declaración de existencias — EL MESTIZO</h1>
-  <div class="sub">Stock al ${fechaLabel} · Generado el ${new Date().toLocaleDateString("es-AR")}</div>
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
+    <img src="${LOGO}" alt="Logo" style="width:64px;height:64px;border-radius:8px"/>
+    <div>
+      <h1 style="margin:0">Declaración de existencias — EL MESTIZO</h1>
+      <div class="sub" style="margin:0">Stock al ${fechaLabel} · Generado el ${new Date().toLocaleDateString("es-AR")}</div>
+    </div>
+  </div>
+  <div style="margin-bottom:1.2rem"></div>
   ${cuerpo}
   <div class="pie">Generado con Stock Ganadero</div>
   <script>window.onload=()=>window.print();<\/script>
