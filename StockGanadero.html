@@ -132,7 +132,7 @@ const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","⚙️ Parametros"];
+const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -159,6 +159,9 @@ let state = {
   editIatf: undefined,
   actividadesCustom: {},
   showModalActs: false,
+  senasaExtra: {},      // {id: {campo, cat, cant}} otras especies, persistidas
+  senasaOverride: {},   // {campo+"|"+cat: valor} ediciones bovinas de la sesion (no persisten)
+  filtSenasa: {hasta:""},
   filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
   comparativos: [],   // [{campo, ciclo}, ...]
   alertas: {},        // {id: {fecha, titulo, mensaje, color, id}}
@@ -211,6 +214,10 @@ onValue(ref(db,"actividadesCustom"), snap => {
   state.actividadesCustom = snap.val() || {};
   render();
 });
+onValue(ref(db,"senasaExtra"), snap => {
+  state.senasaExtra = snap.val() || {};
+  render();
+});
 
 // Detectar conexión online/offline
 onValue(ref(db,".info/connected"), snap => {
@@ -232,6 +239,10 @@ function ciclos(){
     const anio=parseInt(c.split('/')[0]);
     return anio>=2023;
   }))].sort();
+}
+function renspaDe(nombreCampo){
+  const c=Object.values(state.camposList).find(x=>x.nombre===nombreCampo);
+  return c&&c.renspa?c.renspa:"";
 }
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
 function actividadesAll(){
@@ -322,7 +333,8 @@ function buildApp(){
       ${state.tab===4 ? renderProd() : ""}
       ${state.tab===5 ? renderComp() : ""}
       ${state.tab===6 ? renderIatf() : ""}
-      ${state.tab===7 ? renderPar() : ""}
+      ${state.tab===7 ? renderSenasa() : ""}
+      ${state.tab===8 ? renderPar() : ""}
     </main>`;
 }
 
@@ -721,7 +733,7 @@ ${(()=>{
   <div class="tw"><table>
     <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock Total</th></tr></thead>
     <tbody>
-      ${Object.entries(allCats).sort((a,b)=>b[1].stock-a[1].stock).map(([cat,d])=>{
+      ${Object.entries(allCats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{
         const p=d.ing>0?d.muertes/d.ing*100:0;
         return`<tr>
           <td><strong>${h(cat)}</strong></td>
@@ -751,10 +763,10 @@ ${campos2.map(campo=>{
   const totE=Object.values(cats).reduce((s,d)=>s+d.egr,0);
   const totM=Object.values(cats).reduce((s,d)=>s+d.muertes,0);
   const totS=Object.values(cats).reduce((s,d)=>s+d.stock,0);
-  return `<div class="card"><h3>🏡 ${h(campo)} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales</span></h3><div class="tw"><table>
+  return `<div class="card"><h3>🏡 ${h(campo)} ${renspaDe(campo)?`<span style="font-size:.78rem;color:#5a7a9a;font-weight:600;background:#eaf0f8;border-radius:5px;padding:.12rem .5rem">Renspa: ${h(renspaDe(campo))}</span>`:""} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales</span></h3><div class="tw"><table>
     <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th></tr></thead>
     <tbody>
-      ${Object.entries(cats).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td></tr>`;}).join("")}
+      ${Object.entries(cats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td></tr>`;}).join("")}
       <tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong></td><td class="ne"><strong>-${totE}</strong></td><td><strong>${totM}</strong></td><td>—</td><td><strong>${totS}</strong></td></tr>
     </tbody>
   </table></div></div>`;
@@ -1450,6 +1462,78 @@ function renderIatf(){
 `;
 }
 
+// ── SENASA ──
+const ESPECIES_EXTRA=["Ovejas","Carneros","Corderos","Corderas","Capones","Borregas","Borregos","Caballos","Yeguas","Padrillos","Potrancas","Potrillos","Mulas","Burros","Cabras","Chivos","Cabritos","Cerdas","Padrillos porcinos","Capones porcinos","Lechones"];
+
+function stockSenasa(campo,cat,hasta){
+  return Object.values(state.mov).filter(m=>
+    m.campo===campo && m.cat===cat && (!hasta||(m.fecha&&m.fecha<=hasta))
+  ).reduce((s,m)=>s+(m.tipo==="ingreso"?m.cant:-m.cant),0);
+}
+
+function renderSenasa(){
+  const f=state.filtSenasa;
+  const clist=campos();
+  const hoy=new Date().toISOString().slice(0,10);
+  const fechaCorte=f.hasta||hoy;
+  const fechaLabel=fechaCorte.split('-').reverse().join('/');
+
+  return `
+<div class="card">
+  <h2>📄 Stock para SENASA</h2>
+  <p class="hint">Los bovinos se cargan automáticamente desde el Stock a la fecha de corte (podés corregirlos a mano antes de generar el PDF; esas correcciones no se guardan). Las otras especies (ovinos, equinos, etc.) las cargás una vez y quedan guardadas.</p>
+  <div class="fg">
+    <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFSen('hasta',this.value)"/></label>
+  </div>
+  <div class="br">
+    <button class="bp" style="background:#1e4a6a" onclick="pdfSenasa()">🖨️ Generar PDF planilla SENASA</button>
+  </div>
+</div>
+${clist.map(campo=>{
+  const renspa=renspaDe(campo);
+  const extras=Object.entries(state.senasaExtra).filter(([id,e])=>e.campo===campo);
+  return `
+<div class="card">
+  <h3>🏡 ${h(campo)} ${renspa?`<span style="font-size:.78rem;color:#5a7a9a;font-weight:600;background:#eaf0f8;border-radius:5px;padding:.12rem .5rem">Renspa: ${h(renspa)}</span>`:`<span style="font-size:.75rem;color:#c84a28">⚠️ sin Renspa (cargalo en 🏡 Admin. de Movimientos)</span>`}</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Categoría</th><th>Cantidad al ${fechaLabel}</th><th></th></tr></thead>
+    <tbody>
+      <tr style="background:#f5f0e8"><td colspan="3" style="font-weight:700;color:#2d4a1e;font-size:.8rem">🐄 BOVINOS (automático desde Stock)</td></tr>
+      ${CATS.map(cat=>{
+        const key=campo+"|"+cat;
+        const auto=stockSenasa(campo,cat,fechaCorte);
+        const val=state.senasaOverride[key]!==undefined?state.senasaOverride[key]:auto;
+        return `<tr>
+          <td><strong>${h(cat)}</strong></td>
+          <td><input type="number" value="${val}" onchange="setSenOverride('${h(campo)}','${h(cat)}',this.value)" style="width:100px;border:1.5px solid ${state.senasaOverride[key]!==undefined&&state.senasaOverride[key]!=auto?"#d09040":"#c8c0b0"};border-radius:5px;padding:.3rem .5rem;font-size:.88rem"/></td>
+          <td>${state.senasaOverride[key]!==undefined&&state.senasaOverride[key]!=auto?`<button class="bi" title="Volver al valor automático (${auto})" onclick="resetSenOverride('${h(campo)}','${h(cat)}')">↩️</button>`:""}</td>
+        </tr>`;
+      }).join("")}
+      <tr style="background:#f5f0e8"><td colspan="3" style="font-weight:700;color:#6a4a1e;font-size:.8rem">🐑🐎 OTRAS ESPECIES (manual, se guardan)</td></tr>
+      ${extras.length===0?`<tr><td colspan="3" style="color:#aaa;font-size:.82rem">Sin otras especies cargadas en este campo.</td></tr>`:
+        extras.sort((a,b)=>a[1].cat.localeCompare(b[1].cat)).map(([id,e])=>`
+        <tr>
+          <td><strong>${h(e.cat)}</strong></td>
+          <td><input type="number" value="${e.cant}" onchange="editSenExtra('${id}',this.value)" style="width:100px;border:1.5px solid #c8c0b0;border-radius:5px;padding:.3rem .5rem;font-size:.88rem"/></td>
+          <td><button class="bi" onclick="delSenExtra('${id}')">🗑️</button></td>
+        </tr>`).join("")}
+      <tr>
+        <td colspan="3" style="padding-top:.6rem">
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+            <input id="senExtraCat_${h(campo).replace(/[^a-zA-Z0-9]/g,"_")}" list="especies-extra-list" placeholder="Categoría (ej: Ovejas)" style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:180px"/>
+            <input id="senExtraCant_${h(campo).replace(/[^a-zA-Z0-9]/g,"_")}" type="number" min="0" placeholder="Cant." style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:80px"/>
+            <button class="bs" style="padding:.3rem .7rem;font-size:.78rem" onclick="addSenExtra('${h(campo)}')">➕ Agregar especie</button>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table></div>
+</div>`;
+}).join("")}
+<datalist id="especies-extra-list">${ESPECIES_EXTRA.map(e=>`<option value="${e}"/>`).join("")}</datalist>
+`;
+}
+
 // ── PARAMETROS ──
 function renderPar(){
   const p=state.par;
@@ -1542,6 +1626,7 @@ async function restaurarBackup(file){
       if(data.toros) await set(ref(db,"toros"),data.toros);
       if(data.iatf) await set(ref(db,"iatf"),data.iatf);
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
+      if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -1550,7 +1635,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1614,8 +1699,8 @@ function buildModalCampos(){
           lista.map(([id,c])=>`
           <div class="campo-item${c.activo?"":" inactivo"}${sel===id?" sel":""}" onclick="selCampoModal('${id}')">
             <span>${state.editandoCampo===id?
-              `<input id="editCampoInput_${id}" value="${h(c.nombre)}" onclick="event.stopPropagation()" style="border:1.5px solid #3d6428;border-radius:5px;padding:.25rem .4rem;font-size:.88rem;width:160px" onkeydown="if(event.key==='Enter')guardarEditCampo('${id}')"/>`
-              :h(c.nombre)}
+              `<input id="editCampoInput_${id}" value="${h(c.nombre)}" onclick="event.stopPropagation()" style="border:1.5px solid #3d6428;border-radius:5px;padding:.25rem .4rem;font-size:.88rem;width:130px" onkeydown="if(event.key==='Enter')guardarEditCampo('${id}')"/> <input id="editRenspaInput_${id}" value="${h(c.renspa||"")}" placeholder="Renspa" onclick="event.stopPropagation()" style="border:1.5px solid #3d6428;border-radius:5px;padding:.25rem .4rem;font-size:.82rem;width:140px"/>`
+              :`${h(c.nombre)}${c.renspa?` <small style="color:#888">· Renspa ${h(c.renspa)}</small>`:""}`}
             </span>
             <span style="display:flex;align-items:center;gap:.4rem">
               <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activo":"❌ Inactivo"}</span>
@@ -1624,8 +1709,9 @@ function buildModalCampos(){
             </span>
           </div>`).join("")}
       </div>
-      <div class="modal-add">
+      <div class="modal-add" style="flex-wrap:wrap">
         <input id="nuevoCampoInput" placeholder="Nombre del nuevo campo..." onkeydown="if(event.key==='Enter')agregarCampo()"/>
+        <input id="nuevoRenspaInput" placeholder="Renspa (opcional)" style="flex:1;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem .6rem;font-size:.85rem;font-family:inherit"/>
         <button class="bp" onclick="agregarCampo()">Agregar</button>
       </div>
       <div class="modal-footer-btns">
@@ -1903,6 +1989,90 @@ window.agregarActividadCustom=async function(){
   if(inp)inp.value="";
   toast("✅ Actividad '"+nombre+"' agregada");
 };
+// ── SENASA handlers ──
+window.setFSen=function(k,v){state.filtSenasa[k]=v;state.senasaOverride={};render();};
+window.setSenOverride=function(campo,cat,v){state.senasaOverride[campo+"|"+cat]=parseInt(v)||0;render();};
+window.resetSenOverride=function(campo,cat){delete state.senasaOverride[campo+"|"+cat];render();};
+window.addSenExtra=async function(campo){
+  const safe=campo.replace(/[^a-zA-Z0-9]/g,"_");
+  const catEl=document.getElementById("senExtraCat_"+safe);
+  const cantEl=document.getElementById("senExtraCant_"+safe);
+  const cat=(catEl?catEl.value:"").trim();
+  const cant=parseInt(cantEl?cantEl.value:"")||0;
+  if(!cat)return alert("Indicá la categoría (ej: Ovejas).");
+  const dup=Object.values(state.senasaExtra).some(e=>e.campo===campo&&e.cat.toLowerCase()===cat.toLowerCase());
+  if(dup)return alert("Esa categoría ya está cargada en este campo. Editala directamente en la tabla.");
+  const id=uid();
+  await set(ref(db,`senasaExtra/${id}`),{id,campo,cat,cant});
+  toast("✅ "+cat+" agregada en "+campo);
+};
+window.editSenExtra=async function(id,v){
+  const e=state.senasaExtra[id]; if(!e)return;
+  await set(ref(db,`senasaExtra/${id}`),{...e,cant:parseInt(v)||0});
+};
+window.delSenExtra=async function(id){
+  const e=state.senasaExtra[id]; if(!e)return;
+  if(!confirm("¿Eliminar "+e.cat+" de "+e.campo+"?"))return;
+  await remove(ref(db,`senasaExtra/${id}`));
+  toast("Eliminada");
+};
+window.pdfSenasa=function(){
+  const f=state.filtSenasa;
+  const hoy=new Date().toISOString().slice(0,10);
+  const fechaCorte=f.hasta||hoy;
+  const fechaLabel=fechaCorte.split('-').reverse().join('/');
+  const clist=campos();
+  let cuerpo="";
+  for(const campo of clist){
+    const renspa=renspaDe(campo);
+    const filas=[];
+    for(const cat of CATS){
+      const key=campo+"|"+cat;
+      const auto=stockSenasa(campo,cat,fechaCorte);
+      const val=state.senasaOverride[key]!==undefined?state.senasaOverride[key]:auto;
+      if(val>0)filas.push([cat,val]);
+    }
+    const extras=Object.values(state.senasaExtra).filter(e=>e.campo===campo&&e.cant>0).sort((a,b)=>a.cat.localeCompare(b.cat));
+    for(const e of extras)filas.push([e.cat,e.cant]);
+    if(filas.length===0)continue;
+    const total=filas.reduce((s,x)=>s+x[1],0);
+    cuerpo+=`
+    <div class="campo">
+      <div class="ctitle">${campo}${renspa?` — Renspa: ${renspa}`:""}</div>
+      <table>
+        <thead><tr><th>Categoría</th><th>Cantidad</th></tr></thead>
+        <tbody>
+          ${filas.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td></tr>`).join("")}
+          <tr class="tot"><td>TOTAL</td><td>${total}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+  }
+  if(!cuerpo)return alert("No hay existencias para mostrar a esa fecha.");
+  const w=window.open("","_blank");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Stock SENASA al ${fechaLabel}</title>
+  <style>
+    body{font-family:Arial,sans-serif;color:#222;padding:24px;max-width:750px;margin:0 auto}
+    h1{font-size:1.15rem;margin-bottom:.2rem}
+    .sub{color:#666;font-size:.85rem;margin-bottom:1.2rem}
+    .campo{margin-bottom:1.4rem;page-break-inside:avoid}
+    .ctitle{font-weight:700;font-size:.95rem;background:#e8e4d8;padding:.4rem .6rem;border-radius:4px;margin-bottom:.3rem}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th,td{border:1px solid #999;padding:.3rem .55rem;text-align:left}
+    th{background:#f0ede4}
+    td:last-child,th:last-child{text-align:right;width:110px}
+    .tot td{font-weight:700;background:#f5f2ea}
+    .pie{margin-top:2rem;font-size:.75rem;color:#888}
+    @media print{body{padding:0}}
+  </style></head><body>
+  <h1>Declaración de existencias — EL MESTIZO</h1>
+  <div class="sub">Stock al ${fechaLabel} · Generado el ${new Date().toLocaleDateString("es-AR")}</div>
+  ${cuerpo}
+  <div class="pie">Generado con Stock Ganadero</div>
+  <script>window.onload=()=>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+};
 window.desactivarHeredada=async function(nombre){
   const id=uid();
   await set(ref(db,`actividadesCustom/${id}`),{id,nombre,activo:false});
@@ -1924,13 +2094,16 @@ window.updTactoTotal=function(){
 window.selCampoModal=function(id){state.campoSelModal=state.campoSelModal===id?null:id;render();};
 window.agregarCampo=async function(){
   const inp=document.getElementById("nuevoCampoInput");
+  const inpR=document.getElementById("nuevoRenspaInput");
   const nombre=(inp?inp.value:"").trim();
+  const renspa=(inpR?inpR.value:"").trim();
   if(!nombre)return alert("Escribí el nombre del campo.");
   const existe=Object.values(state.camposList).some(c=>c.nombre.toLowerCase()===nombre.toLowerCase());
   if(existe)return alert("Ese campo ya existe.");
   const id=uid();
-  await set(ref(db,`campos/${id}`),{id,nombre,activo:true});
+  await set(ref(db,`campos/${id}`),{id,nombre,renspa,activo:true});
   if(inp)inp.value="";
+  if(inpR)inpR.value="";
   toast("✅ Campo '"+nombre+"' agregado");
 };
 window.iniciarEditCampo=function(id){state.editandoCampo=id;render();setTimeout(()=>{const inp=document.getElementById("editCampoInput_"+id);if(inp){inp.focus();inp.select();}},50);};
@@ -1940,10 +2113,12 @@ window.guardarEditCampo=async function(id){
   if(!inp)return;
   const nuevoNombre=inp.value.trim();
   if(!nuevoNombre)return alert("El nombre no puede estar vacío.");
+  const inpR=document.getElementById("editRenspaInput_"+id);
+  const nuevoRenspa=inpR?inpR.value.trim():"";
   const c=state.camposList[id];
   if(!c)return;
   // Update campo name in Firebase
-  await set(ref(db,`campos/${id}`),{...c,nombre:nuevoNombre});
+  await set(ref(db,`campos/${id}`),{...c,nombre:nuevoNombre,renspa:nuevoRenspa});
   // Also update all movimientos and actividades with old name
   const oldNombre=c.nombre;
   const movsToUpdate=Object.values(state.mov).filter(m=>m.campo===oldNombre);
