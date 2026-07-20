@@ -159,7 +159,8 @@ let state = {
   editIatf: undefined,
   actividadesCustom: {},
   showModalActs: false,
-  senasaExtra: {},      // {id: {campo, cat, cant}} otras especies, persistidas
+  senasaExtra: {},      // {id: {campo, cat, cant, obs}} otras especies, persistidas
+  senasaObs: {},        // {id: {campo, cat, obs}} observaciones por categoria bovina
   senasaOverride: {},   // {campo+"|"+cat: valor} ediciones bovinas de la sesion (no persisten)
   filtSenasa: {hasta:""},
   filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
@@ -216,6 +217,10 @@ onValue(ref(db,"actividadesCustom"), snap => {
 });
 onValue(ref(db,"senasaExtra"), snap => {
   state.senasaExtra = snap.val() || {};
+  render();
+});
+onValue(ref(db,"senasaObs"), snap => {
+  state.senasaObs = snap.val() || {};
   render();
 });
 
@@ -1465,6 +1470,10 @@ function renderIatf(){
 // ── SENASA ──
 const ESPECIES_EXTRA=["Ovejas","Carneros","Corderos","Corderas","Capones","Borregas","Borregos","Caballos","Yeguas","Padrillos","Potrancas","Potrillos","Mulas","Burros","Cabras","Chivos","Cabritos","Cerdas","Padrillos porcinos","Capones porcinos","Lechones"];
 
+function obsSenasa(campo,cat){
+  const e=Object.values(state.senasaObs).find(o=>o.campo===campo&&o.cat===cat);
+  return e?e.obs:"";
+}
 function stockSenasa(campo,cat,hasta){
   return Object.values(state.mov).filter(m=>
     m.campo===campo && m.cat===cat && (!hasta||(m.fecha&&m.fecha<=hasta))
@@ -1496,9 +1505,9 @@ ${clist.map(campo=>{
 <div class="card">
   <h3>🏡 ${h(campo)} ${renspa?`<span style="font-size:.78rem;color:#5a7a9a;font-weight:600;background:#eaf0f8;border-radius:5px;padding:.12rem .5rem">Renspa: ${h(renspa)}</span>`:`<span style="font-size:.75rem;color:#c84a28">⚠️ sin Renspa (cargalo en 🏡 Admin. de Movimientos)</span>`}</h3>
   <div class="tw"><table>
-    <thead><tr><th>Categoría</th><th>Cantidad al ${fechaLabel}</th><th></th></tr></thead>
+    <thead><tr><th>Categoría</th><th>Cantidad al ${fechaLabel}</th><th>Observaciones</th><th></th></tr></thead>
     <tbody>
-      <tr style="background:#f5f0e8"><td colspan="3" style="font-weight:700;color:#2d4a1e;font-size:.8rem">🐄 BOVINOS (automático desde Stock)</td></tr>
+      <tr style="background:#f5f0e8"><td colspan="4" style="font-weight:700;color:#2d4a1e;font-size:.8rem">🐄 BOVINOS (automático desde Stock)</td></tr>
       ${CATS.map(cat=>{
         const key=campo+"|"+cat;
         const auto=stockSenasa(campo,cat,fechaCorte);
@@ -1506,19 +1515,21 @@ ${clist.map(campo=>{
         return `<tr>
           <td><strong>${h(cat)}</strong></td>
           <td><input type="number" value="${val}" onchange="setSenOverride('${h(campo)}','${h(cat)}',this.value)" style="width:100px;border:1.5px solid ${state.senasaOverride[key]!==undefined&&state.senasaOverride[key]!=auto?"#d09040":"#c8c0b0"};border-radius:5px;padding:.3rem .5rem;font-size:.88rem"/></td>
+          <td><input value="${h(obsSenasa(campo,cat))}" placeholder="Nota..." onchange="setSenObs('${h(campo)}','${h(cat)}',this.value)" style="width:100%;min-width:150px;border:1.5px solid #c8c0b0;border-radius:5px;padding:.3rem .5rem;font-size:.8rem;box-sizing:border-box"/></td>
           <td>${state.senasaOverride[key]!==undefined&&state.senasaOverride[key]!=auto?`<button class="bi" title="Volver al valor automático (${auto})" onclick="resetSenOverride('${h(campo)}','${h(cat)}')">↩️</button>`:""}</td>
         </tr>`;
       }).join("")}
-      <tr style="background:#f5f0e8"><td colspan="3" style="font-weight:700;color:#6a4a1e;font-size:.8rem">🐑🐎 OTRAS ESPECIES (manual, se guardan)</td></tr>
-      ${extras.length===0?`<tr><td colspan="3" style="color:#aaa;font-size:.82rem">Sin otras especies cargadas en este campo.</td></tr>`:
+      <tr style="background:#f5f0e8"><td colspan="4" style="font-weight:700;color:#6a4a1e;font-size:.8rem">🐑🐎 OTRAS ESPECIES (manual, se guardan)</td></tr>
+      ${extras.length===0?`<tr><td colspan="4" style="color:#aaa;font-size:.82rem">Sin otras especies cargadas en este campo.</td></tr>`:
         extras.sort((a,b)=>a[1].cat.localeCompare(b[1].cat)).map(([id,e])=>`
         <tr>
           <td><strong>${h(e.cat)}</strong></td>
           <td><input type="number" value="${e.cant}" onchange="editSenExtra('${id}',this.value)" style="width:100px;border:1.5px solid #c8c0b0;border-radius:5px;padding:.3rem .5rem;font-size:.88rem"/></td>
+          <td><input value="${h(e.obs||"")}" placeholder="Nota..." onchange="editSenExtraObs('${id}',this.value)" style="width:100%;min-width:150px;border:1.5px solid #c8c0b0;border-radius:5px;padding:.3rem .5rem;font-size:.8rem;box-sizing:border-box"/></td>
           <td><button class="bi" onclick="delSenExtra('${id}')">🗑️</button></td>
         </tr>`).join("")}
       <tr>
-        <td colspan="3" style="padding-top:.6rem">
+        <td colspan="4" style="padding-top:.6rem">
           <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
             <input id="senExtraCat_${h(campo).replace(/[^a-zA-Z0-9]/g,"_")}" list="especies-extra-list" placeholder="Categoría (ej: Ovejas)" style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:180px"/>
             <input id="senExtraCant_${h(campo).replace(/[^a-zA-Z0-9]/g,"_")}" type="number" min="0" placeholder="Cant." style="border:1.5px solid #c8c0b0;border-radius:6px;padding:.35rem .5rem;font-size:.82rem;width:80px"/>
@@ -1627,6 +1638,7 @@ async function restaurarBackup(file){
       if(data.iatf) await set(ref(db,"iatf"),data.iatf);
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
+      if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -1635,7 +1647,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -2006,6 +2018,21 @@ window.addSenExtra=async function(campo){
   await set(ref(db,`senasaExtra/${id}`),{id,campo,cat,cant});
   toast("✅ "+cat+" agregada en "+campo);
 };
+window.setSenObs=async function(campo,cat,v){
+  const obs=(v||"").trim();
+  const entry=Object.values(state.senasaObs).find(o=>o.campo===campo&&o.cat===cat);
+  if(entry){
+    if(obs) await set(ref(db,`senasaObs/${entry.id}`),{...entry,obs});
+    else await remove(ref(db,`senasaObs/${entry.id}`));
+  }else if(obs){
+    const id=uid();
+    await set(ref(db,`senasaObs/${id}`),{id,campo,cat,obs});
+  }
+};
+window.editSenExtraObs=async function(id,v){
+  const e=state.senasaExtra[id]; if(!e)return;
+  await set(ref(db,`senasaExtra/${id}`),{...e,obs:(v||"").trim()});
+};
 window.editSenExtra=async function(id,v){
   const e=state.senasaExtra[id]; if(!e)return;
   await set(ref(db,`senasaExtra/${id}`),{...e,cant:parseInt(v)||0});
@@ -2030,20 +2057,22 @@ window.pdfSenasa=function(){
       const key=campo+"|"+cat;
       const auto=stockSenasa(campo,cat,fechaCorte);
       const val=state.senasaOverride[key]!==undefined?state.senasaOverride[key]:auto;
-      if(val>0)filas.push([cat,val]);
+      const obs=obsSenasa(campo,cat);
+      if(val>0||obs)filas.push([cat,val,obs]);
     }
-    const extras=Object.values(state.senasaExtra).filter(e=>e.campo===campo&&e.cant>0).sort((a,b)=>a.cat.localeCompare(b.cat));
-    for(const e of extras)filas.push([e.cat,e.cant]);
+    const extras=Object.values(state.senasaExtra).filter(e=>e.campo===campo&&(e.cant>0||e.obs)).sort((a,b)=>a.cat.localeCompare(b.cat));
+    for(const e of extras)filas.push([e.cat,e.cant,e.obs||""]);
     if(filas.length===0)continue;
     const total=filas.reduce((s,x)=>s+x[1],0);
+    const hayObs=filas.some(x=>x[2]);
     cuerpo+=`
     <div class="campo">
       <div class="ctitle">${campo}${renspa?` — Renspa: ${renspa}`:""}</div>
       <table>
-        <thead><tr><th>Categoría</th><th>Cantidad</th></tr></thead>
+        <thead><tr><th>Categoría</th><th>Cantidad</th>${hayObs?"<th>Observaciones</th>":""}</tr></thead>
         <tbody>
-          ${filas.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td></tr>`).join("")}
-          <tr class="tot"><td>TOTAL</td><td>${total}</td></tr>
+          ${filas.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td>${hayObs?`<td class="obs2">${x[2]||""}</td>`:""}</tr>`).join("")}
+          <tr class="tot"><td>TOTAL</td><td>${total}</td>${hayObs?"<td></td>":""}</tr>
         </tbody>
       </table>
     </div>`;
@@ -2060,7 +2089,8 @@ window.pdfSenasa=function(){
     table{width:100%;border-collapse:collapse;font-size:.85rem}
     th,td{border:1px solid #999;padding:.3rem .55rem;text-align:left}
     th{background:#f0ede4}
-    td:last-child,th:last-child{text-align:right;width:110px}
+    td:nth-child(2),th:nth-child(2){text-align:right;width:90px}
+    .obs2{font-size:.75rem;color:#555}
     .tot td{font-weight:700;background:#f5f2ea}
     .pie{margin-top:2rem;font-size:.75rem;color:#888}
     @media print{body{padding:0}}
