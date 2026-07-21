@@ -161,6 +161,10 @@ let state = {
   showModalActs: false,
   senasaExtra: {},      // {id: {campo, cat, cant, obs}} otras especies, persistidas
   senasaObs: {},        // {id: {campo, cat, obs}} observaciones por categoria bovina
+  recordatorios: {},    // {id: {titulo, icono, desde, hasta, detalle}}
+  editRecordatorio: undefined,
+  recSenAbierto: false,
+  popupRecCerrado: false,
   senasaOverride: {},   // {campo+"|"+cat: valor} ediciones bovinas de la sesion (no persisten)
   filtSenasa: {hasta:""},
   filtStockRep: (()=>{try{const s=localStorage.getItem("sg_filtStockRep");return s?JSON.parse(s):{hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}catch(e){return {hasta:"",ciclos:[],campo:"",cat:"",estados:[]};}})(),
@@ -221,6 +225,10 @@ onValue(ref(db,"senasaExtra"), snap => {
 });
 onValue(ref(db,"senasaObs"), snap => {
   state.senasaObs = snap.val() || {};
+  render();
+});
+onValue(ref(db,"recordatorios"), snap => {
+  state.recordatorios = snap.val() || {};
   render();
 });
 
@@ -330,6 +338,7 @@ function buildApp(){
     <nav id="nav">${TABS.map((t,i)=>`<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`).join("")}</nav>
     ${buildModalCampos()}
     ${buildModalActs()}
+    ${buildPopupRecordatorios()}
     <main>
       ${state.tab===0 ? renderMov() : ""}
       ${state.tab===1 ? renderAct() : ""}
@@ -1470,6 +1479,34 @@ function renderIatf(){
 // ── SENASA ──
 const ESPECIES_EXTRA=["Ovejas","Carneros","Corderos","Corderas","Capones","Borregas","Borregos","Caballos","Yeguas","Padrillos","Potrancas","Potrillos","Mulas","Burros","Cabras","Chivos","Cabritos","Cerdas","Padrillos porcinos","Capones porcinos","Lechones"];
 
+const REC_ICONOS=["💉","🐂","🩺","🧪","📋","⚠️","📅","🐄","🐑","🐎"];
+function recordatoriosVigentes(){
+  const hoy=new Date().toISOString().slice(0,10);
+  return Object.values(state.recordatorios).filter(r=>r.desde&&r.hasta&&r.desde<=hoy&&hoy<=r.hasta)
+    .sort((a,b)=>(a.hasta||"").localeCompare(b.hasta||""));
+}
+function buildPopupRecordatorios(){
+  if(state.popupRecCerrado)return "";
+  const vig=recordatoriosVigentes();
+  if(vig.length===0)return "";
+  return `
+  <div class="modal-overlay">
+    <div class="modal-box" style="border-top:6px solid #c84a28">
+      <h2 style="color:#8c2810">🔔 Recordatorios vigentes</h2>
+      <p>Estás dentro del período de estas obligaciones:</p>
+      ${vig.map(r=>`
+      <div style="background:#fff8e1;border-left:5px solid #f59e0b;border-radius:6px;padding:.7rem .9rem;margin-bottom:.5rem">
+        <div style="font-weight:700;color:#92400e;font-size:.95rem">${r.icono||"📅"} ${h(r.titulo)}</div>
+        ${r.detalle?`<div style="color:#92400e;font-size:.82rem;margin-top:.2rem">${h(r.detalle)}</div>`:""}
+        <div style="color:#888;font-size:.75rem;margin-top:.25rem">📅 Del ${r.desde.split('-').reverse().join('/')} al ${r.hasta.split('-').reverse().join('/')}</div>
+        <div style="margin-top:.5rem"><button onclick="marcarCumplidoRec('${r.id}')" style="background:#2d6a1e;color:#fff;border:none;border-radius:6px;padding:.35rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600">✅ Ya cumplido — reprogramar al año próximo</button></div>
+      </div>`).join("")}
+      <div class="modal-footer-btns">
+        <button class="bp" onclick="cerrarPopupRec()" style="margin-left:auto">Entendido</button>
+      </div>
+    </div>
+  </div>`;
+}
 function obsSenasa(campo,cat){
   const e=Object.values(state.senasaObs).find(o=>o.campo===campo&&o.cat===cat);
   return e?e.obs:"";
@@ -1497,6 +1534,52 @@ function renderSenasa(){
   <div class="br">
     <button class="bp" style="background:#1e4a6a" onclick="pdfSenasa()">🖨️ Generar PDF planilla SENASA</button>
   </div>
+</div>
+
+<div class="card" style="background:#fdf8ee;border:1.5px solid #d0a040">
+  <h2 style="color:#8a5a10;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleRecSen()">
+    <span>🔔 Recordatorios sanitarios (${Object.keys(state.recordatorios).length})${recordatoriosVigentes().length>0?` <span style="background:#c84a28;color:#fff;border-radius:10px;padding:.1rem .55rem;font-size:.72rem;vertical-align:middle">${recordatoriosVigentes().length} vigente(s)</span>`:""}</span>
+    <span style="font-size:.85rem">${state.recSenAbierto?"▲ Ocultar":"▼ Ver"}</span>
+  </h2>
+  ${state.recSenAbierto?`
+  <p class="hint" style="color:#8a6a30">Vacunaciones (aftosa, brucelosis), raspajes de toros y otras obligaciones con fecha. Cuando la fecha de hoy esté dentro del rango, al abrir la app salta un aviso automático para todo el equipo.</p>
+  <div class="br" style="margin-bottom:.7rem">
+    <button class="bp" style="background:#8a5a10;font-size:.8rem;padding:.35rem .8rem" onclick="abrirNuevoRec()">➕ Nuevo recordatorio</button>
+  </div>
+  ${state.editRecordatorio!==undefined?`
+  <div style="background:#fff;border:1px solid #d0a040;border-radius:8px;padding:.9rem;margin-bottom:.8rem">
+    <h3 style="color:#8a5a10">${state.editRecordatorio.id?"✏️ Editar":"➕ Nuevo"} recordatorio</h3>
+    <div class="fg">
+      <label>Ícono<select id="rec_icono">${REC_ICONOS.map(i=>`<option value="${i}"${state.editRecordatorio.icono===i?" selected":""}>${i}</option>`).join("")}</select></label>
+      <label class="s2">Título<input id="rec_titulo" value="${h(state.editRecordatorio.titulo||"")}" placeholder="Ej: Vacunación Aftosa 1er período"/></label>
+      <label>Desde<input id="rec_desde" type="date" value="${state.editRecordatorio.desde||""}"/></label>
+      <label>Hasta<input id="rec_hasta" type="date" value="${state.editRecordatorio.hasta||""}"/></label>
+      <label class="s2">Detalle<input id="rec_detalle" value="${h(state.editRecordatorio.detalle||"")}" placeholder="Opcional: qué hay que hacer, dónde, con quién..."/></label>
+    </div>
+    <div class="br">
+      <button class="bp" onclick="guardarRec()">💾 Guardar recordatorio</button>
+      <button class="bs" onclick="cancelarRec()">Cancelar</button>
+    </div>
+  </div>`:""}
+  ${Object.keys(state.recordatorios).length===0&&state.editRecordatorio===undefined?`<p style="color:#8a6a30;font-size:.85rem;text-align:center;padding:.5rem">Sin recordatorios. Tocá "➕ Nuevo recordatorio" para agregar.</p>`:""}
+  ${Object.values(state.recordatorios).sort((a,b)=>(a.desde||"").localeCompare(b.desde||"")).map(r=>{
+    const hoy=new Date().toISOString().slice(0,10);
+    const vigente=r.desde&&r.hasta&&r.desde<=hoy&&hoy<=r.hasta;
+    const pasado=r.hasta&&r.hasta<hoy;
+    return `
+    <div style="background:${vigente?"#fff3d6":pasado?"#f2f0ea":"#fff"};border-left:5px solid ${vigente?"#c84a28":pasado?"#b0a890":"#d0a040"};border-radius:6px;padding:.6rem .85rem;margin-bottom:.45rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap;${pasado?"opacity:.6":""}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:#6a4a10;font-size:.92rem">${r.icono||"📅"} ${h(r.titulo)} ${vigente?'<span style="background:#c84a28;color:#fff;border-radius:8px;padding:.05rem .45rem;font-size:.68rem">VIGENTE</span>':pasado?'<span style="color:#888;font-size:.7rem">(finalizado)</span>':""}</div>
+        ${r.detalle?`<div style="color:#6a5a30;font-size:.8rem;margin-top:.15rem">${h(r.detalle)}</div>`:""}
+        <div style="color:#888;font-size:.73rem;margin-top:.2rem">📅 ${r.desde?r.desde.split('-').reverse().join('/'):"?"} → ${r.hasta?r.hasta.split('-').reverse().join('/'):"?"}</div>
+      </div>
+      <div style="display:flex;gap:.3rem;flex-shrink:0;align-items:center">
+        ${vigente?`<button onclick="marcarCumplidoRec('${r.id}')" title="Marcar como cumplido y reprogramar al año próximo" style="background:#2d6a1e;color:#fff;border:none;border-radius:6px;padding:.3rem .6rem;cursor:pointer;font-size:.72rem;font-weight:600">✅ Cumplido</button>`:""}
+        <button class="bi" onclick="editarRec('${r.id}')">✏️</button>
+        <button class="bi" onclick="eliminarRec('${r.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join("")}`:""}
 </div>
 ${clist.map(campo=>{
   const renspa=renspaDe(campo);
@@ -1639,6 +1722,7 @@ async function restaurarBackup(file){
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
+      if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -1647,7 +1731,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -2002,6 +2086,44 @@ window.agregarActividadCustom=async function(){
   toast("✅ Actividad '"+nombre+"' agregada");
 };
 // ── SENASA handlers ──
+window.cerrarPopupRec=function(){state.popupRecCerrado=true;render();};
+window.marcarCumplidoRec=async function(id){
+  const r=state.recordatorios[id]; if(!r)return;
+  const addYear=(iso)=>{
+    const [y,m,d]=iso.split('-').map(Number);
+    const dt=new Date(y+1,m-1,d);
+    return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+  };
+  const nuevoDesde=addYear(r.desde);
+  const nuevoHasta=addYear(r.hasta);
+  if(!confirm("✅ Marcar \""+r.titulo+"\" como cumplido.\n\nSe reprogramará automáticamente para el año próximo:\nDel "+nuevoDesde.split('-').reverse().join('/')+" al "+nuevoHasta.split('-').reverse().join('/')+"\n\n¿Confirmar?"))return;
+  await set(ref(db,`recordatorios/${id}`),{...r,desde:nuevoDesde,hasta:nuevoHasta});
+  toast("✅ Cumplido. Reprogramado para "+nuevoDesde.split('-')[0]);
+};
+window.toggleRecSen=function(){state.recSenAbierto=!state.recSenAbierto;render();};
+window.abrirNuevoRec=function(){state.editRecordatorio={icono:"💉",titulo:"",desde:"",hasta:"",detalle:""};render();};
+window.cancelarRec=function(){state.editRecordatorio=undefined;render();};
+window.editarRec=function(id){state.editRecordatorio={...state.recordatorios[id]};render();};
+window.eliminarRec=async function(id){
+  const r=state.recordatorios[id]; if(!r)return;
+  if(!confirm("¿Eliminar el recordatorio \""+r.titulo+"\"?"))return;
+  await remove(ref(db,`recordatorios/${id}`));
+  toast("Recordatorio eliminado");
+};
+window.guardarRec=async function(){
+  const icono=document.getElementById("rec_icono").value;
+  const titulo=document.getElementById("rec_titulo").value.trim();
+  const desde=document.getElementById("rec_desde").value;
+  const hasta=document.getElementById("rec_hasta").value;
+  const detalle=document.getElementById("rec_detalle").value.trim();
+  if(!titulo)return alert("Escribí un título.");
+  if(!desde||!hasta)return alert("Completá las fechas Desde y Hasta.");
+  if(desde>hasta)return alert("La fecha Desde no puede ser posterior a Hasta.");
+  const id=state.editRecordatorio.id||uid();
+  await set(ref(db,`recordatorios/${id}`),{id,icono,titulo,desde,hasta,detalle});
+  state.editRecordatorio=undefined;
+  toast("✅ Recordatorio guardado");
+};
 window.setFSen=function(k,v){state.filtSenasa[k]=v;state.senasaOverride={};render();};
 window.setSenOverride=function(campo,cat,v){state.senasaOverride[campo+"|"+cat]=parseInt(v)||0;render();};
 window.resetSenOverride=function(campo,cat){delete state.senasaOverride[campo+"|"+cat];render();};
