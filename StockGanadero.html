@@ -132,6 +132,7 @@ const CATS = ["Vacas","Vaquillonas","Novillos","Novillitos","Terneros","Terneras
 const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Categoria","Otro ingreso"];
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
+const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
 const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
@@ -158,6 +159,7 @@ let state = {
   editToro: undefined,
   editIatf: undefined,
   actividadesCustom: {},
+  actBaseOff: {},      // {nombreActividadBase: true} = desactivada del desplegable
   showModalActs: false,
   senasaExtra: {},      // {id: {campo, cat, cant, obs}} otras especies, persistidas
   senasaObs: {},        // {id: {campo, cat, obs}} observaciones por categoria bovina
@@ -219,6 +221,10 @@ onValue(ref(db,"actividadesCustom"), snap => {
   state.actividadesCustom = snap.val() || {};
   render();
 });
+onValue(ref(db,"actBaseOff"), snap => {
+  state.actBaseOff = snap.val() || {};
+  render();
+});
 onValue(ref(db,"senasaExtra"), snap => {
   state.senasaExtra = snap.val() || {};
   render();
@@ -258,13 +264,16 @@ function renspaDe(nombreCampo){
   return c&&c.renspa?c.renspa:"";
 }
 function observaciones(){ return [...new Set([...Object.values(state.mov).map(m=>m.obs),...Object.values(state.act).map(a=>a.obs)].filter(o=>o&&o.trim()))].sort(); }
-function actividadesAll(){
+function actividadesAll(todas){
+  // todas=true: incluye tambien las base desactivadas (para filtros y edicion)
   const custom=Object.values(state.actividadesCustom||{});
   const inactivas=custom.filter(c=>!c.activo).map(c=>c.nombre.toLowerCase());
   const customActivas=custom.filter(c=>c.activo).map(c=>c.nombre);
+  const baseOff=state.actBaseOff||{};
+  const base=todas?ACT:ACT.filter(t=>!baseOff[t]);
   const enRegistros=Object.values(state.act).map(a=>a.tipo)
     .filter(t=>t&&!ACT.includes(t)&&!inactivas.includes(t.toLowerCase()));
-  return [...new Set([...ACT,...customActivas,...enRegistros])];
+  return [...new Set([...base,...customActivas,...enRegistros])];
 }
 
 // Captura el estado del formulario antes de un re-render o cambio de pestaña
@@ -588,7 +597,9 @@ function renderAct(){
           "Desentore":"color:#b5651d;font-weight:700",
           "IATF":"color:#b5651d;font-weight:700"
         };
-        return `<option value="">-- Seleccionar --</option>`+actividadesAll().map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(t)}</option>`).join("");
+        const lista=actividadesAll();
+        if(sel&&!lista.includes(sel))lista.push(sel); // si edito un registro con actividad desactivada, la muestro igual
+        return `<option value="">-- Seleccionar --</option>`+lista.map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(t)}</option>`).join("");
       })()}
     </select>
       <button type="button" onclick="abrirModalActs()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">➕ Admin.</button>
@@ -643,7 +654,7 @@ function renderAct(){
     <label>Campo<select onchange="setFA('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Ciclo<select onchange="setFA('ciclo',this.value)">${opts(cilist,f.ciclo,"Todos")}</select></label>
     <label>Categoria<select onchange="setFA('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
-    <label>Actividad<select onchange="setFA('tipo',this.value)">${opts(actividadesAll(),f.tipo,"Todas")}</select></label>
+    <label>Actividad<select onchange="setFA('tipo',this.value)">${opts(actividadesAll(true),f.tipo,"Todas")}</select></label>
     <label class="s2">🔍 Buscar en observaciones<input id="aBuscar" value="${h(f.buscar||"")}" placeholder="Ej: aborto, vendida, toro vecino..." oninput="setFABuscar(this.value)"/></label>
   </div>
 </div>
@@ -1720,6 +1731,7 @@ async function restaurarBackup(file){
       if(data.toros) await set(ref(db,"toros"),data.toros);
       if(data.iatf) await set(ref(db,"iatf"),data.iatf);
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
+      if(data.actBaseOff) await set(ref(db,"actBaseOff"),data.actBaseOff);
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
       if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
@@ -1731,7 +1743,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1750,8 +1762,23 @@ function buildModalActs(){
   <div class="modal-overlay">
     <div class="modal-box">
       <h2>📋 Administrar Actividades</h2>
-      <p>Las actividades base del sistema no se pueden modificar. Acá agregás actividades propias o desactivás las que ya no usás (los registros viejos no se tocan).</p>
-      <div>
+      <p>Podés desactivar cualquier actividad para que no aparezca en el desplegable de carga (los registros viejos no se tocan y los cálculos siguen igual). Las marcadas con 🔒 son del sistema y no se pueden desactivar.</p>
+      <div style="max-height:45vh;overflow-y:auto">
+        <p style="font-size:.78rem;font-weight:700;color:#5a4a2a;margin:.3rem 0 .2rem">Actividades base del sistema</p>
+        ${ACT.map(nombre=>{
+          const protegida=ACT_PROTEGIDAS.includes(nombre);
+          const off=!!(state.actBaseOff&&state.actBaseOff[nombre]);
+          return `
+          <div class="campo-item${off?" inactivo":""}">
+            <span>${h(nombre)}${protegida?` <small style="color:#a08a60">🔒 Sistema</small>`:""}</span>
+            <span style="display:flex;align-items:center;gap:.4rem">
+              ${protegida?`<span style="font-size:.75rem;color:#3d6428">✅ Activa</span>`:`
+              <span style="font-size:.75rem;color:${off?"#c84a28":"#3d6428"}">${off?"❌ Inactiva":"✅ Activa"}</span>
+              <button onclick="toggleActividadBase('${h(nombre)}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">${off?"♻️ Reactivar":"🚫 Desactivar"}</button>`}
+            </span>
+          </div>`;
+        }).join("")}
+        <p style="font-size:.78rem;font-weight:700;color:#5a4a2a;margin:.6rem 0 .2rem">Actividades propias</p>
         ${custom.length===0&&heredadas.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay actividades propias aún. Agregá la primera.</p>`:""}
         ${custom.map(([id,c])=>`
           <div class="campo-item${c.activo?"":" inactivo"}">
@@ -2235,6 +2262,11 @@ window.desactivarHeredada=async function(nombre){
   const id=uid();
   await set(ref(db,`actividadesCustom/${id}`),{id,nombre,activo:false});
   toast("Actividad '"+nombre+"' desactivada");
+};
+window.toggleActividadBase=async function(nombre){
+  if(ACT_PROTEGIDAS.includes(nombre))return;
+  if(state.actBaseOff&&state.actBaseOff[nombre]) await set(ref(db,`actBaseOff/${nombre}`),null);
+  else await set(ref(db,`actBaseOff/${nombre}`),true);
 };
 window.toggleActividadCustom=async function(id){
   const c=state.actividadesCustom[id]; if(!c)return;
