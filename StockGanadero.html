@@ -133,7 +133,9 @@ const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Catego
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
 const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros"];
+// Jerarquia del stock reproductivo: Cut esta dentro de Preñez; 2da op y Descarte dentro de Vacias
+const PADRE_ESTADO = {"Cut":"Preñez","2da oportunidad":"Vacias","Descarte":"Vacias"};
+const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros"];
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -150,6 +152,8 @@ let state = {
   filtMov: {campo:"",cat:"",ciclo:"",desde:"",hasta:""},
   filtAct: {campo:"",ciclo:"",cat:"",tipo:"",buscar:""},
   filtStock: {hasta:"",campo:"",cat:""},
+  filtCom: {hasta:"",campo:"",cat:""},
+  ventasPlan: {},     // {key: {campo, cat, cant}} cuantos quiero vender por campo+categoria
   filtProd: {ciclo:"",campo:""},
   toros: {},          // {id: {id, nombre, raza, cabana, precio, obs, activo}}
   iatf: {},           // {id: {id, fecha, campo, cat, ciclo, toroId, caravana, resultado}} resultado: "pendiente"|"prenada"|"vacia"
@@ -223,6 +227,10 @@ onValue(ref(db,"actividadesCustom"), snap => {
 });
 onValue(ref(db,"actBaseOff"), snap => {
   state.actBaseOff = snap.val() || {};
+  render();
+});
+onValue(ref(db,"ventasPlan"), snap => {
+  state.ventasPlan = snap.val() || {};
   render();
 });
 onValue(ref(db,"senasaExtra"), snap => {
@@ -352,12 +360,13 @@ function buildApp(){
       ${state.tab===0 ? renderMov() : ""}
       ${state.tab===1 ? renderAct() : ""}
       ${state.tab===2 ? renderStock() : ""}
-      ${state.tab===3 ? renderStockRep() : ""}
-      ${state.tab===4 ? renderProd() : ""}
-      ${state.tab===5 ? renderComp() : ""}
-      ${state.tab===6 ? renderIatf() : ""}
-      ${state.tab===7 ? renderSenasa() : ""}
-      ${state.tab===8 ? renderPar() : ""}
+      ${state.tab===3 ? renderComercial() : ""}
+      ${state.tab===4 ? renderStockRep() : ""}
+      ${state.tab===5 ? renderProd() : ""}
+      ${state.tab===6 ? renderComp() : ""}
+      ${state.tab===7 ? renderIatf() : ""}
+      ${state.tab===8 ? renderSenasa() : ""}
+      ${state.tab===9 ? renderPar() : ""}
     </main>`;
 }
 
@@ -634,7 +643,7 @@ function renderAct(){
   </div>
   <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
-    <p class="hint" style="color:#5a3a6a">Para ventas o muertes usá destino "Baja". Solo afecta el Stock Reproductivo.</p>
+    <p class="hint" style="color:#5a3a6a">Para ventas o muertes usá destino "Baja". Solo afecta el Stock Reproductivo. Los subgrupos descuentan/suman también en su grupo: Cut cuenta dentro de Preñez; 2da oportunidad y Descarte dentro de Vacías (ej: Cut → Baja resta de Cut y de Preñez).</p>
     <div class="fg">
       <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
       <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
@@ -800,6 +809,93 @@ ${campos2.map(campo=>{
 `}`;
 }
 
+// ── STOCK COMERCIALIZABLE ──
+function renderComercial(){
+  const f=state.filtCom; const clist=campos();
+  // Stock por campo/categoria desde movimientos (misma logica que la pestaña Stock)
+  const fil=Object.values(state.mov).filter(m=>{
+    if(f.hasta&&m.fecha>f.hasta)return false;
+    if(f.campo&&m.campo!==f.campo)return false;
+    if(f.cat&&m.cat!==f.cat)return false;
+    return true;
+  });
+  const smap={};
+  for(const m of fil){
+    if(!smap[m.campo])smap[m.campo]={};
+    if(!smap[m.campo][m.cat])smap[m.campo][m.cat]=0;
+    smap[m.campo][m.cat]+=m.tipo==="ingreso"?(m.cant||0):-(m.cant||0);
+  }
+  const campos2=Object.keys(smap).sort();
+  const planDe=(campo,cat)=>{const x=Object.values(state.ventasPlan||{}).find(v=>v&&v.campo===campo&&v.cat===cat);return x?(x.cant||0):0;};
+  const ordCat=(a,b)=>{const ia=CATS.indexOf(a),ib=CATS.indexOf(b);return (ia===-1?99:ia)-(ib===-1?99:ib);};
+  // Totales por categoria (todos los campos) y generales
+  const porCat={};
+  for(const campo of campos2)for(const [cat,st] of Object.entries(smap[campo])){
+    if(!porCat[cat])porCat[cat]={stock:0,vender:0};
+    porCat[cat].stock+=st;
+    porCat[cat].vender+=planDe(campo,cat);
+  }
+  const gStock=Object.values(porCat).reduce((s,d)=>s+d.stock,0);
+  const gVender=Object.values(porCat).reduce((s,d)=>s+d.vender,0);
+  const gQuedan=gStock-gVender;
+  const fechaTxt=f.hasta?" al "+f.hasta.split('-').reverse().join('/'):" (stock actual)";
+  return `
+<div class="card">
+  <h2>💰 Stock Comercializable</h2>
+  <p class="hint">El stock disponible sale automáticamente de la pestaña Stock (movimientos) a la fecha de corte. En "A vender" cargás cuántos querés vender de cada categoría por campo — se guarda y lo ve todo el equipo. Para el PDF: con esta pestaña abierta, tocá el botón 🖨️ PDF de arriba.</p>
+  <div class="fg">
+    <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFCom('hasta',this.value)"/></label>
+    <label>Campo<select onchange="setFCom('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
+    <label>Categoria<select onchange="setFCom('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
+  </div>
+</div>
+${campos2.length===0?`<div class="card"><p class="empty">Sin datos para los filtros seleccionados.</p></div>`:`
+<div class="card" style="border-top:4px solid #2d4a1e">
+  <h2>🌐 Total General${fechaTxt}</h2>
+  <div class="kg" style="margin-bottom:1rem">
+    <div class="kp"><div class="kl">Stock disponible</div><div class="kv" style="font-size:1.8rem;color:#2d4a1e">${gStock}</div><div class="km">${campos2.length} campo(s)</div></div>
+    <div class="kp" style="background:#faf2e0;border-color:#a06a1f"><div class="kl">A vender</div><div class="kv" style="font-size:1.8rem;color:#a06a1f">${gVender}</div></div>
+    <div class="kp"><div class="kl">Quedan</div><div class="kv" style="font-size:1.8rem;color:${gQuedan<0?"#c84a28":"#2d4a1e"}">${gQuedan}</div></div>
+  </div>
+  <h3 style="margin-bottom:.7rem">📋 Total por Categoría (todos los campos)</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Categoría</th><th>Stock</th><th>A vender</th><th>Quedan</th></tr></thead>
+    <tbody>
+      ${Object.entries(porCat).sort((a,b)=>ordCat(a[0],b[0])).map(([cat,d])=>`<tr>
+        <td><strong>${h(cat)}</strong></td>
+        <td><strong style="color:#2d4a1e">${d.stock}</strong></td>
+        <td style="color:#a06a1f;font-weight:700">${d.vender||"—"}</td>
+        <td><strong class="${d.stock-d.vender<0?"sr":""}">${d.stock-d.vender}</strong></td>
+      </tr>`).join("")}
+      <tr class="tr"><td><strong>TOTAL</strong></td><td><strong>${gStock}</strong></td><td><strong style="color:#a06a1f">${gVender}</strong></td><td><strong>${gQuedan}</strong></td></tr>
+    </tbody>
+  </table></div>
+</div>
+<h3 style="margin:1rem 0 .5rem;color:#2d4a1e;font-size:.95rem;padding-left:.2rem">📍 Detalle por Campo</h3>
+${campos2.map(campo=>{
+  const cats=Object.entries(smap[campo]).sort((a,b)=>ordCat(a[0],b[0]));
+  const totS=cats.reduce((s,[,st])=>s+st,0);
+  const totV=cats.reduce((s,[cat])=>s+planDe(campo,cat),0);
+  return `<div class="card"><h3>🏡 ${h(campo)} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales · ${totV} a vender</span></h3>
+  <div class="tw"><table>
+    <thead><tr><th>Categoría</th><th>Stock</th><th>A vender</th><th>Quedan</th></tr></thead>
+    <tbody>
+      ${cats.map(([cat,st])=>{
+        const v=planDe(campo,cat);
+        const q=st-v;
+        return `<tr>
+          <td><strong>${h(cat)}</strong></td>
+          <td><strong style="color:#2d4a1e">${st}</strong></td>
+          <td><input type="number" min="0" value="${v||""}" placeholder="0" onchange="setVentaPlan('${h(campo)}','${h(cat)}',this.value)" style="width:90px;border:1.5px solid ${v>st?"#c84a28":"#c8a860"};border-radius:6px;padding:.3rem .45rem;font-size:.88rem;font-weight:700;color:#a06a1f;background:#fdfaf2"/></td>
+          <td><strong class="${q<0?"sr":""}">${q}</strong>${q<0?` <span style="font-size:.72rem;color:#c84a28">⚠️ más de lo disponible</span>`:""}</td>
+        </tr>`;
+      }).join("")}
+      <tr class="tr"><td><strong>TOTAL</strong></td><td><strong>${totS}</strong></td><td><strong style="color:#a06a1f">${totV}</strong></td><td><strong class="${totS-totV<0?"sr":""}">${totS-totV}</strong></td></tr>
+    </tbody>
+  </table></div></div>`;
+}).join("")}`}`;
+}
+
 // ── STOCK REPRODUCTIVO ──
 function renderStockRep(){
   const f=state.filtStockRep;
@@ -853,8 +949,16 @@ function renderStockRep(){
       (!f.hasta||(a.fecha&&a.fecha<=f.hasta))
     );
     for(const c of cambios){
-      if(c.ceDestino===estado) total+=(c.ceCant||0); // entra a este estado
-      if(c.ceOrigen===estado) total-=(c.ceCant||0);  // sale de este estado
+      const n=c.ceCant||0, o=c.ceOrigen, d=c.ceDestino;
+      const po=PADRE_ESTADO[o], pd=PADRE_ESTADO[d];
+      // Sale del origen (salvo que el origen sea el padre del destino: sigue perteneciendo, ej Preñez→Cut)
+      if(o===estado && o!==pd) total-=n;
+      // Entra al destino (salvo que el destino sea el padre del origen: ya estaba contado ahi, ej Cut→Preñez)
+      if(d===estado && d!==po) total+=n;
+      // Sale tambien del padre del origen si deja esa familia (ej Cut→Vacias o Cut→Baja resta de Preñez)
+      if(po===estado && po!==d && po!==pd) total-=n;
+      // Entra tambien al padre del destino si viene de otra familia (ej Preñez→Descarte suma a Vacias)
+      if(pd===estado && pd!==o && pd!==po) total+=n;
     }
     return total;
   }
@@ -991,6 +1095,18 @@ function renderProd(){
       pMPost:pct(mPost,pre)};
   });
   const fv=(v)=>v!==null&&!isNaN(v)?v.toFixed(1)+"%":"—";
+  // ── Total general (suma de todos los campos) ──
+  let totRow=null;
+  if(!f.campo && rows.length>1){
+    const s=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
+    const ent=s("ent"),pre=s("pre"),nac=s("nac"),nacT=s("nacT"),nacH=s("nacH"),dest=s("dest"),kgt=s("kgt"),cut=s("cut"),dsc=s("dsc"),seg=s("seg"),abortos=s("abortos"),mParto=s("mParto"),mPost=s("mPost"),entBase=s("entBase"),preBase=s("preBase");
+    totRow={campo:"Total General — todos los campos",esTotal:true,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,abortos,mParto,mPost,entBase,preBase,
+      huboTraslado:false,
+      pPreTacto:pct(preBase,entBase),pPre:pct(pre,ent),pNac:pct(nac,pre),pDest:pct(dest,pre),
+      kgA:pre>0&&kgt>0?kgt/pre:null,pCut:pct(cut,pre),pDsc:pct(dsc,ent),pSeg:pct(seg,ent),
+      pAborto:pct(abortos,pre),pMParto:pct(mParto,pre),pMPost:pct(mPost,pre)};
+  }
+  const rowsRender=totRow?[totRow,...rows]:rows;
   return `
 <div class="card">
   <h2>📈 Resumen Productivo</h2>
@@ -1000,9 +1116,9 @@ function renderProd(){
   </div>
 
 </div>
-${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows.map(r=>`
-<div class="card pc">
-  <h3>🏡 ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""} ${r.huboTraslado?`<span class="bc" style="background:#cfe0f5;color:#1e4a6a" title="Los valores estan ajustados por traslados de rodeo">🔀 Ajustado por traslado</span>`:""}</h3>
+${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rowsRender.map(r=>`
+<div class="card pc"${r.esTotal?` style="border-top:4px solid #2d4a1e"`:""}>
+  <h3>${r.esTotal?"🌐":"🏡"} ${h(r.campo)} ${f.ciclo?`<span class="bc">Ciclo: ${h(f.ciclo)}</span>`:""} ${r.huboTraslado?`<span class="bc" style="background:#cfe0f5;color:#1e4a6a" title="Los valores estan ajustados por traslados de rodeo">🔀 Ajustado por traslado</span>`:""}</h3>
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
     <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div>${r.huboTraslado&&r.pPreTacto!==null?`<div class="km" style="margin-top:.3rem;color:#1e4a6a;border-top:1px dashed #b8c8d8;padding-top:.25rem">📌 Tacto original: ${r.pPreTacto.toFixed(1)}% (${r.preBase}/${r.entBase})</div>`:""}</div>
@@ -1732,6 +1848,7 @@ async function restaurarBackup(file){
       if(data.iatf) await set(ref(db,"iatf"),data.iatf);
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
       if(data.actBaseOff) await set(ref(db,"actBaseOff"),data.actBaseOff);
+      if(data.ventasPlan) await set(ref(db,"ventasPlan"),data.ventasPlan);
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
       if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
@@ -1743,7 +1860,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -1904,6 +2021,13 @@ window.setFABuscar=function(v){
   setTimeout(()=>{const el=document.getElementById("aBuscar");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
 };
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
+window.setFCom=function(k,v){state.filtCom[k]=v;render();};
+window.setVentaPlan=async function(campo,cat,v){
+  const key=(campo+"|"+cat).replace(/[.#$/\[\]]/g,"_");
+  const n=parseInt(v);
+  if(!n||n<=0) await set(ref(db,`ventasPlan/${key}`),null);
+  else await set(ref(db,`ventasPlan/${key}`),{campo,cat,cant:n});
+};
 window.setFP=function(k,v){state.filtProd[k]=v;render();};
 function guardarFiltStockRep(){try{localStorage.setItem("sg_filtStockRep",JSON.stringify(state.filtStockRep));}catch(e){}}
 window.setFSR=function(k,v){state.filtStockRep[k]=v;guardarFiltStockRep();render();};
