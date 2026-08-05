@@ -152,7 +152,7 @@ let state = {
   filtMov: {campo:"",cat:"",ciclo:"",desde:"",hasta:""},
   filtAct: {campo:"",ciclo:"",cat:"",tipo:"",buscar:""},
   filtStock: {hasta:"",campo:"",cat:""},
-  filtCom: {hasta:"",campo:"",cat:""},
+  filtCom: (()=>{try{const s=localStorage.getItem("sg_filtCom");return s?{hasta:"",campo:"",...JSON.parse(s)}:{hasta:"",campo:"",cats:[]};}catch(e){return {hasta:"",campo:"",cats:[]};}})(),
   ventasPlan: {},     // {key: {campo, cat, cant}} cuantos quiero vender por campo+categoria
   filtProd: {ciclo:"",campo:""},
   toros: {},          // {id: {id, nombre, raza, cabana, precio, obs, activo}}
@@ -813,10 +813,11 @@ ${campos2.map(campo=>{
 function renderComercial(){
   const f=state.filtCom; const clist=campos();
   // Stock por campo/categoria desde movimientos (misma logica que la pestaña Stock)
+  const catsSel=f.cats&&f.cats.length>0?f.cats:null; // null = todas
   const fil=Object.values(state.mov).filter(m=>{
     if(f.hasta&&m.fecha>f.hasta)return false;
     if(f.campo&&m.campo!==f.campo)return false;
-    if(f.cat&&m.cat!==f.cat)return false;
+    if(catsSel&&!catsSel.includes(m.cat))return false;
     return true;
   });
   const smap={};
@@ -846,7 +847,13 @@ function renderComercial(){
   <div class="fg">
     <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFCom('hasta',this.value)"/></label>
     <label>Campo<select onchange="setFCom('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
-    <label>Categoria<select onchange="setFCom('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
+  </div>
+  <div style="margin-top:.6rem">
+    <div style="font-size:.8rem;font-weight:600;color:#4a3820;margin-bottom:.35rem">Categorías a comercializar ${f.cats&&f.cats.length>0?`<button class="bs" style="padding:.1rem .5rem;font-size:.7rem;margin-left:.5rem" onclick="limpiarFComCats()">ver todas</button>`:`<small style="font-weight:400;color:#888">(sin tildar = se muestran todas)</small>`}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+      ${CATS.map(c=>`<label style="display:flex;align-items:center;gap:.25rem;font-size:.82rem;font-weight:500;background:${(f.cats||[]).includes(c)?"#faf2e0":"#faf8f4"};border:1.5px solid ${(f.cats||[]).includes(c)?"#a06a1f":"#c8c0b0"};border-radius:6px;padding:.3rem .6rem;cursor:pointer">
+        <input type="checkbox" ${(f.cats||[]).includes(c)?"checked":""} onchange="toggleFComCat('${h(c)}')" style="width:auto;cursor:pointer"/>${h(c)}</label>`).join("")}
+    </div>
   </div>
 </div>
 ${campos2.length===0?`<div class="card"><p class="empty">Sin datos para los filtros seleccionados.</p></div>`:`
@@ -2021,7 +2028,17 @@ window.setFABuscar=function(v){
   setTimeout(()=>{const el=document.getElementById("aBuscar");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
 };
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
+function guardarFiltCom(){try{localStorage.setItem("sg_filtCom",JSON.stringify({cats:state.filtCom.cats||[]}));}catch(e){}}
 window.setFCom=function(k,v){state.filtCom[k]=v;render();};
+window.toggleFComCat=function(v){
+  const arr=state.filtCom.cats||[];
+  const i=arr.indexOf(v);
+  if(i>=0)arr.splice(i,1);else arr.push(v);
+  state.filtCom.cats=arr;
+  guardarFiltCom();
+  render();
+};
+window.limpiarFComCats=function(){state.filtCom.cats=[];guardarFiltCom();render();};
 window.setVentaPlan=async function(campo,cat,v){
   const key=(campo+"|"+cat).replace(/[.#$/\[\]]/g,"_");
   const n=parseInt(v);
