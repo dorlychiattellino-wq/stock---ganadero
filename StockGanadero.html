@@ -133,9 +133,10 @@ const ING  = ["Traslado entrada","Compra","Nacimiento","Donacion","Cambio Catego
 const EGR  = ["Traslado salida","Venta","Muerte","Faena","Cambio Categoria","Otro egreso"];
 const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunacion","Castracion","IATF","Señalada","Vacias","Descarte","2da oportunidad","Cut","Para la venta","Traslado de rodeo","Cambio de estado","Otro"];
 const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
-// Jerarquia del stock reproductivo: Cut esta dentro de Preñez; 2da op y Descarte dentro de Vacias
-const PADRE_ESTADO = {"Cut":"Preñez","2da oportunidad":"Vacias","Descarte":"Vacias"};
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros"];
+// Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
+const PADRE_ESTADO = {"Cut":"Preñez"};
+const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
+const OP_TABS = [2,3,4,5,7]; // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -162,6 +163,13 @@ let state = {
   filtTactoIatf: {ciclo:"",campo:""},
   editToro: undefined,
   editIatf: undefined,
+  usuarios: {},
+  usuariosLoaded: false,
+  sesion: (()=>{try{const s=localStorage.getItem("sg_sesion");return s?JSON.parse(s):null;}catch(e){return null;}})(),
+  loginModo: "operario",
+  loginErr: "",
+  setupErr: "",
+  nuevoUserRol: null,   // "admin" | "operario" | null (form abierto en pestaña Usuarios)
   actividadesCustom: {},
   actBaseOff: {},      // {nombreActividadBase: true} = desactivada del desplegable
   showModalActs: false,
@@ -233,6 +241,20 @@ onValue(ref(db,"ventasPlan"), snap => {
   state.ventasPlan = snap.val() || {};
   render();
 });
+onValue(ref(db,"usuarios"), snap => {
+  state.usuarios = snap.val() || {};
+  state.usuariosLoaded = true;
+  // Si el usuario logueado fue dado de baja o eliminado, cerrar su sesion al instante
+  if(state.sesion){
+    const u=state.usuarios[state.sesion.id];
+    if(!u||u.baja){
+      state.sesion=null;
+      try{localStorage.removeItem("sg_sesion");}catch(e){}
+      state.loginErr=u?"Tu acceso fue dado de baja. Contactá al administrador.":"Tu usuario fue eliminado. Contactá al administrador.";
+    }
+  }
+  render();
+});
 onValue(ref(db,"senasaExtra"), snap => {
   state.senasaExtra = snap.val() || {};
   render();
@@ -254,6 +276,10 @@ onValue(ref(db,".info/connected"), snap => {
 
 // ── HELPERS ──
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+function usuarioActual(){ return state.sesion?state.usuarios[state.sesion.id]:null; }
+function esAdmin(){ const u=usuarioActual(); return !!u&&u.rol==="admin"&&!u.baja; }
+function esOperario(){ const u=usuarioActual(); return !!u&&u.rol!=="admin"&&!u.baja; }
+function adminsActivos(){ return Object.values(state.usuarios).filter(u=>u&&u.rol==="admin"&&!u.baja); }
 function campos(){
   const fromList = Object.values(state.camposList).filter(c=>c.activo).map(c=>c.nombre).sort();
   if(fromList.length>0) return fromList;
@@ -343,16 +369,91 @@ async function delAct(id){ if(confirm("Eliminar actividad?")){ await remove(ref(
 
 // ── RENDER ──
 function render(){
-  if(!state.loaded){ document.getElementById("root").innerHTML=`<div class="loading"><div class="spinner"></div><span>Conectando...</span></div>`; return; }
-  document.getElementById("root").innerHTML = buildApp();
-  attachEvents();
+  const root=document.getElementById("root");
+  if(!state.loaded||!state.usuariosLoaded){ root.innerHTML=`<div class="loading"><div class="spinner"></div><span>Conectando...</span></div>`; return; }
+  // Preservar lo tipeado en login/setup/alta de usuario si un dato de Firebase llega en el medio
+  const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave"];
+  const saved={}; let focusId=null;
+  for(const id of preserveIds){const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
+  // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
+  if(adminsActivos().length===0 && Object.values(state.usuarios).filter(u=>u&&u.rol==="admin").length===0){
+    root.innerHTML=buildSetup();
+  } else if(!usuarioActual()||usuarioActual().baja){
+    if(state.sesion){state.sesion=null;try{localStorage.removeItem("sg_sesion");}catch(e){}}
+    root.innerHTML=buildLogin();
+  } else {
+    if(esOperario()&&!OP_TABS.includes(state.tab))state.tab=OP_TABS[0];
+    root.innerHTML=buildApp();
+    attachEvents();
+    aplicarModoLectura();
+  }
+  for(const id of Object.keys(saved)){const el=document.getElementById(id);if(el)el.value=saved[id];}
+  if(focusId){const el=document.getElementById(focusId);if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
+}
+
+function buildSetup(){
+  return `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2d4a1e;padding:1rem">
+    <div class="card" style="max-width:420px;width:100%;margin:0">
+      <div style="text-align:center;margin-bottom:.8rem"><img src="${LOGO}" style="width:64px;height:64px;border-radius:12px"/></div>
+      <h2 style="text-align:center">🐄 Stock Ganadero</h2>
+      <p class="hint" style="text-align:center">No hay administradores todavía. Creá el administrador principal para empezar.</p>
+      ${state.setupErr?`<div style="background:#fbf1f0;border:1px solid #c84a28;color:#8c2810;border-radius:8px;padding:.5rem .7rem;font-size:.85rem;margin-bottom:.6rem">${h(state.setupErr)}</div>`:""}
+      <div style="display:flex;flex-direction:column;gap:.6rem">
+        <label>Nombre del administrador<input id="su_nombre" placeholder="Ej: Juan" autocomplete="off"/></label>
+        <label>Clave<input id="su_clave" type="password" placeholder="Elegí una clave" autocomplete="new-password"/></label>
+        <label>Repetir clave<input id="su_clave2" type="password" placeholder="Repetí la clave" autocomplete="new-password" onkeydown="if(event.key==='Enter')crearPrimerAdmin()"/></label>
+        <button class="bp" onclick="crearPrimerAdmin()">Crear administrador y entrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildLogin(){
+  const op=state.loginModo!=="admin";
+  return `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#2d4a1e;padding:1rem">
+    <div class="card" style="max-width:420px;width:100%;margin:0">
+      <div style="text-align:center;margin-bottom:.8rem"><img src="${LOGO}" style="width:64px;height:64px;border-radius:12px"/></div>
+      <h2 style="text-align:center">🐄 Stock Ganadero</h2>
+      <p class="hint" style="text-align:center">Ingresá con tu usuario para continuar.</p>
+      <div style="display:flex;gap:.4rem;background:#eee6d4;padding:.3rem;border-radius:10px;margin-bottom:.8rem">
+        <button onclick="modoLogin('operario')" style="flex:1;border:none;border-radius:8px;padding:.55rem;font-weight:700;cursor:pointer;font-family:inherit;background:${op?"#fff":"transparent"};color:${op?"#2d4a1e":"#7a6a4a"};box-shadow:${op?"0 1px 4px rgba(0,0,0,.12)":"none"}">Operario</button>
+        <button onclick="modoLogin('admin')" style="flex:1;border:none;border-radius:8px;padding:.55rem;font-weight:700;cursor:pointer;font-family:inherit;background:${op?"transparent":"#fff"};color:${op?"#7a6a4a":"#2d4a1e"};box-shadow:${op?"none":"0 1px 4px rgba(0,0,0,.12)"}">Administrador</button>
+      </div>
+      ${state.loginErr?`<div style="background:#fbf1f0;border:1px solid #c84a28;color:#8c2810;border-radius:8px;padding:.5rem .7rem;font-size:.85rem;margin-bottom:.6rem">${h(state.loginErr)}</div>`:""}
+      <div style="display:flex;flex-direction:column;gap:.6rem">
+        <label>Nombre<input id="lg_nombre" placeholder="Escribí tu nombre" autocomplete="off" ${op?`onkeydown="if(event.key==='Enter')hacerLogin()"`:""}/></label>
+        ${op?"":`<label>Clave<input id="lg_clave" type="password" placeholder="Tu clave" autocomplete="off" onkeydown="if(event.key==='Enter')hacerLogin()"/></label>`}
+        <button class="bp" onclick="hacerLogin()">Entrar</button>
+      </div>
+      <p class="hint" style="text-align:center;margin-top:.7rem">Los operarios entran solo con su nombre. Si no tenés usuario, pedile el alta a un administrador.</p>
+    </div>
+  </div>`;
+}
+
+// Modo solo-lectura para operarios: oculta acciones y bloquea inputs que no sean filtros
+function aplicarModoLectura(){
+  if(!esOperario())return;
+  const permitido=/^\s*(setF|toggleF|limpiarF|cerrarPopupRec)/;
+  const main=document.querySelector("main"); if(!main)return;
+  main.querySelectorAll("[onclick]").forEach(el=>{
+    if(!permitido.test(el.getAttribute("onclick")||""))el.style.display="none";
+  });
+  main.querySelectorAll("input,select,textarea").forEach(el=>{
+    if(!permitido.test(el.getAttribute("onchange")||""))el.disabled=true;
+  });
 }
 
 function buildApp(){
   return `
     ${buildHeader()}
     ${buildSyncBar()}
-    <nav id="nav">${TABS.map((t,i)=>`<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`).join("")}</nav>
+    <nav id="nav">${TABS.map((t,i)=>{
+      if(i===10&&!esAdmin())return "";
+      if(esOperario()&&!OP_TABS.includes(i))return "";
+      return `<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`;
+    }).join("")}</nav>
     ${buildModalCampos()}
     ${buildModalActs()}
     ${buildPopupRecordatorios()}
@@ -367,6 +468,7 @@ function buildApp(){
       ${state.tab===7 ? renderIatf() : ""}
       ${state.tab===8 ? renderSenasa() : ""}
       ${state.tab===9 ? renderPar() : ""}
+      ${state.tab===10 ? renderUsuarios() : ""}
     </main>`;
 }
 
@@ -375,10 +477,15 @@ function buildHeader(){
     <img src="${LOGO}" alt="Logo"/>
     <div class="htitulo"><h1>Stock Ganadero</h1><p>Sistema de gestion de rodeo — Tiempo real</p></div>
     <div class="hbtns">
+      <span style="display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:.3rem .8rem;font-size:.78rem;color:#f0e6c8;font-weight:600">
+        👤 ${h(usuarioActual()?usuarioActual().nombre:"")}
+        <span style="font-size:.62rem;font-weight:800;letter-spacing:.5px;background:${esAdmin()?"#d8b84a":"#6a9a3a"};color:#2a2210;border-radius:6px;padding:.1rem .4rem">${esAdmin()?"ADMIN":"OPERARIO"}</span>
+      </span>
+      <button class="hbtn" style="background:rgba(160,60,40,.5);border-color:rgba(220,120,90,.4)" onclick="salirApp()">🚪 Salir</button>
       <button class="hbtn grn" id="btnExcel">📊 Excel</button>
       <button class="hbtn blu" id="btnPDF">🖨️ PDF</button>
-      <button class="hbtn org" id="btnBackup">💾 Backup</button>
-      <button class="hbtn" style="background:rgba(120,60,160,.5);border-color:rgba(160,100,220,.4)" id="btnRestaurar">♻️ Restaurar</button>
+      ${esAdmin()?`<button class="hbtn org" id="btnBackup">💾 Backup</button>`:""}
+      ${esAdmin()?`<button class="hbtn" style="background:rgba(120,60,160,.5);border-color:rgba(160,100,220,.4)" id="btnRestaurar">♻️ Restaurar</button>`:""}
       <input type="file" id="fileRestaurar" accept=".json" style="display:none"/>
     </div>
   </header>`;
@@ -643,7 +750,7 @@ function renderAct(){
   </div>
   <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
-    <p class="hint" style="color:#5a3a6a">Para ventas o muertes usá destino "Baja". Solo afecta el Stock Reproductivo. Los subgrupos descuentan/suman también en su grupo: Cut cuenta dentro de Preñez; 2da oportunidad y Descarte dentro de Vacías (ej: Cut → Baja resta de Cut y de Preñez).</p>
+    <p class="hint" style="color:#5a3a6a">Para ventas o muertes usá destino "Baja". Solo afecta el Stock Reproductivo. Las Cut cuentan dentro de Preñez: si sacás una Cut (a Vacías o Baja) resta de Cut y también de Preñez.</p>
     <div class="fg">
       <label>Estado origen<select id="ce_origen">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte"],ef?ef.ceOrigen:"","-- Seleccionar --")}</select></label>
       <label>Estado destino<select id="ce_destino">${opts(["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"],ef?ef.ceDestino:"","-- Seleccionar --")}</select></label>
@@ -1856,6 +1963,7 @@ async function restaurarBackup(file){
       if(data.actividadesCustom) await set(ref(db,"actividadesCustom"),data.actividadesCustom);
       if(data.actBaseOff) await set(ref(db,"actBaseOff"),data.actBaseOff);
       if(data.ventasPlan) await set(ref(db,"ventasPlan"),data.ventasPlan);
+      if(data.usuarios) await set(ref(db,"usuarios"),data.usuarios);
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
       if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
@@ -1867,11 +1975,62 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.0",fecha:new Date().toISOString(),mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
   toast("💾 Backup descargado");
+}
+
+// ── USUARIOS ──
+function renderUsuarios(){
+  if(!esAdmin())return "";
+  const lista=Object.values(state.usuarios).filter(Boolean).sort((a,b)=>{
+    if((a.rol==="admin")!==(b.rol==="admin"))return a.rol==="admin"?-1:1;
+    return a.nombre.localeCompare(b.nombre);
+  });
+  const yo=state.sesion.id;
+  const nr=state.nuevoUserRol;
+  return `
+<div class="card">
+  <h2>👥 Usuarios</h2>
+  <p class="hint">Los administradores entran con nombre + clave y tienen acceso a toda la app. Los operarios entran solo con su nombre y ven Stock, Comercializable, Stock Reprod., Productivo e IATF en modo lectura (pueden filtrar, no cargar ni modificar). Al dar de baja a alguien, no puede entrar más — y si está usando la app en ese momento, se le cierra la sesión sola.</p>
+  <div class="br">
+    <button class="bp" onclick="abrirNuevoUser('operario')">➕ Agregar operario</button>
+    <button class="bp" style="background:#a06a1f" onclick="abrirNuevoUser('admin')">➕ Agregar administrador</button>
+  </div>
+  ${nr?`
+  <div style="background:#faf6ec;border:1.5px solid #c8a860;border-radius:8px;padding:.9rem;margin-top:.7rem">
+    <h3>${nr==="admin"?"➕ Nuevo administrador":"➕ Nuevo operario"}</h3>
+    <div class="fg">
+      <label>Nombre *<input id="nu_nombre" placeholder="Ej: Leo" autocomplete="off"/></label>
+      ${nr==="admin"?`<label>Clave *<input id="nu_clave" type="text" placeholder="Clave del administrador" autocomplete="off"/></label>`:""}
+    </div>
+    ${nr==="admin"?"":`<p class="hint">El operario va a entrar solo con este nombre, sin clave.</p>`}
+    <div class="br">
+      <button class="bp" onclick="guardarNuevoUser()">💾 Guardar</button>
+      <button class="bs" onclick="cancelarNuevoUser()">Cancelar</button>
+    </div>
+  </div>`:""}
+</div>
+<div class="card">
+  ${lista.length===0?`<p class="empty">No hay usuarios.</p>`:lista.map(u=>`
+  <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;border-left:4px solid ${u.baja?"#a8a090":(u.rol==="admin"?"#a06a1f":"#3d6428")};background:${u.baja?"#f2efe8":"#fdfbf6"};border-radius:8px;padding:.7rem .9rem;margin-bottom:.55rem;${u.baja?"opacity:.75":""}">
+    <div style="flex:1;min-width:140px">
+      <strong>${h(u.nombre)}</strong> ${u.id===yo?`<small style="color:#888">(vos)</small>`:""}
+      <div style="margin-top:.2rem">
+        <span style="font-size:.62rem;font-weight:800;letter-spacing:.5px;background:${u.rol==="admin"?"#e8d090":"#cfe0b8"};color:#3a3010;border-radius:6px;padding:.15rem .5rem">${u.rol==="admin"?"ADMINISTRADOR":"OPERARIO"}</span>
+        ${u.baja?`<span style="font-size:.62rem;font-weight:800;letter-spacing:.5px;background:#c84a28;color:#fff;border-radius:6px;padding:.15rem .5rem;margin-left:.3rem">DADO DE BAJA</span>`:""}
+      </div>
+    </div>
+    <span style="display:flex;gap:.25rem;flex-wrap:wrap">
+      ${u.rol==="admin"?`<button class="bi" title="Cambiar clave" onclick="claveUser('${u.id}')">🔑</button>`:""}
+      <button class="bi" title="Renombrar" onclick="renombrarUser('${u.id}')">✏️</button>
+      <button class="bi" title="${u.baja?"Reactivar":"Dar de baja"}" onclick="bajaUser('${u.id}')">${u.baja?"♻️":"⛔"}</button>
+      <button class="bi" title="Eliminar" onclick="eliminarUser('${u.id}')">🗑️</button>
+    </span>
+  </div>`).join("")}
+</div>`;
 }
 
 // ── MODAL CAMPOS ──
@@ -2026,6 +2185,101 @@ window.setFABuscar=function(v){
   render();
   // restaurar foco y cursor en el input de busqueda tras el re-render
   setTimeout(()=>{const el=document.getElementById("aBuscar");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
+};
+// ── SESION Y USUARIOS ──
+function guardarSesion(id){ state.sesion={id}; try{localStorage.setItem("sg_sesion",JSON.stringify({id}));}catch(e){} }
+window.modoLogin=function(m){ state.loginModo=m; state.loginErr=""; render(); };
+window.crearPrimerAdmin=async function(){
+  const nombre=(document.getElementById("su_nombre").value||"").trim();
+  const c1=document.getElementById("su_clave").value;
+  const c2=document.getElementById("su_clave2").value;
+  if(!nombre){state.setupErr="Escribí el nombre del administrador.";render();return;}
+  if(!c1){state.setupErr="Elegí una clave.";render();return;}
+  if(c1!==c2){state.setupErr="Las claves no coinciden.";render();return;}
+  const id=uid();
+  await set(ref(db,`usuarios/${id}`),{id,nombre,rol:"admin",clave:c1,baja:false});
+  state.setupErr="";
+  guardarSesion(id);
+  render();
+  toast("✅ Administrador creado. ¡Bienvenido, "+nombre+"!");
+};
+window.hacerLogin=function(){
+  const nombre=(document.getElementById("lg_nombre").value||"").trim();
+  if(!nombre){state.loginErr="Escribí tu nombre.";render();return;}
+  const u=Object.values(state.usuarios).find(x=>x&&x.nombre.toLowerCase()===nombre.toLowerCase());
+  if(!u){state.loginErr="No encontramos ese nombre. Pedile a un administrador que te dé de alta.";render();return;}
+  if(u.baja){state.loginErr="Tu acceso fue dado de baja. Contactá a un administrador.";render();return;}
+  if(state.loginModo==="admin"){
+    if(u.rol!=="admin"){state.loginErr="Ese nombre no es de administrador. Entrá por la pestaña Operario.";render();return;}
+    const cl=document.getElementById("lg_clave").value;
+    if(cl!==u.clave){state.loginErr="Clave incorrecta.";render();return;}
+  }else{
+    if(u.rol==="admin"){state.loginErr="Sos administrador: entrá por la pestaña Administrador con tu clave.";render();return;}
+  }
+  state.loginErr="";
+  guardarSesion(u.id);
+  if(u.rol!=="admin"&&!OP_TABS.includes(state.tab))state.tab=OP_TABS[0];
+  render();
+  toast("👋 Hola, "+u.nombre);
+};
+window.salirApp=function(){
+  state.sesion=null;
+  try{localStorage.removeItem("sg_sesion");}catch(e){}
+  state.loginErr=""; state.loginModo="operario";
+  render();
+};
+window.abrirNuevoUser=function(rol){ state.nuevoUserRol=rol; render(); };
+window.cancelarNuevoUser=function(){ state.nuevoUserRol=null; render(); };
+window.guardarNuevoUser=async function(){
+  const rol=state.nuevoUserRol; if(!rol)return;
+  const nombre=(document.getElementById("nu_nombre").value||"").trim();
+  if(!nombre)return alert("Escribí el nombre.");
+  if(Object.values(state.usuarios).some(x=>x&&x.nombre.toLowerCase()===nombre.toLowerCase()))return alert("Ya existe un usuario con ese nombre.");
+  let clave="";
+  if(rol==="admin"){
+    clave=(document.getElementById("nu_clave").value||"").trim();
+    if(!clave)return alert("Los administradores necesitan una clave.");
+  }
+  const id=uid();
+  const u={id,nombre,rol,baja:false};
+  if(rol==="admin")u.clave=clave;
+  await set(ref(db,`usuarios/${id}`),u);
+  state.nuevoUserRol=null;
+  toast("✅ "+(rol==="admin"?"Administrador":"Operario")+" agregado: "+nombre);
+};
+window.renombrarUser=async function(id){
+  const u=state.usuarios[id]; if(!u)return;
+  const nombre=(prompt("Nuevo nombre para "+u.nombre+":",u.nombre)||"").trim();
+  if(!nombre||nombre===u.nombre)return;
+  if(Object.values(state.usuarios).some(x=>x&&x.id!==id&&x.nombre.toLowerCase()===nombre.toLowerCase()))return alert("Ya existe un usuario con ese nombre.");
+  await set(ref(db,`usuarios/${id}`),{...u,nombre});
+  toast("✏️ Renombrado a "+nombre);
+};
+window.claveUser=async function(id){
+  const u=state.usuarios[id]; if(!u||u.rol!=="admin")return;
+  const clave=(prompt("Nueva clave para "+u.nombre+":")||"").trim();
+  if(!clave)return;
+  await set(ref(db,`usuarios/${id}`),{...u,clave});
+  toast("🔑 Clave actualizada");
+};
+window.bajaUser=async function(id){
+  const u=state.usuarios[id]; if(!u)return;
+  if(!u.baja){
+    if(u.rol==="admin"&&adminsActivos().length<=1)return alert("No podés dar de baja al único administrador activo.");
+    if(!confirm("¿Dar de baja a "+u.nombre+"? No va a poder entrar más a la app hasta que lo reactives."))return;
+    await set(ref(db,`usuarios/${id}`),{...u,baja:true});
+    toast("⛔ "+u.nombre+" dado de baja");
+  }else{
+    await set(ref(db,`usuarios/${id}`),{...u,baja:false});
+    toast("♻️ "+u.nombre+" reactivado");
+  }
+};
+window.eliminarUser=async function(id){
+  const u=state.usuarios[id]; if(!u)return;
+  if(u.rol==="admin"&&adminsActivos().filter(a=>a.id!==id).length===0)return alert("No podés eliminar al único administrador activo.");
+  if(!confirm("¿Eliminar definitivamente a "+u.nombre+"? Si solo querés que no entre más, usá Dar de baja."))return;
+  await remove(ref(db,`usuarios/${id}`));
+  toast("🗑️ Usuario eliminado");
 };
 window.setFS=function(k,v){state.filtStock[k]=v;render();};
 function guardarFiltCom(){try{localStorage.setItem("sg_filtCom",JSON.stringify({cats:state.filtCom.cats||[]}));}catch(e){}}
