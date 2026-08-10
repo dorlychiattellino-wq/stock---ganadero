@@ -109,9 +109,78 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 <body>
 <div id="root"><div class="loading"><div class="spinner"></div><span>Conectando con la base de datos...</span></div></div>
 
+<script>
+// Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+}
+</script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set as _set, get, remove as _remove, onValue as _onValue, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+/* ══════════ CAPA OFFLINE ══════════
+   1) Cache local: cada dato que llega de Firebase se guarda en el dispositivo.
+      Al abrir sin señal, la app arranca al instante con los últimos datos vistos.
+   2) Cola de escrituras: lo que se carga/edita sin señal queda guardado en el
+      dispositivo y se sube solo cuando vuelve el internet (aunque hayas cerrado la app). */
+function pathOf(r){
+  try{ return decodeURIComponent(new URL(r.toString()).pathname.slice(1)); }catch(e){ return ""; }
+}
+function onValue(r,cb){
+  const path=pathOf(r);
+  const cacheable=path&&!path.startsWith(".info");
+  if(cacheable){
+    try{
+      const c=localStorage.getItem("sgcache_"+path);
+      if(c!==null) cb({ val:()=>JSON.parse(c) });   // hidratar al instante desde el dispositivo
+    }catch(e){}
+  }
+  return _onValue(r,snap=>{
+    if(cacheable){ try{ localStorage.setItem("sgcache_"+path,JSON.stringify(snap.val())); }catch(e){} }
+    cb(snap);
+  });
+}
+function leerCola(){ try{ return JSON.parse(localStorage.getItem("sg_cola")||"[]"); }catch(e){ return []; } }
+function guardarCola(c){ try{ localStorage.setItem("sg_cola",JSON.stringify(c.slice(-500))); }catch(e){} }
+function encolar(op){ const c=leerCola(); c.push(op); guardarCola(c); }
+function sacarDeCola(id){ guardarCola(leerCola().filter(o=>o.id!==id)); }
+function opId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+function set(r,val){
+  const op={id:opId(),t:"set",path:pathOf(r),val:val===undefined?null:val};
+  encolar(op);
+  _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(()=>sacarDeCola(op.id));
+  actualizarBarraPendientes();
+  return Promise.resolve();  // no esperar al servidor: sin señal, la app sigue andando
+}
+function remove(r){
+  const op={id:opId(),t:"del",path:pathOf(r)};
+  encolar(op);
+  _remove(r).then(()=>sacarDeCola(op.id)).catch(()=>sacarDeCola(op.id));
+  actualizarBarraPendientes();
+  return Promise.resolve();
+}
+let colaReintentando=false;
+function reintentarCola(){
+  if(colaReintentando)return;
+  const c=leerCola(); if(c.length===0)return;
+  colaReintentando=true;
+  let rest=c.length;
+  for(const op of c){
+    const r=ref(db,op.path);
+    const p=op.t==="del"?_remove(r):_set(r,op.val);
+    p.then(()=>sacarDeCola(op.id)).catch(()=>{}).finally(()=>{ if(--rest===0){colaReintentando=false;actualizarBarraPendientes();} });
+  }
+}
+function actualizarBarraPendientes(){ if(typeof render==="function"&&state&&state.loaded&&state.usuariosLoaded)render(); }
+// Aviso si la app nunca se abrio con internet en este dispositivo
+setTimeout(()=>{
+  const r=document.getElementById("root");
+  if(r&&/Conectando/.test(r.textContent||"")&&leerColaCacheVacia()){
+    r.innerHTML='<div style="max-width:420px;margin:15vh auto;background:#fdfbf6;border-radius:12px;padding:1.5rem;text-align:center;font-family:sans-serif;color:#4a3820"><h2>📡 Sin señal</h2><p style="margin-top:.6rem;font-size:.95rem">Este dispositivo todavía no tiene los datos guardados. Abrí la app una vez con internet y después va a funcionar sin señal.</p></div>';
+  }
+},8000);
+function leerColaCacheVacia(){ try{ return localStorage.getItem("sgcache_mov")===null; }catch(e){ return true; } }
 
 const firebaseConfig = {
   apiKey: "AIzaSyBRHHCKsQ1Sz8o_hJ3Q0oKFiqaSWCyr5Wg",
@@ -268,9 +337,10 @@ onValue(ref(db,"recordatorios"), snap => {
   render();
 });
 
-// Detectar conexión online/offline
+// Detectar conexión online/offline (al volver la señal, sube lo pendiente)
 onValue(ref(db,".info/connected"), snap => {
   state.online = snap.val() === true;
+  if(state.online) reintentarCola();
   render();
 });
 
@@ -495,9 +565,10 @@ function buildSyncBar(){
   const online = state.online;
   const nmov = Object.keys(state.mov).length;
   const nact = Object.keys(state.act).length;
+  const pend = leerCola().length;
   return `<div class="sync-bar">
     <span class="sync-dot${online?"":""} ${online?"":"offline"}"></span>
-    <span>${online ? "🟢 Conectado — datos en tiempo real" : "🔴 Sin conexion — reconectando..."}</span>
+    <span>${online ? (pend>0?`🟢 Conectado — subiendo ${pend} cambio(s) pendiente(s)...`:"🟢 Conectado — datos en tiempo real") : "📡 Sin señal — viendo datos guardados en el dispositivo"+(pend>0?` · ${pend} cambio(s) esperando para subir`:" · lo que cargues se sube al volver la señal")}</span>
     <span style="margin-left:auto;opacity:.7">${nmov} movimientos · ${nact} actividades</span>
   </div>`;
 }
