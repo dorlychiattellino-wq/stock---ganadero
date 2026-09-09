@@ -205,8 +205,9 @@ const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunac
 const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
 const PADRE_ESTADO = {"Cut":"Preñez"};
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","🐮 Animales","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
-const OP_TABS = [2,3,4,5,7,8]; // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
+const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","🐮 Animales","🐂 Manga","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
+const MANGA_TAB = 9;
+const OP_TABS = [MANGA_TAB]; // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -236,7 +237,9 @@ let state = {
   modoPesaje: false, pesFecha: "", pesAnimal: null, pesLog: [], papelTxt: "", papelPrev: null,
   eventos: {},        // {id: {animal, fecha, hora, tipo, producto, dosis, enfermedad, obs, origen, sesion}}
   trTxt: "", trPrev: null, masivaOpen: false,
-  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,acts:[],animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false},
+  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,tipos:[],productos:[],dosis:"",over:null,tactoRes:"",animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false,sesionId:"",nuevoTipo:"",nuevoProd:""},
+  mangaSesiones: {},  // {id:{id,fecha,campo,ciclo,tipos,productos,animales:[],tactos:{key:res},usuario,actualizado}}
+  mangaCatalogo: {tipos:[],productos:[]},
   movGrupoTxt: "",
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
   filtTactoIatf: {ciclo:"",campo:""},
@@ -516,6 +519,7 @@ function buildLogin(){
 // Modo solo-lectura para operarios: oculta acciones y bloquea inputs que no sean filtros
 function aplicarModoLectura(){
   if(!esOperario())return;
+  if(state.tab===MANGA_TAB)return; // en la manga el operario trabaja con todo habilitado
   const permitido=/^\s*(setF|toggleF|limpiarF|cerrarPopupRec)/;
   const main=document.querySelector("main"); if(!main)return;
   main.querySelectorAll("[onclick]").forEach(el=>{
@@ -531,7 +535,7 @@ function buildApp(){
     ${buildHeader()}
     ${buildSyncBar()}
     <nav id="nav">${TABS.map((t,i)=>{
-      if(i===11&&!esAdmin())return "";
+      if(i===12&&!esAdmin())return "";
       if(esOperario()&&!OP_TABS.includes(i))return "";
       return `<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`;
     }).join("")}</nav>
@@ -548,9 +552,10 @@ function buildApp(){
       ${state.tab===6 ? renderComp() : ""}
       ${state.tab===7 ? renderIatf() : ""}
       ${state.tab===8 ? renderAnimales() : ""}
-      ${state.tab===9 ? renderSenasa() : ""}
-      ${state.tab===10 ? renderPar() : ""}
-      ${state.tab===11 ? renderUsuarios() : ""}
+      ${state.tab===9 ? renderMangaTab() : ""}
+      ${state.tab===10 ? renderSenasa() : ""}
+      ${state.tab===11 ? renderPar() : ""}
+      ${state.tab===12 ? renderUsuarios() : ""}
     </main>`;
 }
 
@@ -834,6 +839,7 @@ function renderAct(){
       <label>de ellas: Descarte<input id="tt_dsc" type="number" min="0" value="" placeholder="0"/></label>
     </div>
     <div id="tt_total" style="font-size:.85rem;color:#3a5a2a;font-weight:600;margin-top:.3rem"></div>
+    ${(()=>{const ss=sesionesMangaLista().filter(x=>x.tactos&&Object.keys(x.tactos).length);return ss.length?`<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap;align-items:center"><span class="km">📥 Tomar resultados de una manga:</span><select id="tt_ses" style="width:auto">${ss.map(x=>`<option value="${x.id}">${fmtF(x.fecha)} ${h(x.campo||"")} · ${Object.keys(x.tactos).length} tactos</option>`).join("")}</select><button type="button" class="bs" onclick="tactoDesdeManga()">Completar</button></div>`:"";})()}
   </div>
   <div id="cambioPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Cambio de estado"?"":"display:none"};background:#f5eef8;border:1.5px solid #9a5ac0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#5a1e6a;margin-bottom:.7rem">🔄 Cambio de Estado Reproductivo</h3>
@@ -2058,6 +2064,8 @@ async function restaurarBackup(file){
       if(data.animales) await set(ref(db,"animales"),data.animales);
       if(data.pesadas) await set(ref(db,"pesadas"),data.pesadas);
       if(data.eventos) await set(ref(db,"eventos"),data.eventos);
+      if(data.mangaSesiones) await set(ref(db,"mangaSesiones"),data.mangaSesiones);
+      if(data.mangaCatalogo) await set(ref(db,"mangaCatalogo"),data.mangaCatalogo);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -2066,7 +2074,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -3033,6 +3041,8 @@ function entoreInfo(madre,fechaNac){
 onValue(ref(db,"animales"), snap => { state.animales = snap.val() || {}; render(); });
 onValue(ref(db,"pesadas"), snap => { state.pesadas = snap.val() || {}; render(); });
 onValue(ref(db,"eventos"), snap => { state.eventos = snap.val() || {}; render(); });
+onValue(ref(db,"mangaSesiones"), snap => { state.mangaSesiones = snap.val() || {}; render(); });
+onValue(ref(db,"mangaCatalogo"), snap => { const v=snap.val()||{}; state.mangaCatalogo={tipos:v.tipos||[],productos:v.productos||[]}; render(); });
 
 // ── RENDER ──
 function renderAnimales(){
@@ -3071,7 +3081,8 @@ function renderAnimales(){
   </div>
 </div>
 
-${renderBaston()}
+${renderLectura()}
+${esAdmin()?renderSesionesManga():""}
 ${esAdmin()?renderPapel():""}
 ${esAdmin()?renderImportTrat():""}
 ${esAdmin()?renderMasiva(lista):""}
@@ -3179,6 +3190,7 @@ function renderFichaAnimal(a,clist,razasList){
     <label>Ciclo<input id="an_ciclo" list="an-ciclos" value="${h(cicloDe(a))}" placeholder="Ej: 2025/2026"/><datalist id="an-ciclos">${[...new Set([...ciclos(),cicloActual()])].map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Corral / rodeo (Hook)<input id="an_corral" value="${h(a.corral||"")}"/></label>
     <label>Ingreso<input id="an_ingreso" type="date" value="${h(a.ingreso||"")}"/></label>
+    <label>Estado reproductivo<select id="an_estadoRep">${opts(["preñada","cut","vacía","2da oportunidad","descarte","entorada"],a.estadoRep||"","—")}</select></label>
     <label>Estado<select id="an_estado">${EST_ANIM.map(([v,l])=>`<option value="${v}"${(a.estado||"activo")===v?" selected":""}>${l}</option>`).join("")}</select></label>
     <label>Fecha de baja<input id="an_fechaBaja" type="date" value="${h(a.fechaBaja||"")}"/></label>
     <label class="s2">Observaciones<input id="an_obs" value="${h(a.obs||"")}"/></label>
@@ -3250,8 +3262,8 @@ function procesarLecturaBaston(txt){
   let a=state.animales[eid]||null;
   if(!a)a=Object.values(state.animales).find(x=>x&&limpiarEID(x.caravana).endsWith(eid)&&eid.length>=4)||null;
   const M=state.manga;
-  if(M.on){ M.extra=M.catOpen=M.bajaOpen=false; M.peso="";
-    if(a){ M.animal=a.key; M.nuevoEID=""; render(); if(!M.pesar&&!M.acts.length){ /* solo registra paso */ } return; }
+  if(M.on){ M.extra=M.catOpen=M.bajaOpen=false; M.peso=""; M.over=null; M.tactoRes="";
+    if(a){ M.animal=a.key; M.nuevoEID=""; render();  return; }
     M.animal=null; M.nuevoEID=eid; render(); return; }
   if(a){ toast("🔎 "+nombreAnimal(a)+" · "+(a.cat||"")); setFAnimSel(a.key); }
   else { toast("❓ Caravana "+eid+" no registrada"); state.animNuevo=true; state.nuevoEID=eid.length>=12?eid:""; state.animSel=null; render(); enfocar("nu_visual"); }
@@ -3276,7 +3288,7 @@ window.conectarBaston=async function(){
 
 function leerFicha(prefix){
   const g=id=>{const el=document.getElementById(prefix+id);return el?el.value.trim():"";};
-  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),ciclo:g("ciclo"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
+  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),ciclo:g("ciclo"),estadoRep:g("estadoRep"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
 }
 window.guardarAnimal=async function(){
   const a=state.animales[state.animSel]; if(!a)return;
@@ -3498,7 +3510,7 @@ window.eliminarEvento=async function(id){ if(!confirm("¿Eliminar esta actividad
 function renderMasiva(lista){
   const activos=lista.filter(a=>(a.estado||"activo")==="activo");
   const f=state.filtAnim; const desc=[f.campo,f.cat,f.sexo,f.raza,f.buscar?'"'+f.buscar+'"':""].filter(Boolean).join(" · ")||"todos los activos";
-  const hoyManga=[...new Set(state.manga.grupo||[])];
+  const hoyManga=[];
   return `
 <div class="card" style="background:#eef3f8;border:1.5px solid #6a8ab0">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
@@ -3508,7 +3520,7 @@ function renderMasiva(lista){
   ${state.masivaOpen?`
   <p class="hint">Registra una misma actividad en un grupo. El grupo se arma con los filtros del listado de abajo (campo, categoría, búsqueda), con los animales pesados hoy en manga, o pegando caravanas.</p>
   <div class="fg">
-    <label>Aplicar a<select id="ma_grupo"><option value="filtro">Listado filtrado: ${activos.length} animales (${h(desc)})</option><option value="manga">Grupo de manga: ${hoyManga.length}</option><option value="lista">Caravanas que pego abajo</option></select></label>
+    <label>Aplicar a<select id="ma_grupo"><option value="filtro">Listado filtrado: ${activos.length} animales (${h(desc)})</option>${sesionesMangaLista().map(x=>`<option value="ses:${x.id}">Manga ${fmtF(x.fecha)} ${h(x.campo||"")} (${(x.animales||[]).length})</option>`).join("")}<option value="lista">Caravanas que pego abajo</option></select></label>
     <label>Fecha<input id="ma_fecha" type="date" value="${hoyISO()}"/></label>
     <label>Tipo<select id="ma_tipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
     <label>Producto / detalle<input id="ma_producto" placeholder="Ej: Moskithion"/></label>
@@ -3526,7 +3538,7 @@ window.aplicarMasiva=async function(){
   const grupo=g("ma_grupo"), fecha=g("ma_fecha"), tipo=g("ma_tipo"), producto=g("ma_producto");
   if(!fecha)return alert("Cargá la fecha."); if(!producto&&!["Destete","Tacto","Parto","Servicio","Observación"].includes(tipo))return alert("Cargá el producto o detalle.");
   let keys=[];
-  if(grupo==="manga"){ keys=[...new Set(state.manga.grupo||[])]; }
+  if(grupo.startsWith("ses:")){ const ss=state.mangaSesiones[grupo.slice(4)]; keys=[...new Set((ss&&ss.animales)||[])]; }
   else if(grupo==="lista"){ const refs=g("ma_lista").split(/[\n,;\s]+/).filter(Boolean); const nf=[]; for(const r of refs){const a=buscarAnimalRef(r); if(a)keys.push(a.key); else nf.push(r);} keys=[...new Set(keys)]; if(nf.length&&!confirm("No encontré: "+nf.join(", ")+"\n\n¿Continuar con los "+keys.length+" encontrados?"))return; }
   else { const f=state.filtAnim; keys=Object.values(state.animales).filter(a=>a&&(a.estado||"activo")==="activo"&&(!f.campo||a.campo===f.campo)&&(!f.cat||a.cat===f.cat)&&(!f.sexo||a.sexo===f.sexo)&&(!f.ciclo||cicloDe(a)===f.ciclo)&&(!f.raza||a.raza===f.raza)&&(!f.buscar||normTxt(a.visual).includes(normTxt(f.buscar))||limpiarEID(a.caravana).includes(f.buscar.replace(/\D/g,""))||normTxt(a.corral).includes(normTxt(f.buscar)))).map(a=>a.key); }
   if(keys.length===0)return alert("El grupo está vacío.");
@@ -3637,7 +3649,7 @@ function renderLectura(){
 <div class="card" style="background:#fdf7e8;border:2px solid #d0a040">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem">
     <div><h2 style="color:#7a5010;margin:0">📡 Bastón / Manga</h2><div class="km">Buscar un animal por caravana, o abrir el modo manga para trabajar con todos los que pasan.</div></div>
-    ${esAdmin()?`<button style="${BTN_A};flex:0 0 auto" onclick="setFAnimModoPesaje(true)">🐂 ABRIR MODO MANGA</button>`:""}
+    <button class="bs" onclick="state.tab=MANGA_TAB;render()">🐂 Ir a la pestaña Manga</button>
   </div>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.7rem">
     <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="Pasá el bastón o escribí los últimos dígitos" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.7rem .8rem;font-size:1.1rem;font-family:monospace;background:#fff"/>
@@ -3645,128 +3657,159 @@ function renderLectura(){
   </div>
 </div>`;
 }
+function TIPOS_MANGA(){ return [...new Set(["Caravaneo","Marcación","Señalada","Castración","Vacunación","Antiparasitario","Tratamiento","Vitaminas / minerales","Baño / mosquicida","Destete","Tacto","Pesaje","Cambio de rodeo","Observación",...(state.mangaCatalogo.tipos||[]),...(typeof actividadesAll==="function"?actividadesAll():[]).filter(x=>!["Tacto","Traslado de rodeo","Cambio de estado","IATF","Otro"].includes(x))])]; }
+function PRODS_MANGA(){ const hist=Object.values(state.eventos).filter(Boolean).map(e=>e.producto).filter(x=>x&&!/^(Ingreso|Egreso|Categoría|Preñada|Vacía|Cut|2da|Descarte|preñada|vacía|cut|descarte)/.test(x)&&!x.includes(", ")); return [...new Set(["Moskithion","Nutrimin","Recomendasol","Thilmicocina",...(state.mangaCatalogo.productos||[]),...hist])].sort(); }
+const TACTO_RES=[["preñada","🟢 PREÑADA"],["cut","🟢 CUT"],["vacía","🔴 VACÍA"],["2da oportunidad","🟠 2DA OPORT."],["descarte","⚫ DESCARTE"]];
+function chip(txt,on,onclick,color){ return `<button onclick="${onclick}" style="border-radius:22px;padding:.55rem .9rem;font-size:.95rem;font-weight:700;border:2px solid ${color||"#2d4a1e"};background:${on?(color||"#2d4a1e"):"#fff"};color:${on?"#fff":(color||"#2d4a1e")}">${on?"✔ ":""}${h(txt)}</button>`; }
+function renderChips(tipos,productos,dosis,fn){
+  return `<div><strong>¿Qué se le hace a cada animal?</strong> <span class="km">(tocá una o varias)</span>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${TIPOS_MANGA().map(t=>chip(t,tipos.includes(t),`${fn}('tipo','${h(t)}')`)).join("")}
+      <input id="mg_ntipo" placeholder="+ otra actividad" onchange="${fn}('nuevoTipo',this.value);this.value=''" style="width:170px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #2d4a1e"/></div>
+    <strong>Producto</strong> <span class="km">(opcional, uno o varios)</span>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${PRODS_MANGA().map(t=>chip(t,productos.includes(t),`${fn}('prod','${h(t)}')`,"#1e4a7a")).join("")}
+      <input id="mg_nprod" placeholder="+ otro producto" onchange="${fn}('nuevoProd',this.value);this.value=''" style="width:170px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #1e4a7a"/></div>
+    <div style="display:flex;gap:.5rem;align-items:center"><span><strong>Dosis</strong> <span class="km">(opcional)</span></span><input id="mg_dosis" value="${h(dosis||"")}" onchange="${fn}('dosis',this.value)" placeholder="Ej: 5 ml" style="width:140px"/></div></div>`;
+}
+function mangaActsDe(M){ return M.over?{tipos:M.over.tipos,productos:M.over.productos,dosis:M.over.dosis}:{tipos:M.tipos,productos:M.productos,dosis:M.dosis}; }
+function renderMangaTab(){ const M=state.manga; M.on=true; if(!M.fecha)M.fecha=hoyISO(); if(!M.ciclo)M.ciclo=cicloActual(); if(!M.campo&&!M.cfg&&!M.grupo.length)M.cfg=true; if(!M.sesionId)M.sesionId=uid(); return renderManga(); }
 function renderManga(){
   const M=state.manga; const clist=campos(); const a=M.animal?state.animales[M.animal]:null;
   const ult=a?pesadasDe(a.key).slice(-1)[0]:null;
   const cicl=[...new Set([...ciclos(),cicloActual()])].sort();
-  const resumen=`${fmtF(M.fecha||hoyISO())} · ${M.campo||"sin campo"} · ${M.ciclo||"sin ciclo"} · alta como <strong>${M.altaCat}</strong> · ${M.pesar?"⚖️ pesa":"sin pesar"}${M.acts.length?" · 🩺 "+M.acts.map(x=>x.producto||x.tipo).join(", "):""}`;
+  const acts=mangaActsDe(M); const conTacto=acts.tipos.includes("Tacto");
+  const resumen=`${fmtF(M.fecha||hoyISO())} · <strong>${h(M.campo||"sin campo")}</strong> · ${h(M.ciclo||"")} · alta como ${M.altaCat} · ${M.pesar?"⚖️ pesa":"sin pesar"}${M.tipos.length?" · "+M.tipos.join(" + "):" · sin actividades"}${M.productos.length?" ("+M.productos.join(", ")+")":""}`;
   return `
 <div class="card" style="background:#fff3e0;border:3px solid #e08a20;padding:.9rem">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
-    <h2 style="color:#7a4010;margin:0;font-size:1.4rem">🐂 MANGA <span style="font-size:.9rem;font-weight:400;color:#8a6030">${M.grupo.length} animales en esta sesión</span></h2>
-    <div style="display:flex;gap:.4rem">
-      <button class="bs" onclick="mangaCfg(${M.cfg?"false":"true"})">${M.cfg?"✔ Listo":"⚙️ Sesión"}</button>
-      <button class="bs" onclick="setFAnimModoPesaje(false)">✖ Cerrar</button>
-    </div>
+    <h2 style="color:#7a4010;margin:0;font-size:1.5rem">🐂 MANGA <span style="font-size:.95rem;font-weight:400;color:#8a6030">${M.grupo.length} animales hoy</span></h2>
+    <button style="${M.cfg?BTN_V:BTN_G};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaCfg(${M.cfg?"false":"true"})">${M.cfg?"✔ LISTO, A LA MANGA":"⚙️ Configurar el trabajo de hoy"}</button>
   </div>
-  <div class="km" style="margin:.3rem 0 .6rem">${resumen}</div>
+  <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumen}</div>
   ${M.cfg?`
-  <div style="background:#fff;border-radius:10px;padding:.8rem;border:1.5px solid #e0c090;margin-bottom:.7rem">
+  <div style="background:#fff;border-radius:12px;padding:.9rem;border:2px solid #e0c090;margin-bottom:.7rem">
     <div class="fg">
       <label>Fecha<input id="mg_fecha" type="date" value="${h(M.fecha||hoyISO())}" onchange="setFAnimMg('fecha',this.value)"/></label>
-      <label>Campo (para altas y filtro)<select id="mg_campo" onchange="setFAnimMg('campo',this.value)">${opts(clist,M.campo,"-- Seleccionar --")}</select></label>
-      <label>Ciclo (para altas)<input id="mg_ciclo" list="mg-ciclos" value="${h(M.ciclo)}" onchange="setFAnimMg('ciclo',this.value)" placeholder="Ej: 2026/2027"/><datalist id="mg-ciclos">${cicl.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
-      <label>Raza por defecto<input id="mg_raza" list="an-razas" value="${h(M.raza)}" onchange="setFAnimMg('raza',this.value)"/></label>
+      <label>Campo donde estamos<select id="mg_campo" onchange="setFAnimMg('campo',this.value)">${opts(clist,M.campo,"-- Elegir --")}</select></label>
+      <label>Ciclo (para los nuevos)<input id="mg_ciclo" list="mg-ciclos" value="${h(M.ciclo)}" onchange="setFAnimMg('ciclo',this.value)"/><datalist id="mg-ciclos">${cicl.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+      <label>Raza (para los nuevos)<input id="mg_raza" list="mg-razas" value="${h(M.raza)}" onchange="setFAnimMg('raza',this.value)"/><datalist id="mg-razas">${RAZAS.map(r=>`<option value="${h(r)}"/>`).join("")}</datalist></label>
     </div>
-    <div style="margin:.5rem 0"><strong>Caravana nueva se da de alta como:</strong>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">
-        <button style="${M.altaCat==="Terneros"?BTN_V:BTN_G}" onclick="setFAnimMg('altaCat','Terneros')">♂ TERNEROS</button>
-        <button style="${M.altaCat==="Terneras"?BTN_V:BTN_G}" onclick="setFAnimMg('altaCat','Terneras')">♀ TERNERAS</button>
-        <select onchange="setFAnimMg('altaCat',this.value)" style="flex:1;min-width:140px">${opts(CATS,M.altaCat)}</select>
-      </div>
-      <div class="km" style="margin-top:.3rem">En la manga podés cambiar a Terneros/Terneras animal por animal al darlo de alta.</div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0;align-items:center">
+      <button style="${M.pesar?BTN_V:BTN_G};flex:0 0 auto" onclick="setFAnimMg('pesar',${M.pesar?"false":"true"})">⚖️ ${M.pesar?"Se pesa cada animal":"No se pesa"}</button>
+      <div style="flex:1;min-width:220px"><span class="km">Caravana nueva se da de alta como:</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem;align-items:center">${chip("♂ Terneros",M.altaCat==="Terneros","setFAnimMg('altaCat','Terneros')")}${chip("♀ Terneras",M.altaCat==="Terneras","setFAnimMg('altaCat','Terneras')")}<select onchange="setFAnimMg('altaCat',this.value)" style="width:auto">${opts(CATS,M.altaCat)}</select></div></div>
     </div>
-    <label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0"><input type="checkbox" ${M.pesar?"checked":""} onchange="setFAnimMg('pesar',this.checked)" style="width:auto"/> Pesar cada animal (teclado numérico en pantalla)</label>
-    <label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como ingreso "Nacimiento" (dejalo apagado si esos animales ya están contados en el stock)</label>
-    <div style="margin-top:.6rem"><strong>Actividades automáticas de la sesión</strong> <span class="km">(se registran en cada animal que pasa)</span>
-      ${M.acts.length?`<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${M.acts.map((x,i)=>`<span style="background:#eef5e6;border:1px solid #6a9a3a;border-radius:20px;padding:.3rem .7rem;font-size:.9rem">${h(x.tipo)}: <strong>${h(x.producto)}</strong> ${h(x.dosis)} <a href="#" onclick="mangaQuitarAct(${i});return false" style="color:#c82010;text-decoration:none;margin-left:.3rem">✖</a></span>`).join("")}</div>`:""}
-      <div class="fg" style="margin-top:.3rem">
-        <label>Tipo<select id="mg_atipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
-        <label>Producto<input id="mg_aprod" placeholder="Ej: Moskithion"/></label>
-        <label>Dosis<input id="mg_adosis" placeholder="Ej: 1 kg"/></label>
-        <label style="justify-content:flex-end"><button class="bs" onclick="mangaAgregarAct()">➕ Agregar a la sesión</button></label>
-      </div>
-    </div>
+    ${esAdmin()?`<label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0;font-size:.85rem"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como "Nacimiento" (solo si esos animales NO están contados todavía)</label>`:""}
+    <hr style="border:none;border-top:1px solid #eee;margin:.6rem 0"/>
+    ${renderChips(M.tipos,M.productos,M.dosis,"mangaTog")}
+    <div class="km" style="margin-top:.4rem">Lo que elijas acá se registra solo en cada animal que pasa. Si a uno hay que hacerle algo distinto, usás "➕ Distinto para este animal".</div>
   </div>`:""}
 
-  <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Pasá el bastón (o escribí los últimos dígitos)" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:10px;padding:.9rem 1rem;font-size:1.3rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>
+  <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Tocá acá y pasá el bastón" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>
 
   ${M.nuevoEID?`
   <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #c82010">
-    <div style="font-size:1.1rem;color:#c82010;font-weight:700">❓ Caravana nueva: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
-    <div class="km" style="margin:.2rem 0 .6rem">No está registrada. Elegí la categoría y se da de alta en <strong>${h(M.campo||"(elegí campo en ⚙️ Sesión)")}</strong>, ciclo ${h(M.ciclo||"—")}.</div>
+    <div style="font-size:1.2rem;color:#c82010;font-weight:800">❓ Animal nuevo: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
+    <div style="margin:.2rem 0 .7rem;font-size:1rem">¿Qué es? Se carga en <strong>${h(M.campo||"(falta elegir campo)")}</strong>.</div>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap">
-      <button style="${BTN_V}" onclick="mangaAlta('Terneros')">♂ TERNERO</button>
-      <button style="${BTN_V}" onclick="mangaAlta('Terneras')">♀ TERNERA</button>
+      <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneros')">♂ TERNERO</button>
+      <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneras')">♀ TERNERA</button>
     </div>
-    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">${CATS.filter(c=>!["Terneros","Terneras"].includes(c)).map(c=>`<button class="bs" onclick="mangaAlta('${c}')">${c}</button>`).join("")}
-      <button class="bs" style="color:#c82010" onclick="mangaCancelar()">Ignorar</button></div>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">${CATS.filter(c=>!["Terneros","Terneras"].includes(c)).map(c=>`<button class="bs" style="padding:.6rem .9rem" onclick="mangaAlta('${c}')">${c}</button>`).join("")}
+      <button class="bs" style="color:#c82010;padding:.6rem .9rem" onclick="mangaCancelar()">✖ No cargar</button></div>
   </div>`
   :a?`
   <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #2d4a1e">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;align-items:baseline">
-      <div style="font-size:1.5rem;font-weight:800;color:#2d4a1e">🐄 ${h(nombreAnimal(a))}</div>
-      <div style="font-size:1rem"><strong>${h(a.cat||"")}</strong> · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}${cicloDe(a)?" · "+h(cicloDe(a)):""}</div>
+      <div style="font-size:1.7rem;font-weight:800;color:#2d4a1e">🐄 ${h(nombreAnimal(a))}</div>
+      <div style="font-size:1.1rem"><strong>${h(a.cat||"")}</strong> · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}${a.estadoRep?" · "+h(a.estadoRep):""}</div>
     </div>
-    <div class="km" style="margin:.2rem 0 .6rem">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha||hoyISO())+" días)":"Sin pesadas previas"}${M.acts.length?" · Se registrará: "+M.acts.map(x=>x.producto||x.tipo).join(", "):""}${M.grupo.includes(a.key)?' · <span style="color:#a06a1f">⚠️ ya pasó en esta sesión</span>':""}</div>
+    <div style="margin:.2rem 0 .6rem;font-size:.95rem;color:#5a4020">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha||hoyISO())+" días)":"Sin pesadas previas"}${M.grupo.includes(a.key)?' · <span style="color:#c82010;font-weight:700">⚠️ YA PASÓ HOY</span>':""}</div>
+    <div style="background:${M.over?"#eef3f8":"#eef5e6"};border-radius:8px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:1rem">${M.over?"✏️ <strong>Distinto para este animal:</strong> ":"Se registra: "}${acts.tipos.length?"<strong>"+acts.tipos.join(" + ")+"</strong>":"<span class='km'>ninguna actividad</span>"}${acts.productos.length?" · "+acts.productos.join(", "):""}${acts.dosis?" · "+h(acts.dosis):""}</div>
+    ${conTacto?(()=>{const r=M.tactoRes; const esP=r==="preñada"||r==="cut"; const esV=r==="vacía"||r==="2da oportunidad"||r==="descarte";
+      return `<div style="margin-bottom:.6rem;background:#fff8ee;border:2px solid #e0a050;border-radius:10px;padding:.7rem">
+      <div style="font-size:1.1rem;font-weight:800;color:#7a4010">🩺 TACTO: ${r?`<span style="color:#2d4a1e">${h(r.toUpperCase())}</span>`:"¿resultado?"}</div>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem">
+        <button style="${esP?BTN_V:BTN_G};font-size:1.4rem;padding:1rem" onclick="mangaTacto('preñada')">🟢 PREÑADA</button>
+        <button style="${esV?"background:#c82010;color:#fff;border:none;"+BIG:BTN_R};font-size:1.4rem;padding:1rem" onclick="mangaTacto('vacía')">🔴 VACÍA</button>
+      </div>
+      ${esP?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;align-items:center"><span class="km">Preñada:</span>
+        <button style="${r==="preñada"?BTN_V:BTN_G};padding:.7rem" onclick="mangaTacto('preñada')">Normal</button>
+        <button style="${r==="cut"?BTN_V:BTN_G};padding:.7rem" onclick="mangaTacto('cut')">✂️ CUT</button></div>`:""}
+      ${esV?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;align-items:center"><span class="km">Vacía:</span>
+        <button style="${r==="vacía"?BTN_V:BTN_G};padding:.7rem" onclick="mangaTacto('vacía')">Solo vacía</button>
+        <button style="${r==="2da oportunidad"?BTN_V:BTN_G};padding:.7rem" onclick="mangaTacto('2da oportunidad')">🟠 2da oportunidad</button>
+        <button style="${r==="descarte"?BTN_V:BTN_G};padding:.7rem" onclick="mangaTacto('descarte')">⚫ Descarte</button></div>`:""}
+      </div>`;})():""}
     ${M.pesar?`
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
-      <div style="flex:1;min-width:200px">
-        <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.4rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
+      <div style="flex:1;min-width:210px">
+        <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.6rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">
-          ${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.5rem;padding:.8rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}
+          ${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.6rem;padding:.9rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:.5rem;flex:1;min-width:180px">
-        <button style="${BTN_V};font-size:1.3rem" onclick="mangaOk()">✔ GUARDAR<br><span style="font-size:.85rem;font-weight:400">y siguiente</span></button>
-        <button style="${BTN_G}" onclick="mangaExtra()">➕ Otra actividad</button>
-        <button style="${BTN_G}" onclick="mangaCat()">🔄 Categoría</button>
-        <button style="${BTN_R}" onclick="mangaBaja()">✝️ Baja</button>
-        <button class="bs" onclick="mangaCancelar()">Saltar sin guardar</button>
+      <div style="display:flex;flex-direction:column;gap:.5rem;flex:1;min-width:200px">
+        <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaOk()">✔ GUARDAR<br><span style="font-size:.85rem;font-weight:400">y pasar el siguiente</span></button>
+        <button style="${BTN_G}" onclick="mangaExtra()">➕ Distinto para este animal</button>
+        <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría</button>
+        <button style="${BTN_R}" onclick="mangaBaja()">✝️ Dar de baja</button>
+        <button class="bs" style="padding:.6rem" onclick="mangaCancelar()">Saltar sin guardar</button>
       </div>
     </div>`:`
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      <button style="${BTN_V};font-size:1.3rem" onclick="mangaOk()">✔ REGISTRAR y siguiente</button>
-      <button style="${BTN_G}" onclick="mangaExtra()">➕ Otra actividad</button>
-      <button style="${BTN_G}" onclick="mangaCat()">🔄 Categoría</button>
-      <button style="${BTN_R}" onclick="mangaBaja()">✝️ Baja</button>
-      <button class="bs" onclick="mangaCancelar()">Saltar</button>
+      <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaOk()">✔ REGISTRAR y pasar el siguiente</button>
+      <button style="${BTN_G}" onclick="mangaExtra()">➕ Distinto para este animal</button>
+      <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría</button>
+      <button style="${BTN_R}" onclick="mangaBaja()">✝️ Dar de baja</button>
+      <button class="bs" style="padding:.6rem" onclick="mangaCancelar()">Saltar</button>
     </div>`}
-    ${M.extra?`<div style="background:#eef3f8;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #6a8ab0"><strong>➕ Actividad solo para este animal</strong>
-      <div class="fg" style="margin-top:.3rem">
-        <label>Tipo<select id="mg_xtipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
-        <label>Producto / detalle<input id="mg_xprod"/></label>
-        <label>Dosis<input id="mg_xdosis"/></label>
-        <label>Enfermedad / motivo<input id="mg_xenf"/></label>
-      </div>
-      <div class="br"><button style="${BTN_V};flex:0 0 auto" onclick="mangaGuardarExtra()">✔ Registrar en ${h(nombreAnimal(a))}</button><button class="bs" onclick="mangaExtra(false)">Cancelar</button></div></div>`:""}
-    ${M.catOpen?`<div style="background:#f6f4ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #b8a888"><strong>🔄 Cambiar categoría (hoy: ${h(a.cat||"—")})</strong> <span class="km">Genera el egreso e ingreso "Cambio Categoria" en el stock por lote.</span>
-      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${CATS.filter(c=>c!==a.cat).map(c=>`<button style="${BTN_G};min-width:110px;padding:.6rem" onclick="mangaSetCat('${c}')">${c}</button>`).join("")}<button class="bs" onclick="mangaCat(false)">Cancelar</button></div></div>`:""}
-    ${M.bajaOpen?`<div style="background:#fdf0ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #c82010"><strong>✝️ Dar de baja a ${h(nombreAnimal(a))}</strong> <span class="km">Genera el egreso en el stock por lote.</span>
+    ${M.extra?`<div style="background:#eef3f8;border-radius:10px;padding:.8rem;margin-top:.7rem;border:2px solid #6a8ab0">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem"><strong>✏️ Solo para ${h(nombreAnimal(a))}: tocá para agregar o sacar</strong><div><button class="bs" onclick="mangaOverReset()">↺ Volver a lo de la sesión</button> <button class="bs" onclick="mangaExtra(false)">Cerrar</button></div></div>
+      <div style="margin-top:.5rem">${renderChips(acts.tipos,acts.productos,acts.dosis,"mangaTogOver")}</div>
+      <div class="km" style="margin-top:.3rem">Se guarda cuando toques ✔ GUARDAR. Al pasar el siguiente animal vuelve a lo configurado para la sesión.</div></div>`:""}
+    ${M.catOpen?`<div style="background:#f6f4ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #b8a888"><strong>🔄 Hoy es ${h(a.cat||"—")}. ¿Pasa a ser…?</strong>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${CATS.filter(c=>c!==a.cat).map(c=>`<button style="${BTN_G};min-width:110px;padding:.7rem" onclick="mangaSetCat('${c}')">${c}</button>`).join("")}<button class="bs" onclick="mangaCat(false)">Cancelar</button></div></div>`:""}
+    ${M.bajaOpen?`<div style="background:#fdf0ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #c82010"><strong>✝️ Dar de baja a ${h(nombreAnimal(a))} por:</strong>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">
         <button style="${BTN_R}" onclick="mangaSetBaja('Muerte')">Muerte</button><button style="${BTN_R}" onclick="mangaSetBaja('Venta')">Venta</button><button style="${BTN_R}" onclick="mangaSetBaja('Faena')">Faena</button><button class="bs" onclick="mangaBaja(false)">Cancelar</button></div></div>`:""}
   </div>`
-  :`<div style="background:#fff;border-radius:12px;padding:1rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.05rem">Esperando lectura de caravana…</div>`}
+  :`<div style="background:#fff;border-radius:12px;padding:1.2rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.15rem">${M.campo?"Esperando que pase el próximo animal…":"⚠️ Primero elegí el campo en ⚙️ Configurar"}</div>`}
 
-  ${M.grupo.length?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem;align-items:center">
-    <span class="km"><strong>Grupo de manga: ${M.grupo.length}</strong> animales →</span>
-    <button class="bs" onclick="usarGrupoMangaEnMov();state.tab=0;render()">📋 Movimiento (venta, traslado, cambio cat.)</button>
-    <button class="bs" onclick="state.masivaOpen=true;render();enfocar('ma_producto')">🩺 Actividad masiva</button>
-    <button class="bs" onclick="mangaVaciarGrupo()">🗑️ Vaciar grupo</button>
+  ${esAdmin()&&M.grupo.length?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem;align-items:center">
+    <span class="km"><strong>Grupo de hoy: ${M.grupo.length}</strong> →</span>
+    <button class="bs" onclick="usarGrupoMangaEnMov();state.tab=0;render()">📋 Movimiento</button>
+    <button class="bs" onclick="state.tab=8;state.masivaOpen=true;render()">🩺 Actividad masiva</button>
+    <button class="bs" onclick="mangaVaciarGrupo()">🗑️ Vaciar</button>
   </div>`:""}
-  ${M.log.length?`<div class="tw" style="margin-top:.6rem"><table><thead><tr><th>Animal</th><th>Registrado</th><th></th></tr></thead><tbody>
-    ${M.log.slice(-8).reverse().map((l,i)=>`<tr><td><strong>${h(l.nombre)}</strong></td><td class="km">${h(l.txt)}</td><td><button class="bi" title="Deshacer" onclick="mangaDeshacer(${M.log.length-1-i})">↩️</button></td></tr>`).join("")}</tbody></table></div>`:""}
+  ${M.log.length?`<div style="margin-top:.8rem"><strong style="color:#7a4010">Registrados hoy</strong><div class="tw"><table><thead><tr><th>Animal</th><th>Qué se registró</th><th></th></tr></thead><tbody>
+    ${M.log.slice(-10).reverse().map((l,i)=>`<tr><td><strong style="font-size:1rem">${h(l.nombre)}</strong></td><td>${h(l.txt)}</td><td><button class="bs" style="padding:.4rem .7rem" onclick="mangaDeshacer(${M.log.length-1-i})">↩️ Deshacer</button></td></tr>`).join("")}</tbody></table></div></div>`:""}
 </div>`;
 }
-
-window.setFAnimModoPesaje=function(v){ const M=state.manga; M.on=!!v; M.animal=null; M.nuevoEID=""; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; if(v){ if(!M.fecha)M.fecha=hoyISO(); if(!M.ciclo)M.ciclo=cicloActual(); M.cfg=!M.campo; } render(); if(v&&M.campo)enfocar("bl_eid"); };
-window.mangaCfg=function(v){ state.manga.cfg=!!v; render(); if(!v)enfocar("bl_eid"); };
-window.setFAnimMg=function(k,v){ state.manga[k]=v; if(k==="altaCat"||k==="pesar")render(); };
-window.mangaAgregarAct=function(){ const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";}; const tipo=g("mg_atipo"),producto=g("mg_aprod"),dosis=g("mg_adosis"); if(!producto&&!["Destete","Tacto","Señalada","Observación"].includes(tipo))return alert("Cargá el producto."); state.manga.acts.push({tipo,producto,dosis}); render(); };
-window.mangaQuitarAct=function(i){ state.manga.acts.splice(i,1); render(); };
+function sesionesMangaLista(){ return Object.values(state.mangaSesiones).filter(Boolean).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")||(b.actualizado||"").localeCompare(a.actualizado||"")); }
+function renderSesionesManga(){
+  const ss=sesionesMangaLista().slice(0,15); if(!ss.length)return "";
+  return `<div class="card" style="background:#fff8ee;border:1.5px solid #e0a050">
+  <h2 style="color:#7a4010">🐂 Trabajos de manga guardados</h2>
+  <p class="hint">Cada sesión de manga guarda el grupo de animales que pasó. Desde acá lo usás para movimientos (venta, traslado, cambio de categoría), actividad masiva o el tacto por lote, sin volver a leer nada.</p>
+  <div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Actividades</th><th>Tactos</th><th>Usuario</th><th></th></tr></thead><tbody>
+  ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0;return `<tr><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td>
+    <td style="white-space:nowrap"><button class="bi" title="Usar en Movimiento" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Actividad masiva" onclick="state.masivaOpen=true;render();enfocar('ma_grupo')">🩺</button> <button class="bi" title="Eliminar sesión (no borra pesadas ni actividades)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
+  </tbody></table></div></div>`;
+}
+window.usarSesionEnMov=function(id){ const ss=state.mangaSesiones[id]; if(!ss)return; state.movGrupoTxt=(ss.animales||[]).map(k=>{const a=state.animales[k];return a?(a.caravana||a.visual||k):k;}).join("\n"); state.tab=0; render(); toast("📋 Grupo cargado en el formulario de movimiento"); };
+window.eliminarSesionManga=async function(id){ if(!confirm("¿Eliminar este trabajo de manga de la lista? No borra pesadas, actividades ni animales."))return; delete state.mangaSesiones[id]; await remove(ref(db,"mangaSesiones/"+id)); render(); };
+window.tactoDesdeManga=function(){ const sel=document.getElementById("tt_ses"); const ss=sel?state.mangaSesiones[sel.value]:null; if(!ss||!ss.tactos)return;
+  const c={};for(const r of Object.values(ss.tactos))c[r]=(c[r]||0)+1;
+  const set2=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||"";};
+  set2("tt_pre",(c["preñada"]||0)+(c["cut"]||0)); set2("tt_cut",c["cut"]||0); set2("tt_vac",(c["vacía"]||0)+(c["2da oportunidad"]||0)+(c["descarte"]||0)); set2("tt_seg",c["2da oportunidad"]||0); set2("tt_dsc",c["descarte"]||0);
+  if(typeof updTactoTotal==="function")updTactoTotal(); toast("📥 Tacto completado desde la manga del "+fmtF(ss.fecha)); };
+async function guardarSesionManga(){
+  const M=state.manga; if(!M.sesionId)M.sesionId=uid();
+  const prev=state.mangaSesiones[M.sesionId]||{};
+  const ss={id:M.sesionId,fecha:M.fecha||hoyISO(),campo:M.campo||"",ciclo:M.ciclo||"",tipos:M.tipos,productos:M.productos,animales:M.grupo,tactos:{...(prev.tactos||{}),...(M._tactos||{})},usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
+  state.mangaSesiones[ss.id]=ss; await set(ref(db,"mangaSesiones/"+ss.id),ss);
+}
 window.mangaKey=function(k){ const M=state.manga; if(k==="⌫")M.peso=M.peso.slice(0,-1); else if(k==="."){ if(!M.peso.includes("."))M.peso=(M.peso||"0")+"."; } else if(M.peso.replace(".","").length<5)M.peso+=k; render(); };
 window.mangaCancelar=function(){ const M=state.manga; M.animal=null; M.nuevoEID=""; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid"); };
-window.mangaExtra=function(v){ state.manga.extra=v!==false; state.manga.catOpen=state.manga.bajaOpen=false; render(); if(v!==false)enfocar("mg_xprod"); };
 window.mangaCat=function(v){ state.manga.catOpen=v!==false; state.manga.extra=state.manga.bajaOpen=false; render(); };
 window.mangaBaja=function(v){ state.manga.bajaOpen=v!==false; state.manga.extra=state.manga.catOpen=false; render(); };
 window.mangaVaciarGrupo=function(){ if(confirm("¿Vaciar el grupo de esta manga? (no borra nada de lo guardado)")){ state.manga.grupo=[]; state.manga.log=[]; render(); } };
@@ -3780,25 +3823,6 @@ async function mangaRegistrarActs(a,acts,origen){
   if(ids.length){ state.eventos=me; for(const id of ids)await set(ref(db,"eventos/"+id),me[id]); }
   return ids;
 }
-window.mangaOk=async function(){
-  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
-  const fecha=M.fecha||hoyISO(); const ids={pesadas:[],eventos:[]}; const partes=[];
-  const peso=parseFloat(M.peso);
-  if(M.pesar&&peso>0){ const id=a.key+"_"+fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
-  else if(M.pesar&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
-  if(M.acts.length){ ids.eventos=await mangaRegistrarActs(a,M.acts); partes.push(M.acts.map(x=>x.producto||x.tipo).join(", ")); }
-  mangaLog(a,partes.join(" · ")||"pasó por la manga",ids);
-  toast("✔ "+nombreAnimal(a)+(partes.length?": "+partes.join(" · "):""));
-  M.animal=null; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid");
-};
-window.mangaGuardarExtra=async function(){
-  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
-  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
-  const x={tipo:g("mg_xtipo"),producto:g("mg_xprod"),dosis:g("mg_xdosis"),enfermedad:g("mg_xenf")};
-  if(!x.producto&&!["Destete","Tacto","Señalada","Observación","Parto"].includes(x.tipo))return alert("Cargá el producto o detalle.");
-  const ids=await mangaRegistrarActs(a,[x]); mangaLog(a,"➕ "+(x.producto||x.tipo),{pesadas:[],eventos:ids});
-  toast("🩺 "+(x.producto||x.tipo)+" registrado en "+nombreAnimal(a)); M.extra=false; render();
-};
 window.mangaAlta=async function(cat){
   const M=state.manga; const eid=M.nuevoEID; if(!eid)return;
   if(!M.campo){ alert("Primero elegí el campo en ⚙️ Sesión."); M.cfg=true; render(); return; }
@@ -3809,7 +3833,7 @@ window.mangaAlta=async function(cat){
   if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:"Nacimiento",cant:1,obs:"Manga: alta "+(a.caravana||a.visual)}); }
   mangaLog(a,"🆕 alta como "+cat+(movId?" (+1 stock)":""),{pesadas:[],eventos:[],animal:key,mov:movId});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
-  M.nuevoEID=""; M.animal=key; M.peso=""; render(); if(!M.pesar&&!M.acts.length){ M.animal=null; render(); enfocar("bl_eid"); }
+  M.nuevoEID=""; M.animal=key; M.peso=""; render(); if(!M.pesar&&!M.tipos.length){ M.animal=null; render(); enfocar("bl_eid"); } guardarSesionManga();
 };
 window.mangaSetCat=async function(cat){
   const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a||cat===a.cat)return;
@@ -3820,7 +3844,7 @@ window.mangaSetCat=async function(cat){
   const nuevo={...a,cat,sexo:a.sexo||sexoDeCat(cat),modificado:hoyISO()}; state.animales[a.key]=nuevo; await set(ref(db,"animales/"+a.key),nuevo);
   const ids=await mangaRegistrarActs(a,[{tipo:"Cambio de corral",producto:"Categoría "+vieja+" → "+cat}]);
   mangaLog(nuevo,"🔄 "+vieja+" → "+cat,{pesadas:[],eventos:ids,movs:[id1,id2],catAnterior:vieja});
-  toast("🔄 "+nombreAnimal(a)+" ahora es "+cat); M.catOpen=false; render();
+  toast("🔄 "+nombreAnimal(a)+" ahora es "+cat); M.catOpen=false; render(); guardarSesionManga();
 };
 window.mangaSetBaja=async function(sub){
   const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
@@ -3830,7 +3854,7 @@ window.mangaSetBaja=async function(sub){
   const nuevo={...a,estado,fechaBaja:fecha,modificado:hoyISO()}; state.animales[a.key]=nuevo; await set(ref(db,"animales/"+a.key),nuevo);
   const ids=await mangaRegistrarActs(a,[{tipo:"Otro",producto:sub}]);
   mangaLog(nuevo,"✝️ "+sub,{pesadas:[],eventos:ids,movs:[id1],estadoAnterior:a.estado||"activo"});
-  toast("✝️ "+nombreAnimal(a)+": "+sub); M.animal=null; M.peso=""; M.bajaOpen=false; render(); enfocar("bl_eid");
+  toast("✝️ "+nombreAnimal(a)+": "+sub); M.animal=null; M.peso=""; M.bajaOpen=false; render(); enfocar("bl_eid"); guardarSesionManga();
 };
 window.mangaDeshacer=async function(i){
   const M=state.manga; const l=M.log[i]; if(!l)return; if(!confirm("¿Deshacer \""+l.txt+"\" de "+l.nombre+"?"))return;
@@ -3843,7 +3867,8 @@ window.mangaDeshacer=async function(i){
   if(ids.animal){ delete state.animales[ids.animal]; await remove(ref(db,"animales/"+ids.animal)); }
   else if(a&&ids.catAnterior){ const n={...a,cat:ids.catAnterior}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
   else if(a&&ids.estadoAnterior){ const n={...a,estado:ids.estadoAnterior,fechaBaja:""}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
-  M.log.splice(i,1); if(!M.log.some(x=>x.key===l.key))M.grupo=M.grupo.filter(k=>k!==l.key);
+  if(a&&ids.estadoRepAnterior!==undefined){ const n={...state.animales[a.key],estadoRep:ids.estadoRepAnterior}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); if(M._tactos)delete M._tactos[a.key]; const ss=state.mangaSesiones[M.sesionId]; if(ss&&ss.tactos){delete ss.tactos[a.key];} }
+  M.log.splice(i,1); if(!M.log.some(x=>x.key===l.key))M.grupo=M.grupo.filter(k=>k!==l.key); guardarSesionManga();
   toast("↩️ Deshecho"); render(); enfocar("bl_eid");
 };
 
@@ -3879,6 +3904,40 @@ async function aplicarMovAGrupo(e,refs){
     else if(e.key==="Enter"&&buf){ e.preventDefault(); procesarLecturaBaston(buf); buf=""; }
   });
 })();
+
+
+window.setFAnimModoPesaje=function(v){ state.tab=MANGA_TAB; render(); };
+window.mangaCfg=function(v){ state.manga.cfg=!!v; if(!v&&!state.manga.campo){alert("Elegí el campo donde estamos trabajando.");state.manga.cfg=true;} render(); if(!state.manga.cfg)enfocar("bl_eid"); guardarSesionManga(); };
+window.setFAnimMg=function(k,v){ state.manga[k]=v; if(["altaCat","pesar","campo"].includes(k))render(); };
+function togList(arr,v){ const i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v); return arr; }
+async function catalogoAdd(kind,v){ v=String(v||"").trim(); if(!v)return; const c=state.mangaCatalogo; if(!c[kind].includes(v)){ c[kind]=[...c[kind],v]; await set(ref(db,"mangaCatalogo"),c); } }
+window.mangaTog=function(k,v){ const M=state.manga;
+  if(k==="tipo")togList(M.tipos,v); else if(k==="prod")togList(M.productos,v); else if(k==="dosis"){M.dosis=v;return;}
+  else if(k==="nuevoTipo"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("tipos",v); if(!M.tipos.includes(v))M.tipos.push(v); }
+  else if(k==="nuevoProd"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("productos",v); if(!M.productos.includes(v))M.productos.push(v); }
+  render(); };
+window.mangaTogOver=function(k,v){ const M=state.manga; if(!M.over)M.over={tipos:[...M.tipos],productos:[...M.productos],dosis:M.dosis}; const O=M.over;
+  if(k==="tipo")togList(O.tipos,v); else if(k==="prod")togList(O.productos,v); else if(k==="dosis"){O.dosis=v;return;}
+  else if(k==="nuevoTipo"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("tipos",v); if(!O.tipos.includes(v))O.tipos.push(v); }
+  else if(k==="nuevoProd"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("productos",v); if(!O.productos.includes(v))O.productos.push(v); }
+  render(); };
+window.mangaOverReset=function(){ state.manga.over=null; render(); };
+window.mangaExtra=function(v){ const M=state.manga; M.extra=v!==false; M.catOpen=M.bajaOpen=false; render(); };
+window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
+window.mangaOk=async function(){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
+  const fecha=M.fecha||hoyISO(); const ids={pesadas:[],eventos:[]}; const partes=[];
+  const acts=mangaActsDe(M); const peso=parseFloat(M.peso);
+  if(acts.tipos.includes("Tacto")&&!M.tactoRes){ alert("Marcá el resultado del tacto (preñada, vacía, etc.)."); return; }
+  if(M.pesar&&peso>0){ const id=a.key+"_"+fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
+  else if(M.pesar&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
+  const lista=acts.tipos.map(t=>({tipo:t,producto:t==="Tacto"?M.tactoRes:acts.productos.join(", "),dosis:t==="Tacto"?"":acts.dosis}));
+  if(lista.length){ ids.eventos=await mangaRegistrarActs(a,lista); partes.push(acts.tipos.join(" + ")+(acts.productos.length?" ("+acts.productos.join(", ")+")":"")); }
+  if(acts.tipos.includes("Tacto")){ ids.estadoRepAnterior=a.estadoRep||""; const n={...a,estadoRep:M.tactoRes,fechaTacto:fecha}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); M._tactos={...(M._tactos||{}),[a.key]:M.tactoRes}; partes.push("tacto: "+M.tactoRes); }
+  mangaLog(a,partes.join(" · ")||"pasó por la manga",ids);
+  toast("✔ "+nombreAnimal(a)+(partes.length?": "+partes.join(" · "):""));
+  M.animal=null; M.peso=""; M.over=null; M.tactoRes=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid"); guardarSesionManga();
+};
 
 </script>
 </body>
