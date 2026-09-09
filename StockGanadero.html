@@ -231,9 +231,13 @@ let state = {
   filtIatf: {ciclo:"",campo:"",cat:"",toro:"",caravana:""},
   animales: {},       // {key: ficha individual por caravana} (ver módulo Animales)
   pesadas: {},        // {id: {animal, fecha, hora, peso, origen, sesion}}
-  filtAnim: {buscar:"",campo:"",cat:"",sexo:"",raza:"",estado:"activo"},
+  filtAnim: {buscar:"",campo:"",cat:"",sexo:"",raza:"",estado:"activo",ciclo:""},
   animSel: null, animNuevo: false, nuevoEID: "", importAnim: null, sugPadre: null, serialPort: null,
   modoPesaje: false, pesFecha: "", pesAnimal: null, pesLog: [], papelTxt: "", papelPrev: null,
+  eventos: {},        // {id: {animal, fecha, hora, tipo, producto, dosis, enfermedad, obs, origen, sesion}}
+  trTxt: "", trPrev: null, masivaOpen: false,
+  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,acts:[],animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false},
+  movGrupoTxt: "",
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
   filtTactoIatf: {ciclo:"",campo:""},
   editToro: undefined,
@@ -449,7 +453,7 @@ function render(){
   if(!state.loaded||!state.usuariosLoaded){ root.innerHTML=`<div class="loading"><div class="spinner"></div><span>Conectando...</span></div>`; return; }
   // Preservar lo tipeado en login/setup/alta de usuario si un dato de Firebase llega en el medio
   const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave",
-    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"]')).map(e=>e.id)];
+    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"]')).map(e=>e.id)];
   const saved={}; let focusId=null;
   for(const id of preserveIds){const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
   // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
@@ -655,6 +659,10 @@ function renderMov(){
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===(ef?ef.tipo:(state.formMov.tipo||"ingreso"))?" selected":""}>${v}</option>`).join("")}</select></label>
     <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
+    <label class="s2" style="grid-column:1/-1">🐮 Caravanas del movimiento (opcional)
+      <textarea id="mgrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y cada animal se da de alta / baja / recategoriza en su ficha." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.movGrupoTxt||"")}</textarea>
+      <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
+    </label>
     <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):h(state.formMov.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
   <div class="br">
@@ -951,10 +959,10 @@ ${(()=>{
   </div>
   <h3 style="margin-bottom:.7rem">📋 Total por Categoría (todos los campos)</h3>
   <div class="tw"><table>
-    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock Total</th></tr></thead>
+    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock Total</th><th title="Animales activos con ficha (caravana)">🐮 Con caravana</th><th title="Stock por lote menos animales con ficha">Sin caravana</th></tr></thead>
     <tbody>
       ${Object.entries(allCats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{
-        const p=d.ing>0?d.muertes/d.ing*100:0;
+        const p=d.ing>0?d.muertes/d.ing*100:0; const cc=conteoCaravanas("",cat,f.campo); const sc=d.stock-cc;
         return`<tr>
           <td><strong>${h(cat)}</strong></td>
           <td class="ni">+${d.ing}</td>
@@ -962,6 +970,7 @@ ${(()=>{
           <td>${d.muertes}</td>
           <td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td>
           <td><strong style="font-size:1rem;color:#2d4a1e">${d.stock}</strong></td>
+          <td>${cc}</td><td><span class="${sc<0?"sr":sc===0?"sg":""}">${sc<0?"⚠️ ":""}${sc}</span></td>
         </tr>`;
       }).join("")}
       <tr class="tr">
@@ -984,10 +993,10 @@ ${campos2.map(campo=>{
   const totM=Object.values(cats).reduce((s,d)=>s+d.muertes,0);
   const totS=Object.values(cats).reduce((s,d)=>s+d.stock,0);
   return `<div class="card"><h3>🏡 ${h(campo)} ${renspaDe(campo)?`<span style="font-size:.78rem;color:#5a7a9a;font-weight:600;background:#eaf0f8;border-radius:5px;padding:.12rem .5rem">Renspa: ${h(renspaDe(campo))}</span>`:""} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales</span></h3><div class="tw"><table>
-    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th></tr></thead>
+    <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th><th>🐮 Con caravana</th><th>Sin caravana</th></tr></thead>
     <tbody>
-      ${Object.entries(cats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td></tr>`;}).join("")}
-      <tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong></td><td class="ne"><strong>-${totE}</strong></td><td><strong>${totM}</strong></td><td>—</td><td><strong>${totS}</strong></td></tr>
+      ${Object.entries(cats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;const cc=conteoCaravanas(campo,cat);const sc=d.stock-cc;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td><td>${cc}</td><td><span class="${sc<0?"sr":sc===0?"sg":""}">${sc<0?"⚠️ ":""}${sc}</span></td></tr>`;}).join("")}
+      <tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong></td><td class="ne"><strong>-${totE}</strong></td><td><strong>${totM}</strong></td><td>—</td><td><strong>${totS}</strong></td><td><strong>${conteoCaravanas(campo,"")}</strong></td><td><strong>${totS-conteoCaravanas(campo,"")}</strong></td></tr>
     </tbody>
   </table></div></div>`;
 }).join("")}`;
@@ -2048,6 +2057,7 @@ async function restaurarBackup(file){
       if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
       if(data.animales) await set(ref(db,"animales"),data.animales);
       if(data.pesadas) await set(ref(db,"pesadas"),data.pesadas);
+      if(data.eventos) await set(ref(db,"eventos"),data.eventos);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -2056,7 +2066,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -2820,9 +2830,13 @@ function doSubmitMov(){
   const sub=document.getElementById("msu").value;
   const cant=parseInt(document.getElementById("mca").value);
   const obs=document.getElementById("mob").value.trim();
-  if(!fecha||!campo||!cat||!cant)return alert("Completa: fecha, campo, categoria y cantidad.");
-  const e={fecha,campo,cat,ciclo,tipo,sub,cant,obs,id:state.editMov?state.editMov.id:uid()};
-  saveMov(e).then(()=>{state.editMov=null;clearFormMov();render();});
+  const grpEl=document.getElementById("mgrp"); const grpTxt=grpEl?grpEl.value.trim():"";
+  const refs=grpTxt?[...new Set(grpTxt.split(/[\s,;]+/).filter(Boolean))]:[];
+  const cantFinal=cant||(refs.length||0);
+  if(!fecha||!campo||!cat||!cantFinal)return alert("Completa: fecha, campo, categoria y cantidad (o pegá caravanas).");
+  if(refs.length&&cant&&cant!==refs.length&&!confirm("La cantidad ("+cant+") no coincide con las caravanas pegadas ("+refs.length+"). ¿Guardar igual?"))return;
+  const e={fecha,campo,cat,ciclo,tipo,sub,cant:cantFinal,obs,id:state.editMov?state.editMov.id:uid()};
+  saveMov(e).then(async()=>{ if(refs.length)await aplicarMovAGrupo(e,refs); state.editMov=null;state.movGrupoTxt="";clearFormMov();render();});
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
@@ -3001,17 +3015,24 @@ function nombreAnimal(a){ if(!a)return "—"; const c=eidCorto(a.caravana); retu
 function hijosDe(a){ return Object.values(state.animales).filter(x=>x&&x.madre&&x.key!==a.key&&(()=>{const m=buscarAnimalRef(x.madre);return m&&m.key===a.key;})()); }
 function sugerirPadre(a){
   const madre=buscarAnimalRef(a.madre); if(!madre)return {txt:"",motivo:"Primero cargá la madre."};
-  const regs=iatfDe(madre); if(regs.length===0)return {txt:"",motivo:"La madre no tiene IATF registrada."};
+  const regs=iatfDe(madre); if(regs.length===0)return {txt:"",motivo:"La madre no tiene IATF registrada → servicio natural. "+(a.fechaNac?entoreInfo(madre,a.fechaNac):"Cargá la fecha de nacimiento para buscar el entore.")};
   if(!a.fechaNac)return {txt:"",motivo:"Cargá la fecha de nacimiento para calcular la ventana de gestación."};
   const nac=new Date(a.fechaNac);
   const enVentana=regs.filter(r=>{ if(!r.fecha)return false; const d=diasEntre(r.fecha,a.fechaNac); return d>=GESTACION-20&&d<=GESTACION+15; });
   if(enVentana.length>0){ const r=enVentana[enVentana.length-1]; const t=state.toros[r.toroId]; return {txt:t?t.nombre:"",motivo:"IATF del "+fmtF(r.fecha)+" ("+diasEntre(r.fecha,a.fechaNac)+" días antes del parto)"+(r.resultado==="vacia"?" — ojo: tacto la dio VACÍA":"")}; }
-  return {txt:"",motivo:"Hay IATF pero fuera de la ventana de gestación → probablemente repaso con toro a campo."};
+  return {txt:"",motivo:"Hay IATF pero fuera de la ventana de gestación → probablemente repaso con toro a campo. "+entoreInfo(madre,a.fechaNac)};
+}
+function entoreInfo(madre,fechaNac){
+  const ent=Object.values(state.act).filter(x=>x&&x.tipo==="Entore"&&x.campo===madre.campo&&x.fecha&&(()=>{const d=diasEntre(x.fecha,fechaNac);return d>=GESTACION-15&&d<=GESTACION+120;})());
+  const toros=Object.values(state.toros).filter(t=>t&&t.activo!==false).map(t=>t.nombre);
+  if(ent.length)return "Entore registrado en "+madre.campo+" el "+fmtF(ent[ent.length-1].fecha)+(toros.length?". Toros activos: "+toros.join(", "):"")+". Elegí el toro en el campo Padre.";
+  return toros.length?"Sin entore registrado en "+madre.campo+" para esa fecha. Toros activos: "+toros.join(", ")+".":"";
 }
 
 // ── LISTENERS ──
 onValue(ref(db,"animales"), snap => { state.animales = snap.val() || {}; render(); });
 onValue(ref(db,"pesadas"), snap => { state.pesadas = snap.val() || {}; render(); });
+onValue(ref(db,"eventos"), snap => { state.eventos = snap.val() || {}; render(); });
 
 // ── RENDER ──
 function renderAnimales(){
@@ -3023,6 +3044,7 @@ function renderAnimales(){
     if(f.estado&&(a.estado||"activo")!==f.estado)return false;
     if(f.campo&&a.campo!==f.campo)return false;
     if(f.cat&&a.cat!==f.cat)return false;
+    if(f.ciclo&&cicloDe(a)!==f.ciclo)return false;
     if(f.sexo&&a.sexo!==f.sexo)return false;
     if(f.raza&&a.raza!==f.raza)return false;
     if(f.buscar){ const q=normTxt(f.buscar); const qd=q.replace(/\D/g,""); const eid=limpiarEID(a.caravana);
@@ -3045,12 +3067,14 @@ function renderAnimales(){
     <div class="kp" style="background:#eaf5e0;border-color:#3d6428"><div class="kl">Animales activos</div><div class="kv" style="font-size:2rem">${activos.length}</div><div class="km">${conEID} con caravana electrónica · ${all.length-activos.length} dados de baja</div></div>
     <div class="kp"><div class="kl">Por campo</div>${Object.entries(porCampo).sort().map(([c,n])=>`<div class="ks"><strong>${n}</strong> ${h(c)}</div>`).join("")||`<div class="km">—</div>`}</div>
     <div class="kp"><div class="kl">Por categoría</div>${Object.entries(porCat).sort().map(([c,n])=>`<div class="ks"><strong>${n}</strong> ${h(c)}</div>`).join("")||`<div class="km">—</div>`}</div>
-    <div class="kp"><div class="kl">Pesadas registradas</div><div class="kv">${nPes}</div><div class="km">${Object.values(state.pesadas).filter(x=>x&&x.origen==="hook").length} desde Hook</div></div>
+    <div class="kp"><div class="kl">Pesadas / actividades</div><div class="kv">${nPes} / ${Object.values(state.eventos).filter(Boolean).length}</div><div class="km">${Object.values(state.pesadas).filter(x=>x&&x.origen==="hook").length} pesadas y ${Object.values(state.eventos).filter(x=>x&&x.origen==="hook").length} tratamientos desde Hook</div></div>
   </div>
 </div>
 
 ${renderBaston()}
 ${esAdmin()?renderPapel():""}
+${esAdmin()?renderImportTrat():""}
+${esAdmin()?renderMasiva(lista):""}
 ${esAdmin()?`
 <div class="card" style="background:#eaf2f8;border:1.5px solid #4a7ab0">
   <h2 style="color:#1e4a7a">📥 Importar desde Hook (Excel de sesión de manga)</h2>
@@ -3092,22 +3116,24 @@ ${state.animNuevo?renderNuevoAnimal(clist,razasList):""}
     <label class="s2">🔍 Buscar (caravana, visual, madre, padre, corral)<input value="${h(f.buscar)}" oninput="setFAnim('buscar',this.value,true)" onchange="setFAnim('buscar',this.value)" placeholder="Ej: 296175 o BT627A180"/></label>
     <label>Campo<select onchange="setFAnim('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoría<select onchange="setFAnim('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
+    <label>Ciclo<select onchange="setFAnim('ciclo',this.value)">${opts([...new Set([...ciclos(),...all.map(cicloDe).filter(Boolean)])].sort(),f.ciclo,"Todos")}</select></label>
     <label>Sexo<select onchange="setFAnim('sexo',this.value)">${opts(["Hembra","Macho"],f.sexo,"Todos")}</select></label>
     <label>Raza<select onchange="setFAnim('raza',this.value)">${opts(razasList,f.raza,"Todas")}</select></label>
     <label>Estado<select onchange="setFAnim('estado',this.value)"><option value="">Todos</option>${EST_ANIM.map(([v,l])=>`<option value="${v}"${f.estado===v?" selected":""}>${l}</option>`).join("")}</select></label>
   </div>
   ${lista.length===0?`<p class="empty">Sin animales. Importá un Excel de Hook o cargá uno con "➕ Nuevo animal".</p>`:`
   <div class="tw"><table>
-    <thead><tr><th>Caravana</th><th>Visual</th><th>Campo</th><th>Cat.</th><th>Sexo</th><th>Raza</th><th>Nac.</th><th>Último peso</th><th>ADPV</th><th>Madre</th><th>Padre</th><th></th></tr></thead>
+    <thead><tr><th>Caravana</th><th>Visual</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Sexo</th><th>Raza</th><th>Nac.</th><th>Último peso</th><th>ADPV</th><th>Madre</th><th>Padre</th><th>Últ. actividad</th><th></th></tr></thead>
     <tbody>${lista.slice(0,600).map(a=>{
       const ps=pesadasDe(a.key); const u=ps[ps.length-1]; const adpv=adpvDe(ps); const baja=(a.estado||"activo")!=="activo";
       return `<tr style="${baja?"opacity:.5":""}${state.animSel===a.key?";background:#eaf5e0":""}">
         <td style="font-family:monospace;white-space:nowrap"><strong>${h(eidCorto(a.caravana))||"—"}</strong>${limpiarEID(a.caravana).length>6?`<span class="km"> ${h(limpiarEID(a.caravana).slice(0,-6))}</span>`:""}</td>
-        <td>${h(a.visual||"—")}</td><td>${h(a.campo||"—")}</td><td>${h(a.cat||"—")}</td><td>${a.sexo==="Hembra"?"♀":a.sexo==="Macho"?"♂":"—"}</td><td>${h(a.raza||"—")}</td>
+        <td>${h(a.visual||"—")}</td><td>${h(a.campo||"—")}</td><td>${h(a.cat||"—")}</td><td class="km">${h(cicloDe(a)||"—")}</td><td>${a.sexo==="Hembra"?"♀":a.sexo==="Macho"?"♂":"—"}</td><td>${h(a.raza||"—")}</td>
         <td style="white-space:nowrap">${fmtF(a.fechaNac)}</td>
         <td style="white-space:nowrap">${u?`<strong>${u.peso} kg</strong> <span class="km">${fmtF(u.fecha)}</span>`:"—"}</td>
         <td>${adpv!==null?`<strong style="color:${adpv>=0.5?"#2d4a1e":adpv>=0?"#a06a1f":"#c82010"}">${adpv.toFixed(3)}</strong>`:"—"}</td>
         <td>${h(a.madre||"—")}</td><td>${h(a.padre||"—")}</td>
+        <td style="white-space:nowrap">${(()=>{const e=eventosDe(a.key).slice(-1)[0];return e?`<span class="km">${fmtF(e.fecha)}</span> ${h(e.producto||e.tipo)}`:"—";})()}</td>
         <td><button class="bi" title="Ver ficha" onclick="setFAnimSel('${h(a.key)}')">🔎</button></td>
       </tr>`;}).join("")}
     </tbody></table></div>
@@ -3150,6 +3176,7 @@ function renderFichaAnimal(a,clist,razasList){
     <label>Peso al nacer (kg)<input id="an_pesoNac" type="number" step="0.1" value="${h(a.pesoNac||"")}"/></label>
     <label>Madre (visual o caravana)<input id="an_madre" list="an-madres" value="${h(a.madre||"")}" placeholder="Ej: BT627A180"/><datalist id="an-madres">${madres.map(m=>`<option value="${h(m)}"/>`).join("")}</datalist></label>
     <label>Padre (toro / semen)<input id="an_padre" list="an-toros" value="${h(a.padre||"")}" placeholder="Nombre del toro"/><datalist id="an-toros">${torosN.map(t=>`<option value="${h(t)}"/>`).join("")}</datalist></label>
+    <label>Ciclo<input id="an_ciclo" list="an-ciclos" value="${h(cicloDe(a))}" placeholder="Ej: 2025/2026"/><datalist id="an-ciclos">${[...new Set([...ciclos(),cicloActual()])].map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Corral / rodeo (Hook)<input id="an_corral" value="${h(a.corral||"")}"/></label>
     <label>Ingreso<input id="an_ingreso" type="date" value="${h(a.ingreso||"")}"/></label>
     <label>Estado<select id="an_estado">${EST_ANIM.map(([v,l])=>`<option value="${v}"${(a.estado||"activo")===v?" selected":""}>${l}</option>`).join("")}</select></label>
@@ -3177,6 +3204,7 @@ function renderFichaAnimal(a,clist,razasList){
       return `<tr><td>${fmtF(x.fecha)}</td><td class="km">${h((x.hora||"").slice(0,5))}</td><td><strong>${x.peso} kg</strong></td><td>${dk!==null?(dk>=0?"+":"")+dk.toFixed(1):"—"}</td><td>${d!==null?d:"—"}</td><td>${d>0?(dk/d).toFixed(3):"—"}</td><td class="km">${x.origen==="hook"?"Hook · "+h(x.sesion||""):"manual"}</td><td>${esAdmin()?`<button class="bi" onclick="eliminarPesada('${h(x.id)}')">🗑️</button>`:""}</td></tr>`; }).join("")}
     </tbody></table></div>`}
 
+  ${renderEventosFicha(a)}
   ${iat.length?`<h3 style="margin-top:1.2rem">🧬 IATF de este animal (${iat.length})</h3>
   <div class="tw"><table><thead><tr><th>Fecha</th><th>Ciclo</th><th>Toro</th><th>Campo</th><th>Resultado</th></tr></thead>
   <tbody>${iat.map(r=>{const t=state.toros[r.toroId];return `<tr><td>${fmtF(r.fecha)}</td><td>${h(r.ciclo)}</td><td>${h(t?t.nombre:"—")}</td><td>${h(r.campo)}</td><td>${r.resultado==="prenada"?"🟢 Preñada":r.resultado==="vacia"?"🔴 Vacía":"⏳ Pendiente"}</td></tr>`;}).join("")}</tbody></table></div>`:""}
@@ -3221,9 +3249,12 @@ function procesarLecturaBaston(txt){
   const m=d.match(/\d{15}$/); const eid=m?m[0]:d;
   let a=state.animales[eid]||null;
   if(!a)a=Object.values(state.animales).find(x=>x&&limpiarEID(x.caravana).endsWith(eid)&&eid.length>=4)||null;
-  if(a&&state.modoPesaje){ state.pesAnimal=a.key; render(); enfocar("pr_peso"); return; }
+  const M=state.manga;
+  if(M.on){ M.extra=M.catOpen=M.bajaOpen=false; M.peso="";
+    if(a){ M.animal=a.key; M.nuevoEID=""; render(); if(!M.pesar&&!M.acts.length){ /* solo registra paso */ } return; }
+    M.animal=null; M.nuevoEID=eid; render(); return; }
   if(a){ toast("🔎 "+nombreAnimal(a)+" · "+(a.cat||"")); setFAnimSel(a.key); }
-  else { toast("❓ Caravana "+eid+" no registrada"); state.animNuevo=true; state.nuevoEID=eid.length>=12?eid:""; state.animSel=null; state.pesAnimal=null; render(); enfocar("nu_visual"); }
+  else { toast("❓ Caravana "+eid+" no registrada"); state.animNuevo=true; state.nuevoEID=eid.length>=12?eid:""; state.animSel=null; render(); enfocar("nu_visual"); }
   const el=document.getElementById("bl_eid"); if(el){el.value="";}
 }
 
@@ -3245,7 +3276,7 @@ window.conectarBaston=async function(){
 
 function leerFicha(prefix){
   const g=id=>{const el=document.getElementById(prefix+id);return el?el.value.trim():"";};
-  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
+  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),ciclo:g("ciclo"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
 }
 window.guardarAnimal=async function(){
   const a=state.animales[state.animSel]; if(!a)return;
@@ -3351,7 +3382,8 @@ function procesarHook(rows,fname){
       fechaNac:(cur&&cur.fechaNac)||nac||"",pesoNac:(cur&&cur.pesoNac)||(pesoNacRaw>0?pesoNacRaw:""),
       madre:(cur&&cur.madre)||"",padre:(cur&&cur.padre)||"",
       estado:(cur&&cur.estado)||"activo",obs:(cur&&cur.obs)||String(colVal(r,["Observacion","Observación"])||"").trim(),
-      origen:(cur&&cur.origen)||"hook",sesion
+      origen:(cur&&cur.origen)||"hook",sesion,
+      ciclo:(cur&&cur.ciclo)||cicloDe({fechaNac:nac,corral:String(colVal(r,["Corral"])||""),ingreso:fechaISO(colVal(r,["Ingreso"]))||fISO})
     });
     if(!vistos[eid]){ vistos[eid]=true; (cur?exist:nuevos).push(a); }
     const peso=parseFloat(colVal(r,["Peso"]));
@@ -3385,40 +3417,7 @@ window.exportarAnimalesCSV=function(){
 
 // ── MODO PESAJE EN MANGA + CARGA DESDE PAPEL ──
 function enfocar(id){ setTimeout(()=>{const el=document.getElementById(id);if(el){el.focus();if(el.select)el.select();}},40); }
-function renderBaston(){
-  const mp=state.modoPesaje; const fecha=state.pesFecha||hoyISO();
-  const a=state.pesAnimal?state.animales[state.pesAnimal]:null;
-  const ult=a?pesadasDe(a.key).slice(-1)[0]:null;
-  const log=(state.pesLog||[]).map(id=>state.pesadas[id]).filter(Boolean).slice(-12).reverse();
-  return `
-<div class="card" style="background:${mp?"#fff3e0":"#fdf7e8"};border:2px solid ${mp?"#e08a20":"#d0a040"}">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
-    <h2 style="color:#7a5010;margin:0">${mp?"⚖️ Pesaje en manga":"📡 Lectura con bastón"}</h2>
-    <button class="${mp?"bp":"bs"}" onclick="setFAnimModoPesaje(${mp?"false":"true"})">${mp?"✖ Salir del modo pesaje":"⚖️ Modo pesaje"}</button>
-  </div>
-  ${mp?`<p class="hint" style="color:#8a6030">Pasá el bastón (o escribí la caravana), tipeá el peso que marca la balanza y Enter. Queda listo para el siguiente animal.</p>
-  <div class="fg">
-    <label>Fecha de pesada<input id="pr_fecha" type="date" value="${h(fecha)}" onchange="setFAnimPesFecha(this.value)"/></label>
-    <label class="s2">1) Caravana<input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="Bastón o últimos dígitos" onchange="setFAnimBaston(this.value)" style="border:2px solid #d0a040;font-family:monospace;font-size:1.05rem"/></label>
-    <label>2) Peso (kg)<input id="pr_peso" type="number" step="0.5" inputmode="decimal" placeholder="—" ${a?"":"disabled"} onkeydown="if(event.key==='Enter'){event.preventDefault();guardarPesadaRapida();}" style="border:2px solid ${a?"#2d4a1e":"#c8c0b0"};font-size:1.2rem;font-weight:700"/></label>
-  </div>
-  <div style="background:#fff;border-radius:8px;padding:.7rem .9rem;border:1.5px solid ${a?"#2d4a1e":"#ddd8cc"};margin-bottom:.6rem;min-height:2.6rem">
-    ${a?`<strong style="font-size:1.05rem;color:#2d4a1e">🐄 ${h(nombreAnimal(a))}</strong> · ${h(a.cat||"")} · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}
-      <div class="km">${ult?"Último peso: "+ult.peso+" kg el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,fecha)+" días)":"Sin pesadas previas"} · <a href="#" onclick="setFAnimSel('${h(a.key)}');return false">ver ficha</a></div>
-      <div class="br" style="margin-top:.4rem"><button class="bp" onclick="guardarPesadaRapida()">💾 Guardar pesada</button><button class="bs" onclick="setFAnimPesCancel()">Cancelar</button></div>`
-      :`<span class="km">Esperando lectura de caravana…</span>`}
-  </div>
-  ${log.length?`<div class="km" style="margin-bottom:.3rem">Guardadas en esta sesión (${state.pesLog.length}):</div>
-  <div class="tw"><table><thead><tr><th>Animal</th><th>Peso</th><th>Fecha</th><th></th></tr></thead><tbody>
-    ${log.map(x=>{const an=state.animales[x.animal];return `<tr><td>${h(an?nombreAnimal(an):x.animal)}</td><td><strong>${x.peso} kg</strong></td><td>${fmtF(x.fecha)}</td><td><button class="bi" title="Deshacer" onclick="deshacerPesada('${h(x.id)}')">↩️</button></td></tr>`;}).join("")}
-  </tbody></table></div>`:""}`
-  :`<p class="hint" style="color:#8a6030">Tocá el campo, pasá el bastón (en modo HID manda el número + Enter) o escribí los últimos dígitos. Si el animal existe se abre su ficha; si no, te propone darlo de alta.</p>
-  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
-    <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="032010044296175 o solo 296175" onchange="setFAnimBaston(this.value)" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.6rem .8rem;font-size:1.05rem;font-family:monospace;background:#fff"/>
-    ${("serial" in navigator)?`<button class="bs" onclick="conectarBaston()">${state.serialPort?"🟢 Bastón conectado":"🔌 Conectar bastón (Bluetooth/USB)"}</button>`:`<span class="km">Conexión directa disponible en Chrome de PC. En la tablet usá el bastón en modo HID.</span>`}
-  </div>`}
-</div>`;
-}
+function renderBaston(){ return state.manga.on?renderManga():renderLectura(); }
 function renderPapel(){
   const pv=state.papelPrev; const fecha=state.pesFecha||hoyISO();
   return `
@@ -3435,25 +3434,9 @@ function renderPapel(){
   </tbody></table></div>`:""}
 </div>`;
 }
-window.setFAnimModoPesaje=function(v){ state.modoPesaje=!!v; state.pesAnimal=null; if(!state.pesFecha)state.pesFecha=hoyISO(); render(); if(v)enfocar("bl_eid"); };
 window.setFAnimPesFecha=function(v){ state.pesFecha=v||hoyISO(); };
-window.setFAnimPesCancel=function(){ state.pesAnimal=null; render(); enfocar("bl_eid"); };
 window.setFAnimPapelTxt=function(v){ state.papelTxt=v; state.papelPrev=null; };
 window.setFAnimPapelLimpiar=function(){ state.papelTxt=""; state.papelPrev=null; render(); };
-window.guardarPesadaRapida=async function(){
-  const a=state.pesAnimal?state.animales[state.pesAnimal]:null; if(!a)return;
-  const el=document.getElementById("pr_peso"); const peso=parseFloat(el?el.value:"");
-  if(!(peso>0)){ toast("Escribí el peso"); enfocar("pr_peso"); return; }
-  const fecha=state.pesFecha||hoyISO();
-  const id=a.key+"_"+fecha+"_"+Date.now().toString(36);
-  const p={id,animal:a.key,fecha,hora:new Date().toTimeString().slice(0,8),peso,origen:"manual",sesion:"manga"};
-  state.pesadas[id]=p; state.pesLog.push(id); await set(ref(db,"pesadas/"+id),p);
-  toast("⚖️ "+nombreAnimal(a)+": "+peso+" kg");
-  state.pesAnimal=null; render(); enfocar("bl_eid");
-};
-window.deshacerPesada=async function(id){
-  delete state.pesadas[id]; state.pesLog=state.pesLog.filter(x=>x!==id); await remove(ref(db,"pesadas/"+id)); toast("↩️ Pesada deshecha"); render(); enfocar("bl_eid");
-};
 window.revisarPapel=function(){
   const el=document.getElementById("pp_txt"); const txt=el?el.value:(state.papelTxt||""); state.papelTxt=txt;
   const fecha=state.pesFecha||hoyISO(); const prev=[];
@@ -3477,6 +3460,425 @@ window.guardarPapel=async function(){
   state.papelTxt=malas.map(x=>x.linea).join("\n"); state.papelPrev=null; render();
   toast("✅ "+n+" pesadas guardadas"+(malas.length?" · quedan "+malas.length+" líneas sin resolver":""));
 };
+
+
+// ── ACTIVIDADES / TRATAMIENTOS ──
+const TIPOS_EV=["Tratamiento","Vacuna","Antiparasitario","Vitaminas / minerales","Cambio de corral","Destete","Tacto","Parto","Servicio","Observación","Otro"];
+function eventosDe(key){ return Object.values(state.eventos).filter(e=>e&&e.animal===key).sort((a,b)=>((a.fecha||"")+(a.hora||"")).localeCompare((b.fecha||"")+(b.hora||""))); }
+function idEvento(key,fecha,hora,producto){ return (key+"_"+fecha+"_"+(hora||"").replace(/:/g,"")+"_"+normTxt(producto).replace(/[^a-z0-9]/g,"")).slice(0,180); }
+function renderEventosFicha(a){
+  const evs=eventosDe(a.key);
+  return `
+  <h3 style="margin-top:1.2rem">🩺 Actividades y tratamientos (${evs.length})</h3>
+  <div class="fg">
+    <label>Fecha<input id="ev_fecha" type="date" value="${hoyISO()}"/></label>
+    <label>Tipo<select id="ev_tipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
+    <label>Producto / detalle<input id="ev_producto" placeholder="Ej: Moskithion"/></label>
+    <label>Dosis<input id="ev_dosis" placeholder="Ej: 1 kg, 5 ml"/></label>
+    <label>Enfermedad / motivo<input id="ev_enf"/></label>
+    <label class="s2">Observación<input id="ev_obs"/></label>
+    <label style="justify-content:flex-end"><button class="bp" onclick="guardarEventoFicha()">➕ Registrar</button></label>
+  </div>
+  ${evs.length===0?`<p class="empty">Sin actividades registradas.</p>`:`
+  <div class="tw"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Dosis</th><th>Enfermedad</th><th>Obs.</th><th>Origen</th><th></th></tr></thead>
+  <tbody>${evs.slice().reverse().map(e=>`<tr><td style="white-space:nowrap">${fmtF(e.fecha)}</td><td>${h(e.tipo||"")}</td><td><strong>${h(e.producto||"")}</strong></td><td>${h(e.dosis||"")}</td><td>${h(e.enfermedad||"")}</td><td class="km">${h(e.obs||"")}</td><td class="km">${e.origen==="hook"?"Hook":e.origen==="masiva"?"masiva":"manual"}</td><td>${esAdmin()?`<button class="bi" onclick="eliminarEvento('${h(e.id)}')">🗑️</button>`:""}</td></tr>`).join("")}</tbody></table></div>`}`;
+}
+window.guardarEventoFicha=async function(){
+  const a=state.animales[state.animSel]; if(!a)return;
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
+  const fecha=g("ev_fecha"), tipo=g("ev_tipo"), producto=g("ev_producto");
+  if(!fecha)return alert("Cargá la fecha."); if(!producto&&!["Destete","Tacto","Parto","Servicio","Observación"].includes(tipo))return alert("Cargá el producto o detalle.");
+  const hora=new Date().toTimeString().slice(0,8);
+  const e={id:idEvento(a.key,fecha,hora,producto||tipo),animal:a.key,fecha,hora,tipo,producto,dosis:g("ev_dosis"),enfermedad:g("ev_enf"),obs:g("ev_obs"),origen:"manual",sesion:""};
+  state.eventos[e.id]=e; await set(ref(db,"eventos/"+e.id),e); toast("🩺 Actividad registrada"); render();
+};
+window.eliminarEvento=async function(id){ if(!confirm("¿Eliminar esta actividad?"))return; delete state.eventos[id]; await remove(ref(db,"eventos/"+id)); render(); };
+
+// ── Carga masiva ──
+function renderMasiva(lista){
+  const activos=lista.filter(a=>(a.estado||"activo")==="activo");
+  const f=state.filtAnim; const desc=[f.campo,f.cat,f.sexo,f.raza,f.buscar?'"'+f.buscar+'"':""].filter(Boolean).join(" · ")||"todos los activos";
+  const hoyManga=[...new Set(state.manga.grupo||[])];
+  return `
+<div class="card" style="background:#eef3f8;border:1.5px solid #6a8ab0">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <h2 style="color:#1e3a5a;margin:0">🩺 Actividad masiva</h2>
+    <button class="bs" onclick="setFAnimMasiva(${state.masivaOpen?"false":"true"})">${state.masivaOpen?"▲ Ocultar":"▼ Abrir"}</button>
+  </div>
+  ${state.masivaOpen?`
+  <p class="hint">Registra una misma actividad en un grupo. El grupo se arma con los filtros del listado de abajo (campo, categoría, búsqueda), con los animales pesados hoy en manga, o pegando caravanas.</p>
+  <div class="fg">
+    <label>Aplicar a<select id="ma_grupo"><option value="filtro">Listado filtrado: ${activos.length} animales (${h(desc)})</option><option value="manga">Grupo de manga: ${hoyManga.length}</option><option value="lista">Caravanas que pego abajo</option></select></label>
+    <label>Fecha<input id="ma_fecha" type="date" value="${hoyISO()}"/></label>
+    <label>Tipo<select id="ma_tipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
+    <label>Producto / detalle<input id="ma_producto" placeholder="Ej: Moskithion"/></label>
+    <label>Dosis<input id="ma_dosis" placeholder="Ej: 1 kg"/></label>
+    <label>Enfermedad / motivo<input id="ma_enf"/></label>
+    <label class="s2">Observación<input id="ma_obs"/></label>
+    <label class="s2">Caravanas (solo si elegís "Caravanas que pego"): una por línea o separadas por coma<input id="ma_lista" placeholder="296175, 296176, BT627A180"/></label>
+  </div>
+  <div class="br"><button class="bp" onclick="aplicarMasiva()">✅ Registrar en el grupo</button></div>`:""}
+</div>`;
+}
+window.setFAnimMasiva=function(v){ state.masivaOpen=!!v; render(); };
+window.aplicarMasiva=async function(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
+  const grupo=g("ma_grupo"), fecha=g("ma_fecha"), tipo=g("ma_tipo"), producto=g("ma_producto");
+  if(!fecha)return alert("Cargá la fecha."); if(!producto&&!["Destete","Tacto","Parto","Servicio","Observación"].includes(tipo))return alert("Cargá el producto o detalle.");
+  let keys=[];
+  if(grupo==="manga"){ keys=[...new Set(state.manga.grupo||[])]; }
+  else if(grupo==="lista"){ const refs=g("ma_lista").split(/[\n,;\s]+/).filter(Boolean); const nf=[]; for(const r of refs){const a=buscarAnimalRef(r); if(a)keys.push(a.key); else nf.push(r);} keys=[...new Set(keys)]; if(nf.length&&!confirm("No encontré: "+nf.join(", ")+"\n\n¿Continuar con los "+keys.length+" encontrados?"))return; }
+  else { const f=state.filtAnim; keys=Object.values(state.animales).filter(a=>a&&(a.estado||"activo")==="activo"&&(!f.campo||a.campo===f.campo)&&(!f.cat||a.cat===f.cat)&&(!f.sexo||a.sexo===f.sexo)&&(!f.ciclo||cicloDe(a)===f.ciclo)&&(!f.raza||a.raza===f.raza)&&(!f.buscar||normTxt(a.visual).includes(normTxt(f.buscar))||limpiarEID(a.caravana).includes(f.buscar.replace(/\D/g,""))||normTxt(a.corral).includes(normTxt(f.buscar)))).map(a=>a.key); }
+  if(keys.length===0)return alert("El grupo está vacío.");
+  if(!confirm("Vas a registrar \""+(producto||tipo)+"\" el "+fmtF(fecha)+" en "+keys.length+" animales. ¿Confirmás?"))return;
+  const hora=new Date().toTimeString().slice(0,8); const me={...state.eventos}; let n=0;
+  for(const k of keys){ const e={id:idEvento(k,fecha,hora,producto||tipo),animal:k,fecha,hora,tipo,producto,dosis:g("ma_dosis"),enfermedad:g("ma_enf"),obs:g("ma_obs"),origen:"masiva",sesion:""}; if(!me[e.id]){me[e.id]=e;n++;} }
+  state.eventos=me; await set(ref(db,"eventos"),me); toast("🩺 Registrado en "+n+" animales"); render();
+};
+
+// ── Importar tratamientos Hook (tabla pegada o archivo) ──
+function renderImportTrat(){
+  const pv=state.trPrev;
+  return `
+<div class="card" style="background:#eaf2f8;border:1.5px solid #4a7ab0">
+  <h2 style="color:#1e4a7a">📥 Importar tratamientos desde Hook</h2>
+  <p class="hint" style="color:#2a4a6a">En app.balanzashook.com.ar → Tratamientos, seleccioná toda la tabla con el mouse (desde "Fecha de tratamiento" hasta la última fila), copiá (Ctrl+C) y pegá acá (Ctrl+V). Reconoce las columnas fecha, medicamento, caravana, dosis y enfermedad. Si la lista está paginada, pegá página por página; lo repetido no se duplica. También acepta un Excel/CSV con esas columnas.</p>
+  <textarea id="tr_txt" rows="5" oninput="setFAnimTrTxt(this.value)" placeholder="04/09/2026, 20:10:56	Nutrimin	032010044296153	-	-	1 kg	-" style="width:100%;border:1.5px solid #b8c8d8;border-radius:6px;padding:.5rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.trTxt||"")}</textarea>
+  <div class="br" style="align-items:center">
+    <button class="bs" onclick="revisarTrat()">🔍 Revisar lo pegado</button>
+    <span class="km">o archivo:</span><input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="importarTratArchivo(this.files[0])" style="font-size:.85rem;width:auto"/>
+    ${pv?`<button class="bp" onclick="guardarTrat()">💾 Guardar ${pv.filter(x=>x.key&&!x.dup).length} tratamientos</button><button class="bs" onclick="setFAnimTrLimpiar()">Limpiar</button>`:""}
+  </div>
+  ${pv?`<div class="km" style="margin:.4rem 0">${pv.length} filas leídas · ${pv.filter(x=>x.key&&!x.dup).length} nuevas · ${pv.filter(x=>x.dup).length} ya cargadas · ${pv.filter(x=>!x.key).length} sin animal registrado</div>
+  <div class="tw" style="max-height:260px;overflow:auto"><table><thead><tr><th>Fecha</th><th>Medicamento</th><th>Caravana</th><th>Dosis</th><th>Enfermedad</th><th>Estado</th></tr></thead><tbody>
+    ${pv.slice(0,300).map(x=>`<tr style="${x.key&&!x.dup?"":"background:#fdf0ee"}"><td style="white-space:nowrap">${fmtF(x.fecha)} <span class="km">${h((x.hora||"").slice(0,5))}</span></td><td>${h(x.producto)}</td><td style="font-family:monospace">${h(x.eid)}</td><td>${h(x.dosis)}</td><td>${h(x.enfermedad)}</td><td>${!x.fecha?"❌ Sin fecha":!x.key?"❌ Animal no registrado (importá primero la sesión)":x.dup?"⚠️ Ya cargado":"✅"}</td></tr>`).join("")}
+  </tbody></table></div>${pv.length>300?`<p class="km">Mostrando 300 de ${pv.length}.</p>`:""}`:""}
+</div>`;
+}
+window.setFAnimTrTxt=function(v){ state.trTxt=v; state.trPrev=null; };
+window.setFAnimTrLimpiar=function(){ state.trTxt=""; state.trPrev=null; render(); };
+function parsearFilaTrat(campos){
+  // campos: array de strings de una fila (pegado o excel). Heurística por contenido.
+  let fecha="",hora="",eid="",producto="",dosis="",enfermedad=""; const otros=[];
+  // unir "1" + "kg" cuando el pegado vino separado por espacios simples
+  const unidos=[]; for(let i=0;i<campos.length;i++){ const c=String(campos[i]==null?"":campos[i]).trim(); const n=String(campos[i+1]==null?"":campos[i+1]).trim();
+    if(/^\d+([.,]\d+)?$/.test(c)&&/^(kg|g|gr|ml|cc|mg|l|lt|dosis|un|u)$/i.test(n)){ unidos.push(c+" "+n); i++; } else unidos.push(c); }
+  campos=unidos;
+  for(let c of campos){ c=String(c==null?"":c).trim(); if(!c||c==="-")continue;
+    const d=c.replace(/\D/g,"");
+    if(!eid&&d.length===15&&/^\d{15}$/.test(c.replace(/\s/g,""))){ eid=d; continue; }
+    if(!fecha&&/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(c)){ fecha=fechaISO(c); hora=horaDe(c); continue; }
+    if(!fecha&&/^\d{4}-\d{2}-\d{2}/.test(c)){ fecha=fechaISO(c); hora=horaDe(c); continue; }
+    if(!dosis&&/^\d+([.,]\d+)?\s*(kg|g|gr|ml|cc|mg|l|lt|dosis|un|u)\b/i.test(c)){ dosis=c; continue; }
+    otros.push(c);
+  }
+  if(!producto&&otros.length){ producto=otros.shift(); }
+  if(!enfermedad&&otros.length){ enfermedad=otros.find(o=>!/^\d+$/.test(o)&&normTxt(o)!==normTxt(producto))||""; }
+  return {fecha,hora,eid,producto,dosis,enfermedad};
+}
+function armarPrevTrat(filas){
+  const prev=[]; const vistos={};
+  for(const campos of filas){
+    const r=parsearFilaTrat(campos); if(!r.eid&&!r.producto)continue;
+    const a=r.eid?state.animales[r.eid]:null; const key=a?a.key:null;
+    const id=key?idEvento(key,r.fecha,r.hora,r.producto):"";
+    const dup=!!(id&&(state.eventos[id]||vistos[id])); if(id)vistos[id]=true;
+    prev.push({...r,key,id,dup});
+  }
+  return prev;
+}
+window.revisarTrat=function(){
+  const el=document.getElementById("tr_txt"); const txt=(el?el.value:state.trTxt)||""; state.trTxt=txt;
+  const filas=[];
+  for(const raw of txt.split(/\n/)){ const l=raw.trim(); if(!l)continue; if(/fecha de tratamiento/i.test(l))continue;
+    let campos=l.includes("\t")?l.split("\t"):l.split(/\s{2,}/);
+    if(campos.length<3){ // pegado en una sola línea con espacios simples: separar por patrones
+      const m=l.match(/^(\d{1,2}\/\d{1,2}\/\d{4}(?:,?\s*\d{1,2}:\d{2}(?::\d{2})?)?)\s+(.+?)\s+(\d{15})\s+(.*)$/);
+      if(m){ campos=[m[1],m[2],m[3],...m[4].split(/\s+/)]; }
+    }
+    filas.push(campos);
+  }
+  if(filas.length===0){ toast("Pegá la tabla primero"); return; }
+  state.trPrev=armarPrevTrat(filas); render();
+};
+window.importarTratArchivo=function(file){
+  if(!file)return; if(typeof XLSX==="undefined"){alert("No se pudo cargar el lector de Excel (hace falta internet). Reintentá.");return;}
+  const reader=new FileReader();
+  reader.onload=e=>{ try{ const wb=XLSX.read(e.target.result,{type:"array",cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:true,header:1}); const filas=rows.filter(r=>r.some(c=>c!==""&&c!==null)).filter(r=>!/fecha de tratamiento/i.test(String(r[0])));
+    state.trPrev=armarPrevTrat(filas.map(r=>r.map(c=>c instanceof Date?fechaISO(c)+" "+horaDe(c):c))); state.trTxt=""; render(); }catch(err){alert("❌ No pude leer el archivo: "+err.message);} };
+  reader.readAsArrayBuffer(file);
+};
+window.guardarTrat=async function(){
+  const pv=state.trPrev; if(!pv)return; const ok=pv.filter(x=>x.key&&!x.dup&&x.fecha); if(ok.length===0)return alert("No hay tratamientos nuevos para guardar.");
+  const me={...state.eventos};
+  for(const x of ok){ me[x.id]={id:x.id,animal:x.key,fecha:x.fecha,hora:x.hora||"00:00:00",tipo:"Tratamiento",producto:x.producto,dosis:x.dosis,enfermedad:x.enfermedad,obs:"",origen:"hook",sesion:"tratamientos"}; }
+  state.eventos=me; await set(ref(db,"eventos"),me);
+  const pend=pv.filter(x=>!x.key); state.trPrev=null; state.trTxt=""; render();
+  toast("✅ "+ok.length+" tratamientos guardados"+(pend.length?" · "+pend.length+" sin animal registrado":""));
+};
+
+
+// ══════════ MODO MANGA (tablet) ══════════
+function cicloDe(a){ if(!a)return ""; if(a.ciclo)return a.ciclo; let y=null;
+  if(a.fechaNac)y=parseInt(String(a.fechaNac).slice(0,4)); else { const m=String(a.corral||"").match(/(20\d\d)/); if(m)y=parseInt(m[1]); else if(a.ingreso)y=parseInt(String(a.ingreso).slice(0,4)); }
+  return y&&y>2000?y+"/"+(y+1):""; }
+function cicloActual(){ const y=new Date().getFullYear(); return y+"/"+(y+1); }
+function conteoCaravanas(campo,cat,campoFiltro){ let n=0; for(const a of Object.values(state.animales)){ if(!a||(a.estado||"activo")!=="activo")continue; if(campo&&a.campo!==campo)continue; if(campoFiltro&&a.campo!==campoFiltro)continue; if(cat&&a.cat!==cat)continue; n++; } return n; }
+function sexoDeCat(cat){ return ["Vacas","Vaquillonas","Terneras"].includes(cat)?"Hembra":"Macho"; }
+const BIG="font-size:1.15rem;padding:.9rem 1rem;border-radius:10px;font-weight:700;flex:1;min-width:140px";
+const BTN_V="background:#2d4a1e;color:#fff;border:none;"+BIG;
+const BTN_A="background:#e08a20;color:#fff;border:none;"+BIG;
+const BTN_G="background:#fff;color:#2d4a1e;border:2px solid #2d4a1e;"+BIG;
+const BTN_R="background:#fff;color:#c82010;border:2px solid #c82010;"+BIG;
+
+function renderLectura(){
+  return `
+<div class="card" style="background:#fdf7e8;border:2px solid #d0a040">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem">
+    <div><h2 style="color:#7a5010;margin:0">📡 Bastón / Manga</h2><div class="km">Buscar un animal por caravana, o abrir el modo manga para trabajar con todos los que pasan.</div></div>
+    ${esAdmin()?`<button style="${BTN_A};flex:0 0 auto" onclick="setFAnimModoPesaje(true)">🐂 ABRIR MODO MANGA</button>`:""}
+  </div>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.7rem">
+    <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="Pasá el bastón o escribí los últimos dígitos" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.7rem .8rem;font-size:1.1rem;font-family:monospace;background:#fff"/>
+    ${("serial" in navigator)?`<button class="bs" onclick="conectarBaston()">${state.serialPort?"🟢 Bastón conectado":"🔌 Conectar bastón (PC)"}</button>`:""}
+  </div>
+</div>`;
+}
+function renderManga(){
+  const M=state.manga; const clist=campos(); const a=M.animal?state.animales[M.animal]:null;
+  const ult=a?pesadasDe(a.key).slice(-1)[0]:null;
+  const cicl=[...new Set([...ciclos(),cicloActual()])].sort();
+  const resumen=`${fmtF(M.fecha||hoyISO())} · ${M.campo||"sin campo"} · ${M.ciclo||"sin ciclo"} · alta como <strong>${M.altaCat}</strong> · ${M.pesar?"⚖️ pesa":"sin pesar"}${M.acts.length?" · 🩺 "+M.acts.map(x=>x.producto||x.tipo).join(", "):""}`;
+  return `
+<div class="card" style="background:#fff3e0;border:3px solid #e08a20;padding:.9rem">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <h2 style="color:#7a4010;margin:0;font-size:1.4rem">🐂 MANGA <span style="font-size:.9rem;font-weight:400;color:#8a6030">${M.grupo.length} animales en esta sesión</span></h2>
+    <div style="display:flex;gap:.4rem">
+      <button class="bs" onclick="mangaCfg(${M.cfg?"false":"true"})">${M.cfg?"✔ Listo":"⚙️ Sesión"}</button>
+      <button class="bs" onclick="setFAnimModoPesaje(false)">✖ Cerrar</button>
+    </div>
+  </div>
+  <div class="km" style="margin:.3rem 0 .6rem">${resumen}</div>
+  ${M.cfg?`
+  <div style="background:#fff;border-radius:10px;padding:.8rem;border:1.5px solid #e0c090;margin-bottom:.7rem">
+    <div class="fg">
+      <label>Fecha<input id="mg_fecha" type="date" value="${h(M.fecha||hoyISO())}" onchange="setFAnimMg('fecha',this.value)"/></label>
+      <label>Campo (para altas y filtro)<select id="mg_campo" onchange="setFAnimMg('campo',this.value)">${opts(clist,M.campo,"-- Seleccionar --")}</select></label>
+      <label>Ciclo (para altas)<input id="mg_ciclo" list="mg-ciclos" value="${h(M.ciclo)}" onchange="setFAnimMg('ciclo',this.value)" placeholder="Ej: 2026/2027"/><datalist id="mg-ciclos">${cicl.map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
+      <label>Raza por defecto<input id="mg_raza" list="an-razas" value="${h(M.raza)}" onchange="setFAnimMg('raza',this.value)"/></label>
+    </div>
+    <div style="margin:.5rem 0"><strong>Caravana nueva se da de alta como:</strong>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">
+        <button style="${M.altaCat==="Terneros"?BTN_V:BTN_G}" onclick="setFAnimMg('altaCat','Terneros')">♂ TERNEROS</button>
+        <button style="${M.altaCat==="Terneras"?BTN_V:BTN_G}" onclick="setFAnimMg('altaCat','Terneras')">♀ TERNERAS</button>
+        <select onchange="setFAnimMg('altaCat',this.value)" style="flex:1;min-width:140px">${opts(CATS,M.altaCat)}</select>
+      </div>
+      <div class="km" style="margin-top:.3rem">En la manga podés cambiar a Terneros/Terneras animal por animal al darlo de alta.</div>
+    </div>
+    <label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0"><input type="checkbox" ${M.pesar?"checked":""} onchange="setFAnimMg('pesar',this.checked)" style="width:auto"/> Pesar cada animal (teclado numérico en pantalla)</label>
+    <label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como ingreso "Nacimiento" (dejalo apagado si esos animales ya están contados en el stock)</label>
+    <div style="margin-top:.6rem"><strong>Actividades automáticas de la sesión</strong> <span class="km">(se registran en cada animal que pasa)</span>
+      ${M.acts.length?`<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${M.acts.map((x,i)=>`<span style="background:#eef5e6;border:1px solid #6a9a3a;border-radius:20px;padding:.3rem .7rem;font-size:.9rem">${h(x.tipo)}: <strong>${h(x.producto)}</strong> ${h(x.dosis)} <a href="#" onclick="mangaQuitarAct(${i});return false" style="color:#c82010;text-decoration:none;margin-left:.3rem">✖</a></span>`).join("")}</div>`:""}
+      <div class="fg" style="margin-top:.3rem">
+        <label>Tipo<select id="mg_atipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
+        <label>Producto<input id="mg_aprod" placeholder="Ej: Moskithion"/></label>
+        <label>Dosis<input id="mg_adosis" placeholder="Ej: 1 kg"/></label>
+        <label style="justify-content:flex-end"><button class="bs" onclick="mangaAgregarAct()">➕ Agregar a la sesión</button></label>
+      </div>
+    </div>
+  </div>`:""}
+
+  <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Pasá el bastón (o escribí los últimos dígitos)" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:10px;padding:.9rem 1rem;font-size:1.3rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>
+
+  ${M.nuevoEID?`
+  <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #c82010">
+    <div style="font-size:1.1rem;color:#c82010;font-weight:700">❓ Caravana nueva: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
+    <div class="km" style="margin:.2rem 0 .6rem">No está registrada. Elegí la categoría y se da de alta en <strong>${h(M.campo||"(elegí campo en ⚙️ Sesión)")}</strong>, ciclo ${h(M.ciclo||"—")}.</div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+      <button style="${BTN_V}" onclick="mangaAlta('Terneros')">♂ TERNERO</button>
+      <button style="${BTN_V}" onclick="mangaAlta('Terneras')">♀ TERNERA</button>
+    </div>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">${CATS.filter(c=>!["Terneros","Terneras"].includes(c)).map(c=>`<button class="bs" onclick="mangaAlta('${c}')">${c}</button>`).join("")}
+      <button class="bs" style="color:#c82010" onclick="mangaCancelar()">Ignorar</button></div>
+  </div>`
+  :a?`
+  <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #2d4a1e">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;align-items:baseline">
+      <div style="font-size:1.5rem;font-weight:800;color:#2d4a1e">🐄 ${h(nombreAnimal(a))}</div>
+      <div style="font-size:1rem"><strong>${h(a.cat||"")}</strong> · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}${cicloDe(a)?" · "+h(cicloDe(a)):""}</div>
+    </div>
+    <div class="km" style="margin:.2rem 0 .6rem">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha||hoyISO())+" días)":"Sin pesadas previas"}${M.acts.length?" · Se registrará: "+M.acts.map(x=>x.producto||x.tipo).join(", "):""}${M.grupo.includes(a.key)?' · <span style="color:#a06a1f">⚠️ ya pasó en esta sesión</span>':""}</div>
+    ${M.pesar?`
+    <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
+      <div style="flex:1;min-width:200px">
+        <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.4rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">
+          ${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.5rem;padding:.8rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.5rem;flex:1;min-width:180px">
+        <button style="${BTN_V};font-size:1.3rem" onclick="mangaOk()">✔ GUARDAR<br><span style="font-size:.85rem;font-weight:400">y siguiente</span></button>
+        <button style="${BTN_G}" onclick="mangaExtra()">➕ Otra actividad</button>
+        <button style="${BTN_G}" onclick="mangaCat()">🔄 Categoría</button>
+        <button style="${BTN_R}" onclick="mangaBaja()">✝️ Baja</button>
+        <button class="bs" onclick="mangaCancelar()">Saltar sin guardar</button>
+      </div>
+    </div>`:`
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button style="${BTN_V};font-size:1.3rem" onclick="mangaOk()">✔ REGISTRAR y siguiente</button>
+      <button style="${BTN_G}" onclick="mangaExtra()">➕ Otra actividad</button>
+      <button style="${BTN_G}" onclick="mangaCat()">🔄 Categoría</button>
+      <button style="${BTN_R}" onclick="mangaBaja()">✝️ Baja</button>
+      <button class="bs" onclick="mangaCancelar()">Saltar</button>
+    </div>`}
+    ${M.extra?`<div style="background:#eef3f8;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #6a8ab0"><strong>➕ Actividad solo para este animal</strong>
+      <div class="fg" style="margin-top:.3rem">
+        <label>Tipo<select id="mg_xtipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
+        <label>Producto / detalle<input id="mg_xprod"/></label>
+        <label>Dosis<input id="mg_xdosis"/></label>
+        <label>Enfermedad / motivo<input id="mg_xenf"/></label>
+      </div>
+      <div class="br"><button style="${BTN_V};flex:0 0 auto" onclick="mangaGuardarExtra()">✔ Registrar en ${h(nombreAnimal(a))}</button><button class="bs" onclick="mangaExtra(false)">Cancelar</button></div></div>`:""}
+    ${M.catOpen?`<div style="background:#f6f4ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #b8a888"><strong>🔄 Cambiar categoría (hoy: ${h(a.cat||"—")})</strong> <span class="km">Genera el egreso e ingreso "Cambio Categoria" en el stock por lote.</span>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${CATS.filter(c=>c!==a.cat).map(c=>`<button style="${BTN_G};min-width:110px;padding:.6rem" onclick="mangaSetCat('${c}')">${c}</button>`).join("")}<button class="bs" onclick="mangaCat(false)">Cancelar</button></div></div>`:""}
+    ${M.bajaOpen?`<div style="background:#fdf0ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #c82010"><strong>✝️ Dar de baja a ${h(nombreAnimal(a))}</strong> <span class="km">Genera el egreso en el stock por lote.</span>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">
+        <button style="${BTN_R}" onclick="mangaSetBaja('Muerte')">Muerte</button><button style="${BTN_R}" onclick="mangaSetBaja('Venta')">Venta</button><button style="${BTN_R}" onclick="mangaSetBaja('Faena')">Faena</button><button class="bs" onclick="mangaBaja(false)">Cancelar</button></div></div>`:""}
+  </div>`
+  :`<div style="background:#fff;border-radius:12px;padding:1rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.05rem">Esperando lectura de caravana…</div>`}
+
+  ${M.grupo.length?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem;align-items:center">
+    <span class="km"><strong>Grupo de manga: ${M.grupo.length}</strong> animales →</span>
+    <button class="bs" onclick="usarGrupoMangaEnMov();state.tab=0;render()">📋 Movimiento (venta, traslado, cambio cat.)</button>
+    <button class="bs" onclick="state.masivaOpen=true;render();enfocar('ma_producto')">🩺 Actividad masiva</button>
+    <button class="bs" onclick="mangaVaciarGrupo()">🗑️ Vaciar grupo</button>
+  </div>`:""}
+  ${M.log.length?`<div class="tw" style="margin-top:.6rem"><table><thead><tr><th>Animal</th><th>Registrado</th><th></th></tr></thead><tbody>
+    ${M.log.slice(-8).reverse().map((l,i)=>`<tr><td><strong>${h(l.nombre)}</strong></td><td class="km">${h(l.txt)}</td><td><button class="bi" title="Deshacer" onclick="mangaDeshacer(${M.log.length-1-i})">↩️</button></td></tr>`).join("")}</tbody></table></div>`:""}
+</div>`;
+}
+
+window.setFAnimModoPesaje=function(v){ const M=state.manga; M.on=!!v; M.animal=null; M.nuevoEID=""; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; if(v){ if(!M.fecha)M.fecha=hoyISO(); if(!M.ciclo)M.ciclo=cicloActual(); M.cfg=!M.campo; } render(); if(v&&M.campo)enfocar("bl_eid"); };
+window.mangaCfg=function(v){ state.manga.cfg=!!v; render(); if(!v)enfocar("bl_eid"); };
+window.setFAnimMg=function(k,v){ state.manga[k]=v; if(k==="altaCat"||k==="pesar")render(); };
+window.mangaAgregarAct=function(){ const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";}; const tipo=g("mg_atipo"),producto=g("mg_aprod"),dosis=g("mg_adosis"); if(!producto&&!["Destete","Tacto","Señalada","Observación"].includes(tipo))return alert("Cargá el producto."); state.manga.acts.push({tipo,producto,dosis}); render(); };
+window.mangaQuitarAct=function(i){ state.manga.acts.splice(i,1); render(); };
+window.mangaKey=function(k){ const M=state.manga; if(k==="⌫")M.peso=M.peso.slice(0,-1); else if(k==="."){ if(!M.peso.includes("."))M.peso=(M.peso||"0")+"."; } else if(M.peso.replace(".","").length<5)M.peso+=k; render(); };
+window.mangaCancelar=function(){ const M=state.manga; M.animal=null; M.nuevoEID=""; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid"); };
+window.mangaExtra=function(v){ state.manga.extra=v!==false; state.manga.catOpen=state.manga.bajaOpen=false; render(); if(v!==false)enfocar("mg_xprod"); };
+window.mangaCat=function(v){ state.manga.catOpen=v!==false; state.manga.extra=state.manga.bajaOpen=false; render(); };
+window.mangaBaja=function(v){ state.manga.bajaOpen=v!==false; state.manga.extra=state.manga.catOpen=false; render(); };
+window.mangaVaciarGrupo=function(){ if(confirm("¿Vaciar el grupo de esta manga? (no borra nada de lo guardado)")){ state.manga.grupo=[]; state.manga.log=[]; render(); } };
+window.usarGrupoMangaEnMov=function(){ state.movGrupoTxt=state.manga.grupo.map(k=>{const a=state.animales[k];return a?(a.caravana||a.visual||k):k;}).join("\n"); toast("📋 Grupo cargado en el formulario de movimiento"); const el=document.getElementById("mgrp"); if(el)el.value=state.movGrupoTxt; };
+
+function mangaHora(){ return new Date().toTimeString().slice(0,8); }
+function mangaLog(a,txt,ids){ const M=state.manga; M.log.push({key:a.key,nombre:nombreAnimal(a),txt,ids}); if(!M.grupo.includes(a.key))M.grupo.push(a.key); }
+async function mangaRegistrarActs(a,acts,origen){
+  const M=state.manga; const fecha=M.fecha||hoyISO(); const ids=[]; const me={...state.eventos};
+  for(const x of acts){ const e={id:idEvento(a.key,fecha,mangaHora(),x.producto||x.tipo)+"_"+Date.now().toString(36),animal:a.key,fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:"",origen:origen||"manga",sesion:"manga"}; me[e.id]=e; ids.push(e.id); }
+  if(ids.length){ state.eventos=me; for(const id of ids)await set(ref(db,"eventos/"+id),me[id]); }
+  return ids;
+}
+window.mangaOk=async function(){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
+  const fecha=M.fecha||hoyISO(); const ids={pesadas:[],eventos:[]}; const partes=[];
+  const peso=parseFloat(M.peso);
+  if(M.pesar&&peso>0){ const id=a.key+"_"+fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
+  else if(M.pesar&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
+  if(M.acts.length){ ids.eventos=await mangaRegistrarActs(a,M.acts); partes.push(M.acts.map(x=>x.producto||x.tipo).join(", ")); }
+  mangaLog(a,partes.join(" · ")||"pasó por la manga",ids);
+  toast("✔ "+nombreAnimal(a)+(partes.length?": "+partes.join(" · "):""));
+  M.animal=null; M.peso=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid");
+};
+window.mangaGuardarExtra=async function(){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
+  const x={tipo:g("mg_xtipo"),producto:g("mg_xprod"),dosis:g("mg_xdosis"),enfermedad:g("mg_xenf")};
+  if(!x.producto&&!["Destete","Tacto","Señalada","Observación","Parto"].includes(x.tipo))return alert("Cargá el producto o detalle.");
+  const ids=await mangaRegistrarActs(a,[x]); mangaLog(a,"➕ "+(x.producto||x.tipo),{pesadas:[],eventos:ids});
+  toast("🩺 "+(x.producto||x.tipo)+" registrado en "+nombreAnimal(a)); M.extra=false; render();
+};
+window.mangaAlta=async function(cat){
+  const M=state.manga; const eid=M.nuevoEID; if(!eid)return;
+  if(!M.campo){ alert("Primero elegí el campo en ⚙️ Sesión."); M.cfg=true; render(); return; }
+  const key=keyAnimal(eid,""); if(!key)return;
+  const a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?eid:"",campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha||hoyISO(),estado:"activo",origen:"manga",creado:hoyISO()});
+  state.animales[key]=a; await set(ref(db,"animales/"+key),a);
+  let movId=null;
+  if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:"Nacimiento",cant:1,obs:"Manga: alta "+(a.caravana||a.visual)}); }
+  mangaLog(a,"🆕 alta como "+cat+(movId?" (+1 stock)":""),{pesadas:[],eventos:[],animal:key,mov:movId});
+  toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
+  M.nuevoEID=""; M.animal=key; M.peso=""; render(); if(!M.pesar&&!M.acts.length){ M.animal=null; render(); enfocar("bl_eid"); }
+};
+window.mangaSetCat=async function(cat){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a||cat===a.cat)return;
+  const fecha=M.fecha||hoyISO(); const vieja=a.cat; const ciclo=cicloDe(a);
+  const id1=uid(),id2=uid();
+  await set(ref(db,"mov/"+id1),{id:id1,fecha,campo:a.campo,cat:vieja,ciclo,tipo:"egreso",sub:"Cambio Categoria",cant:1,obs:"Manga: "+(a.caravana||a.visual)+" → "+cat});
+  await set(ref(db,"mov/"+id2),{id:id2,fecha,campo:a.campo,cat,ciclo,tipo:"ingreso",sub:"Cambio Categoria",cant:1,obs:"Manga: "+(a.caravana||a.visual)+" desde "+vieja});
+  const nuevo={...a,cat,sexo:a.sexo||sexoDeCat(cat),modificado:hoyISO()}; state.animales[a.key]=nuevo; await set(ref(db,"animales/"+a.key),nuevo);
+  const ids=await mangaRegistrarActs(a,[{tipo:"Cambio de corral",producto:"Categoría "+vieja+" → "+cat}]);
+  mangaLog(nuevo,"🔄 "+vieja+" → "+cat,{pesadas:[],eventos:ids,movs:[id1,id2],catAnterior:vieja});
+  toast("🔄 "+nombreAnimal(a)+" ahora es "+cat); M.catOpen=false; render();
+};
+window.mangaSetBaja=async function(sub){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
+  if(!confirm("¿Confirmás "+sub+" de "+nombreAnimal(a)+"? Se descuenta 1 del stock de "+a.cat+" en "+a.campo+"."))return;
+  const fecha=M.fecha||hoyISO(); const estado=sub==="Muerte"?"muerto":sub==="Venta"?"vendido":"faenado";
+  const id1=uid(); await set(ref(db,"mov/"+id1),{id:id1,fecha,campo:a.campo,cat:a.cat,ciclo:cicloDe(a),tipo:"egreso",sub,cant:1,obs:"Manga: "+(a.caravana||a.visual)});
+  const nuevo={...a,estado,fechaBaja:fecha,modificado:hoyISO()}; state.animales[a.key]=nuevo; await set(ref(db,"animales/"+a.key),nuevo);
+  const ids=await mangaRegistrarActs(a,[{tipo:"Otro",producto:sub}]);
+  mangaLog(nuevo,"✝️ "+sub,{pesadas:[],eventos:ids,movs:[id1],estadoAnterior:a.estado||"activo"});
+  toast("✝️ "+nombreAnimal(a)+": "+sub); M.animal=null; M.peso=""; M.bajaOpen=false; render(); enfocar("bl_eid");
+};
+window.mangaDeshacer=async function(i){
+  const M=state.manga; const l=M.log[i]; if(!l)return; if(!confirm("¿Deshacer \""+l.txt+"\" de "+l.nombre+"?"))return;
+  const ids=l.ids||{};
+  for(const id of ids.pesadas||[]){ delete state.pesadas[id]; await remove(ref(db,"pesadas/"+id)); }
+  for(const id of ids.eventos||[]){ delete state.eventos[id]; await remove(ref(db,"eventos/"+id)); }
+  for(const id of ids.movs||[]){ await remove(ref(db,"mov/"+id)); }
+  if(ids.mov){ await remove(ref(db,"mov/"+ids.mov)); }
+  const a=state.animales[l.key];
+  if(ids.animal){ delete state.animales[ids.animal]; await remove(ref(db,"animales/"+ids.animal)); }
+  else if(a&&ids.catAnterior){ const n={...a,cat:ids.catAnterior}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  else if(a&&ids.estadoAnterior){ const n={...a,estado:ids.estadoAnterior,fechaBaja:""}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  M.log.splice(i,1); if(!M.log.some(x=>x.key===l.key))M.grupo=M.grupo.filter(k=>k!==l.key);
+  toast("↩️ Deshecho"); render(); enfocar("bl_eid");
+};
+
+// ── Movimiento con grupo de caravanas → aplica a las fichas ──
+async function aplicarMovAGrupo(e,refs){
+  const ma={...state.animales}; const me={...state.eventos}; const noEnc=[]; let altas=0,cambios=0;
+  const hora=mangaHora();
+  for(const r of refs){
+    let a=buscarAnimalRef(r);
+    if(e.tipo==="ingreso"){
+      if(!a){ const eid=limpiarEID(r); const key=keyAnimal(eid,eid.length<12?r:""); if(!key)continue;
+        a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?String(r).toUpperCase():"",campo:e.campo,cat:e.cat,sexo:sexoDeCat(e.cat),ciclo:e.ciclo||"",ingreso:e.fecha,estado:"activo",origen:"mov",creado:hoyISO()}); ma[key]=a; altas++; }
+      else { ma[a.key]={...a,campo:e.campo,cat:e.cat,ciclo:a.ciclo||e.ciclo||"",estado:"activo",fechaBaja:"",modificado:hoyISO()}; cambios++; }
+    } else {
+      if(!a){ noEnc.push(r); continue; }
+      const est=e.sub==="Venta"?"vendido":e.sub==="Muerte"?"muerto":e.sub==="Faena"?"faenado":e.sub==="Otro egreso"?"descartado":null;
+      if(est){ ma[a.key]={...a,estado:est,fechaBaja:e.fecha,modificado:hoyISO()}; cambios++; }
+    }
+    if(a){ const ev={id:idEvento(a.key,e.fecha,hora,e.sub)+"_"+e.id.slice(-4),animal:a.key,fecha:e.fecha,hora,tipo:"Otro",producto:e.tipo==="ingreso"?"Ingreso: "+e.sub:"Egreso: "+e.sub,dosis:"",enfermedad:"",obs:(e.campo||"")+(e.obs?" · "+e.obs:""),origen:"mov",sesion:e.id}; me[ev.id]=ev; }
+  }
+  state.animales=ma; await set(ref(db,"animales"),ma); state.eventos=me; await set(ref(db,"eventos"),me);
+  toast("🐮 Fichas: "+altas+" altas, "+cambios+" actualizadas"+(noEnc.length?" · "+noEnc.length+" no encontradas":""));
+  if(noEnc.length)alert("No encontré estas caravanas (el egreso por lote se guardó igual):\n"+noEnc.join(", "));
+}
+
+
+// Bastón HID en modo manga: si el foco quedó en un botón (teclado numérico), igual capturamos los dígitos
+(function(){ let buf="", t=null;
+  document.addEventListener("keydown",e=>{
+    if(!state.manga.on)return; const el=document.activeElement;
+    if(el&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"||el.tagName==="SELECT"))return;
+    if(/^\d$/.test(e.key)){ buf+=e.key; e.preventDefault(); clearTimeout(t); t=setTimeout(()=>{buf="";},1500); if(buf.length>=15){ procesarLecturaBaston(buf); buf=""; } }
+    else if(e.key==="Enter"&&buf){ e.preventDefault(); procesarLecturaBaston(buf); buf=""; }
+  });
+})();
 
 </script>
 </body>
