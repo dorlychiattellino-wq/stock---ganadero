@@ -232,14 +232,16 @@ let state = {
   filtIatf: {ciclo:"",campo:"",cat:"",toro:"",caravana:""},
   animales: {},       // {key: ficha individual por caravana} (ver módulo Animales)
   pesadas: {},        // {id: {animal, fecha, hora, peso, origen, sesion}}
-  filtAnim: {buscar:"",campo:"",cat:"",sexo:"",raza:"",estado:"activo",ciclo:""},
+  filtAnim: {buscar:"",campo:"",cat:"",sexo:"",raza:"",estado:"activo",ciclo:"",origen:""},
   animSel: null, animNuevo: false, nuevoEID: "", importAnim: null, sugPadre: null, serialPort: null,
   modoPesaje: false, pesFecha: "", pesAnimal: null, pesLog: [], papelTxt: "", papelPrev: null,
   eventos: {},        // {id: {animal, fecha, hora, tipo, producto, dosis, enfermedad, obs, origen, sesion}}
   trTxt: "", trPrev: null, masivaOpen: false,
-  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,tipos:[],productos:[],dosis:"",over:null,tactoRes:"",animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false,sesionId:"",nuevoTipo:"",nuevoProd:""},
+  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},over:null,tactoRes:"",animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false,sesionId:""},
   mangaSesiones: {},  // {id:{id,fecha,campo,ciclo,tipos,productos,animales:[],tactos:{key:res},usuario,actualizado}}
-  mangaCatalogo: {tipos:[],productos:[]},
+  mangaCatalogo: {tipos:[],productos:[]}, // productos: [{nombre,categoria,dosis}]
+  origenes: {},       // {id:{id,nombre,cuit,renspa}}
+  prodTxt: "",
   movGrupoTxt: "",
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
   filtTactoIatf: {ciclo:"",campo:""},
@@ -456,7 +458,7 @@ function render(){
   if(!state.loaded||!state.usuariosLoaded){ root.innerHTML=`<div class="loading"><div class="spinner"></div><span>Conectando...</span></div>`; return; }
   // Preservar lo tipeado en login/setup/alta de usuario si un dato de Firebase llega en el medio
   const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave",
-    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"]')).map(e=>e.id)];
+    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"],input[id^="mo_"],textarea[id^="cp_"],input[id^="cp_"],select[id^="cp_"]')).map(e=>e.id)];
   const saved={}; let focusId=null;
   for(const id of preserveIds){const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
   // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
@@ -664,6 +666,14 @@ function renderMov(){
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===(ef?ef.tipo:(state.formMov.tipo||"ingreso"))?" selected":""}>${v}</option>`).join("")}</select></label>
     <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
+    <label class="s2" style="grid-column:1/-1">📍 Origen del ingreso (nombre / CUIT / RENSPA) — para nacimientos, compras y traslados de entrada
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <input id="mo_nom" list="origenes-list" placeholder="Nombre del origen (ej: El Rincón, o el vendedor)" value="${h(ef&&ef.origen?ef.origen.nombre:"")}" onchange="autoOrigen(this.value)" style="flex:2;min-width:180px"/><datalist id="origenes-list">${origenesLista().map(o=>`<option value="${h(o.nombre)}">${h(o.cuit||"")} ${h(o.renspa||"")}</option>`).join("")}</datalist>
+        <input id="mo_cuit" placeholder="CUIT" value="${h(ef&&ef.origen?ef.origen.cuit:"")}" style="flex:1;min-width:120px"/>
+        <input id="mo_renspa" placeholder="RENSPA" value="${h(ef&&ef.origen?ef.origen.renspa:"")}" style="flex:1;min-width:140px"/>
+      </div>
+      <span class="km">Si es un nacimiento o traslado propio, escribí el nombre del campo y se completa solo con su RENSPA. Los orígenes se guardan para elegirlos la próxima vez.</span>
+    </label>
     <label class="s2" style="grid-column:1/-1">🐮 Caravanas del movimiento (opcional)
       <textarea id="mgrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y cada animal se da de alta / baja / recategoriza en su ficha." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.movGrupoTxt||"")}</textarea>
       <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
@@ -2066,6 +2076,7 @@ async function restaurarBackup(file){
       if(data.eventos) await set(ref(db,"eventos"),data.eventos);
       if(data.mangaSesiones) await set(ref(db,"mangaSesiones"),data.mangaSesiones);
       if(data.mangaCatalogo) await set(ref(db,"mangaCatalogo"),data.mangaCatalogo);
+      if(data.origenes) await set(ref(db,"origenes"),data.origenes);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -2074,7 +2085,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
@@ -2844,7 +2855,8 @@ function doSubmitMov(){
   if(!fecha||!campo||!cat||!cantFinal)return alert("Completa: fecha, campo, categoria y cantidad (o pegá caravanas).");
   if(refs.length&&cant&&cant!==refs.length&&!confirm("La cantidad ("+cant+") no coincide con las caravanas pegadas ("+refs.length+"). ¿Guardar igual?"))return;
   const e={fecha,campo,cat,ciclo,tipo,sub,cant:cantFinal,obs,id:state.editMov?state.editMov.id:uid()};
-  saveMov(e).then(async()=>{ if(refs.length)await aplicarMovAGrupo(e,refs); state.editMov=null;state.movGrupoTxt="";clearFormMov();render();});
+  const og=leerOrigen(); if(og)e.origen=og;
+  saveMov(e).then(async()=>{ if(og)await guardarOrigen(og); if(refs.length)await aplicarMovAGrupo(e,refs); state.editMov=null;state.movGrupoTxt="";clearFormMov();render();});
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
@@ -3042,7 +3054,8 @@ onValue(ref(db,"animales"), snap => { state.animales = snap.val() || {}; render(
 onValue(ref(db,"pesadas"), snap => { state.pesadas = snap.val() || {}; render(); });
 onValue(ref(db,"eventos"), snap => { state.eventos = snap.val() || {}; render(); });
 onValue(ref(db,"mangaSesiones"), snap => { state.mangaSesiones = snap.val() || {}; render(); });
-onValue(ref(db,"mangaCatalogo"), snap => { const v=snap.val()||{}; state.mangaCatalogo={tipos:v.tipos||[],productos:v.productos||[]}; render(); });
+onValue(ref(db,"mangaCatalogo"), snap => { const v=snap.val()||{}; state.mangaCatalogo={tipos:v.tipos||[],productos:(v.productos||[]).map(x=>typeof x==="string"?{nombre:x,categoria:"",dosis:""}:x)}; render(); });
+onValue(ref(db,"origenes"), snap => { state.origenes = snap.val() || {}; render(); });
 
 // ── RENDER ──
 function renderAnimales(){
@@ -3055,6 +3068,7 @@ function renderAnimales(){
     if(f.campo&&a.campo!==f.campo)return false;
     if(f.cat&&a.cat!==f.cat)return false;
     if(f.ciclo&&cicloDe(a)!==f.ciclo)return false;
+    if(f.origen&&(a.origenNombre||"")!==f.origen)return false;
     if(f.sexo&&a.sexo!==f.sexo)return false;
     if(f.raza&&a.raza!==f.raza)return false;
     if(f.buscar){ const q=normTxt(f.buscar); const qd=q.replace(/\D/g,""); const eid=limpiarEID(a.caravana);
@@ -3083,6 +3097,7 @@ function renderAnimales(){
 
 ${renderLectura()}
 ${esAdmin()?renderSesionesManga():""}
+${esAdmin()?renderCatalogoProd():""}
 ${esAdmin()?renderPapel():""}
 ${esAdmin()?renderImportTrat():""}
 ${esAdmin()?renderMasiva(lista):""}
@@ -3128,13 +3143,14 @@ ${state.animNuevo?renderNuevoAnimal(clist,razasList):""}
     <label>Campo<select onchange="setFAnim('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoría<select onchange="setFAnim('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
     <label>Ciclo<select onchange="setFAnim('ciclo',this.value)">${opts([...new Set([...ciclos(),...all.map(cicloDe).filter(Boolean)])].sort(),f.ciclo,"Todos")}</select></label>
+    <label>Origen<select onchange="setFAnim('origen',this.value)">${opts([...new Set(all.map(a=>a.origenNombre).filter(Boolean))].sort(),f.origen,"Todos")}</select></label>
     <label>Sexo<select onchange="setFAnim('sexo',this.value)">${opts(["Hembra","Macho"],f.sexo,"Todos")}</select></label>
     <label>Raza<select onchange="setFAnim('raza',this.value)">${opts(razasList,f.raza,"Todas")}</select></label>
     <label>Estado<select onchange="setFAnim('estado',this.value)"><option value="">Todos</option>${EST_ANIM.map(([v,l])=>`<option value="${v}"${f.estado===v?" selected":""}>${l}</option>`).join("")}</select></label>
   </div>
   ${lista.length===0?`<p class="empty">Sin animales. Importá un Excel de Hook o cargá uno con "➕ Nuevo animal".</p>`:`
   <div class="tw"><table>
-    <thead><tr><th>Caravana</th><th>Visual</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Sexo</th><th>Raza</th><th>Nac.</th><th>Último peso</th><th>ADPV</th><th>Madre</th><th>Padre</th><th>Últ. actividad</th><th></th></tr></thead>
+    <thead><tr><th>Caravana</th><th>Visual</th><th>Campo</th><th>Cat.</th><th>Ciclo</th><th>Sexo</th><th>Raza</th><th>Nac.</th><th>Último peso</th><th>ADPV</th><th>Madre</th><th>Padre</th><th>Origen</th><th>Últ. actividad</th><th></th></tr></thead>
     <tbody>${lista.slice(0,600).map(a=>{
       const ps=pesadasDe(a.key); const u=ps[ps.length-1]; const adpv=adpvDe(ps); const baja=(a.estado||"activo")!=="activo";
       return `<tr style="${baja?"opacity:.5":""}${state.animSel===a.key?";background:#eaf5e0":""}">
@@ -3143,7 +3159,7 @@ ${state.animNuevo?renderNuevoAnimal(clist,razasList):""}
         <td style="white-space:nowrap">${fmtF(a.fechaNac)}</td>
         <td style="white-space:nowrap">${u?`<strong>${u.peso} kg</strong> <span class="km">${fmtF(u.fecha)}</span>`:"—"}</td>
         <td>${adpv!==null?`<strong style="color:${adpv>=0.5?"#2d4a1e":adpv>=0?"#a06a1f":"#c82010"}">${adpv.toFixed(3)}</strong>`:"—"}</td>
-        <td>${h(a.madre||"—")}</td><td>${h(a.padre||"—")}</td>
+        <td>${h(a.madre||"—")}</td><td>${h(a.padre||"—")}</td><td class="km">${h(a.origenNombre||"—")}</td>
         <td style="white-space:nowrap">${(()=>{const e=eventosDe(a.key).slice(-1)[0];return e?`<span class="km">${fmtF(e.fecha)}</span> ${h(e.producto||e.tipo)}`:"—";})()}</td>
         <td><button class="bi" title="Ver ficha" onclick="setFAnimSel('${h(a.key)}')">🔎</button></td>
       </tr>`;}).join("")}
@@ -3190,6 +3206,10 @@ function renderFichaAnimal(a,clist,razasList){
     <label>Ciclo<input id="an_ciclo" list="an-ciclos" value="${h(cicloDe(a))}" placeholder="Ej: 2025/2026"/><datalist id="an-ciclos">${[...new Set([...ciclos(),cicloActual()])].map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Corral / rodeo (Hook)<input id="an_corral" value="${h(a.corral||"")}"/></label>
     <label>Ingreso<input id="an_ingreso" type="date" value="${h(a.ingreso||"")}"/></label>
+    <label>Tipo de ingreso<select id="an_ingresoTipo">${opts(["Nacimiento","Compra","Traslado entrada","Otro ingreso"],a.ingresoTipo||"","—")}</select></label>
+    <label>Origen (nombre)<input id="an_origenNombre" list="origenes-list2" value="${h(a.origenNombre||"")}"/><datalist id="origenes-list2">${origenesLista().map(o=>`<option value="${h(o.nombre)}"/>`).join("")}</datalist></label>
+    <label>Origen CUIT<input id="an_origenCuit" value="${h(a.origenCuit||"")}"/></label>
+    <label>Origen RENSPA<input id="an_origenRenspa" value="${h(a.origenRenspa||"")}"/></label>
     <label>Estado reproductivo<select id="an_estadoRep">${opts(["preñada","cut","vacía","2da oportunidad","descarte","entorada"],a.estadoRep||"","—")}</select></label>
     <label>Estado<select id="an_estado">${EST_ANIM.map(([v,l])=>`<option value="${v}"${(a.estado||"activo")===v?" selected":""}>${l}</option>`).join("")}</select></label>
     <label>Fecha de baja<input id="an_fechaBaja" type="date" value="${h(a.fechaBaja||"")}"/></label>
@@ -3288,7 +3308,7 @@ window.conectarBaston=async function(){
 
 function leerFicha(prefix){
   const g=id=>{const el=document.getElementById(prefix+id);return el?el.value.trim():"";};
-  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),ciclo:g("ciclo"),estadoRep:g("estadoRep"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
+  return {caravana:limpiarEID(g("caravana")),visual:g("visual").toUpperCase(),campo:g("campo"),cat:g("cat"),sexo:g("sexo"),raza:g("raza"),fechaNac:g("nac"),ciclo:g("ciclo"),estadoRep:g("estadoRep"),ingresoTipo:g("ingresoTipo"),origenNombre:g("origenNombre"),origenCuit:g("origenCuit"),origenRenspa:g("origenRenspa"),pesoNac:g("pesoNac")?parseFloat(g("pesoNac")):"",madre:g("madre"),padre:g("padre"),corral:g("corral"),ingreso:g("ingreso"),estado:g("estado")||"activo",fechaBaja:g("fechaBaja"),obs:g("obs")};
 }
 window.guardarAnimal=async function(){
   const a=state.animales[state.animSel]; if(!a)return;
@@ -3419,9 +3439,9 @@ window.confirmarImportHook=async function(){
 window.cancelarImportHook=function(){ state.importAnim=null; render(); };
 
 window.exportarAnimalesCSV=function(){
-  const rows=[["Caravana electronica","Caravana visual","Campo","Categoria","Sexo","Raza","Fecha nacimiento","Peso nacer","Madre","Padre","Corral","Ingreso","Estado","Fecha baja","Ultimo peso","Fecha ultimo peso","ADPV","Cant pesadas","Obs"]];
+  const rows=[["Caravana electronica","Caravana visual","Campo","Categoria","Sexo","Raza","Fecha nacimiento","Peso nacer","Madre","Padre","Corral","Ingreso","Tipo ingreso","Origen","Origen CUIT","Origen RENSPA","Estado","Fecha baja","Ultimo peso","Fecha ultimo peso","ADPV","Cant pesadas","Obs"]];
   for(const a of Object.values(state.animales).filter(Boolean)){ const ps=pesadasDe(a.key); const u=ps[ps.length-1]; const adpv=adpvDe(ps);
-    rows.push([a.caravana,a.visual,a.campo,a.cat,a.sexo,a.raza,a.fechaNac,a.pesoNac,a.madre,a.padre,a.corral,a.ingreso,a.estado||"activo",a.fechaBaja,u?u.peso:"",u?u.fecha:"",adpv!==null?adpv.toFixed(3):"",ps.length,a.obs].map(v=>`"${String(v===undefined||v===null?"":v).replace(/"/g,'""')}"`)); }
+    rows.push([a.caravana,a.visual,a.campo,a.cat,a.sexo,a.raza,a.fechaNac,a.pesoNac,a.madre,a.padre,a.corral,a.ingreso,a.ingresoTipo,a.origenNombre,a.origenCuit,a.origenRenspa,a.estado||"activo",a.fechaBaja,u?u.peso:"",u?u.fecha:"",adpv!==null?adpv.toFixed(3):"",ps.length,a.obs].map(v=>`"${String(v===undefined||v===null?"":v).replace(/"/g,'""')}"`)); }
   const blob=new Blob(["\ufeff"+rows.map(r=>r.join(";")).join("\n")],{type:"text/csv;charset=utf-8"});
   const el=document.createElement("a"); el.href=URL.createObjectURL(blob); el.download="Animales_"+hoyISO()+".csv"; el.click();
 };
@@ -3658,26 +3678,76 @@ function renderLectura(){
 </div>`;
 }
 function TIPOS_MANGA(){ return [...new Set(["Caravaneo","Marcación","Señalada","Castración","Vacunación","Antiparasitario","Tratamiento","Vitaminas / minerales","Baño / mosquicida","Destete","Tacto","Pesaje","Cambio de rodeo","Observación",...(state.mangaCatalogo.tipos||[]),...(typeof actividadesAll==="function"?actividadesAll():[]).filter(x=>!["Tacto","Traslado de rodeo","Cambio de estado","IATF","Otro"].includes(x))])]; }
-function PRODS_MANGA(){ const hist=Object.values(state.eventos).filter(Boolean).map(e=>e.producto).filter(x=>x&&!/^(Ingreso|Egreso|Categoría|Preñada|Vacía|Cut|2da|Descarte|preñada|vacía|cut|descarte)/.test(x)&&!x.includes(", ")); return [...new Set(["Moskithion","Nutrimin","Recomendasol","Thilmicocina",...(state.mangaCatalogo.productos||[]),...hist])].sort(); }
-const TACTO_RES=[["preñada","🟢 PREÑADA"],["cut","🟢 CUT"],["vacía","🔴 VACÍA"],["2da oportunidad","🟠 2DA OPORT."],["descarte","⚫ DESCARTE"]];
 function chip(txt,on,onclick,color){ return `<button onclick="${onclick}" style="border-radius:22px;padding:.55rem .9rem;font-size:.95rem;font-weight:700;border:2px solid ${color||"#2d4a1e"};background:${on?(color||"#2d4a1e"):"#fff"};color:${on?"#fff":(color||"#2d4a1e")}">${on?"✔ ":""}${h(txt)}</button>`; }
-function renderChips(tipos,productos,dosis,fn){
-  return `<div><strong>¿Qué se le hace a cada animal?</strong> <span class="km">(tocá una o varias)</span>
-    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${TIPOS_MANGA().map(t=>chip(t,tipos.includes(t),`${fn}('tipo','${h(t)}')`)).join("")}
-      <input id="mg_ntipo" placeholder="+ otra actividad" onchange="${fn}('nuevoTipo',this.value);this.value=''" style="width:170px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #2d4a1e"/></div>
-    <strong>Producto</strong> <span class="km">(opcional, uno o varios)</span>
-    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0">${PRODS_MANGA().map(t=>chip(t,productos.includes(t),`${fn}('prod','${h(t)}')`,"#1e4a7a")).join("")}
-      <input id="mg_nprod" placeholder="+ otro producto" onchange="${fn}('nuevoProd',this.value);this.value=''" style="width:170px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #1e4a7a"/></div>
-    <div style="display:flex;gap:.5rem;align-items:center"><span><strong>Dosis</strong> <span class="km">(opcional)</span></span><input id="mg_dosis" value="${h(dosis||"")}" onchange="${fn}('dosis',this.value)" placeholder="Ej: 5 ml" style="width:140px"/></div></div>`;
+const TACTO_RES=[["preñada","🟢 PREÑADA"],["cut","🟢 CUT"],["vacía","🔴 VACÍA"],["2da oportunidad","🟠 2DA OPORT."],["descarte","⚫ DESCARTE"]];
+const CATEG_PROD=["Antibiótico","Antiparasitario","Piojicida / mosquicida","Antiinflamatorio","Vitaminas / minerales","Vacuna","Hormonal / reproductivo","Desinfectante / cicatrizante","Otro"];
+function catalogoProd(){ const base=[{nombre:"Moskithion",categoria:"Piojicida / mosquicida",dosis:""},{nombre:"Nutrimin",categoria:"Vitaminas / minerales",dosis:""},{nombre:"Recomendasol",categoria:"Otro",dosis:""},{nombre:"Thilmicocina",categoria:"Antibiótico",dosis:""}];
+  const cat=(state.mangaCatalogo.productos||[]); const map={}; for(const p of [...base,...cat]){ if(p&&p.nombre)map[p.nombre]={...(map[p.nombre]||{}),...p}; }
+  return Object.values(map).sort((a,b)=>(a.categoria||"zz").localeCompare(b.categoria||"zz")||a.nombre.localeCompare(b.nombre)); }
+function prodInfo(n){ return catalogoProd().find(p=>p.nombre===n)||{nombre:n,categoria:"",dosis:""}; }
+function mangaActsDe(M){ return M.over?M.over:{tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis}; }
+function PRODS_MANGA(){ return catalogoProd().map(p=>p.nombre); }
+function prodTexto(acts){ const d=acts.prodDosis||{}; return (acts.productos||[]).map(p=>d[p]?p+" "+d[p]:p).join(", "); }
+function origenesLista(){ const propios=campos().map(c=>({id:"campo_"+c,nombre:c,cuit:"",renspa:(typeof renspaDe==="function"?renspaDe(c):"")||""})); const ext=Object.values(state.origenes).filter(Boolean); const map={}; for(const o of [...propios,...ext])map[o.nombre]={...(map[o.nombre]||{}),...o}; return Object.values(map).sort((a,b)=>a.nombre.localeCompare(b.nombre)); }
+window.autoOrigen=function(nombre){ const o=origenesLista().find(x=>normTxt(x.nombre)===normTxt(nombre)); if(!o)return; const c=document.getElementById("mo_cuit"), r=document.getElementById("mo_renspa"); if(c&&!c.value)c.value=o.cuit||""; if(r&&!r.value)r.value=o.renspa||""; };
+function leerOrigen(){ const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";}; const nombre=g("mo_nom"),cuit=g("mo_cuit"),renspa=g("mo_renspa"); if(!nombre&&!cuit&&!renspa)return null; return {nombre,cuit,renspa}; }
+async function guardarOrigen(o){ if(!o||!o.nombre)return; if(campos().some(c=>normTxt(c)===normTxt(o.nombre)))return; const ex=Object.values(state.origenes).find(x=>x&&normTxt(x.nombre)===normTxt(o.nombre)); const id=ex?ex.id:uid(); const n={id,nombre:o.nombre,cuit:o.cuit||(ex?ex.cuit:"")||"",renspa:o.renspa||(ex?ex.renspa:"")||""}; state.origenes[id]=n; await set(ref(db,"origenes/"+id),n); }
+
+function renderChips(M,fn,esSesion){
+  const acts=esSesion?{tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis}:mangaActsDe(M);
+  const tiposDisp=M.tiposDisp, prodsDisp=M.prodsDisp;
+  const restoT=TIPOS_MANGA().filter(t=>!tiposDisp.includes(t));
+  const cat=catalogoProd(); const restoP=cat.filter(p=>!prodsDisp.includes(p.nombre));
+  const grupos={}; for(const p of restoP){ const c=p.categoria||"Sin categoría"; (grupos[c]=grupos[c]||[]).push(p); }
+  return `<div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
+      <strong>¿Qué se le hace a cada animal?</strong>
+      ${esSesion?`<div style="display:flex;gap:.4rem;align-items:center"><select id="mg_selT" onchange="${fn}('addTipo',this.value);this.value=''" style="width:auto;padding:.5rem"><option value="">＋ Agregar actividad a la lista de hoy…</option>${restoT.map(t=>`<option>${h(t)}</option>`).join("")}<option value="__nueva">✏️ Escribir una nueva…</option></select></div>`:""}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0;min-height:2.2rem">${tiposDisp.length?tiposDisp.map(t=>chipX(t,acts.tipos.includes(t),`${fn}('tipo','${h(t)}')`,esSesion?`${fn}('quitarTipo','${h(t)}')`:"", "#2d4a1e")).join(""):`<span class="km">Elegí en el desplegable las actividades que se van a hacer hoy. Después las prendés o apagás con un toque.</span>`}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
+      <strong>Productos / medicamentos</strong> <span class="km">(opcional; cada uno con su dosis)</span>
+      ${esSesion?`<select id="mg_selP" onchange="${fn}('addProd',this.value);this.value=''" style="width:auto;padding:.5rem"><option value="">＋ Agregar producto a la lista de hoy…</option>${Object.entries(grupos).map(([c,ps])=>`<optgroup label="${h(c)}">${ps.map(p=>`<option value="${h(p.nombre)}">${h(p.nombre)}${p.dosis?" · "+h(p.dosis):""}</option>`).join("")}</optgroup>`).join("")}<option value="__nuevo">✏️ Escribir uno nuevo…</option></select>`:""}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin:.4rem 0;min-height:2.2rem">${prodsDisp.length?prodsDisp.map(n=>{const p=prodInfo(n); const on=acts.productos.includes(n); const d=(acts.prodDosis||{})[n]||"";
+      return `<div style="display:flex;align-items:center;gap:.3rem;border:2px solid #1e4a7a;border-radius:22px;padding:.25rem .3rem .25rem .7rem;background:${on?"#1e4a7a":"#fff"};color:${on?"#fff":"#1e4a7a"}">
+        <button onclick="${fn}('prod','${h(n)}')" style="background:none;border:none;color:inherit;font-weight:700;font-size:.95rem;padding:.3rem .2rem">${on?"✔ ":""}${h(n)}${p.categoria?` <span style="font-weight:400;font-size:.75rem;opacity:.85">· ${h(p.categoria)}</span>`:""}</button>
+        <input value="${h(d)}" placeholder="dosis" onchange="${fn}('pdosis','${h(n)}',this.value)" onclick="event.stopPropagation()" style="width:70px;padding:.3rem .4rem;border-radius:14px;border:1px solid #9ab;font-size:.85rem;background:#fff;color:#1e4a7a"/>
+        ${esSesion?`<button onclick="${fn}('quitarProd','${h(n)}')" title="Sacar de la lista de hoy" style="background:none;border:none;color:inherit;opacity:.7;padding:.2rem .4rem">✖</button>`:""}</div>`;}).join(""):`<span class="km">Sin productos. Agregalos del desplegable si hoy se aplica algo.</span>`}</div>
+  </div>`;
 }
-function mangaActsDe(M){ return M.over?{tipos:M.over.tipos,productos:M.over.productos,dosis:M.over.dosis}:{tipos:M.tipos,productos:M.productos,dosis:M.dosis}; }
+function chipX(txt,on,onclick,onquitar,color){ return `<div style="display:flex;align-items:center;border:2px solid ${color};border-radius:22px;background:${on?color:"#fff"};color:${on?"#fff":color}"><button onclick="${onclick}" style="background:none;border:none;color:inherit;font-weight:700;font-size:.95rem;padding:.55rem .5rem .55rem .9rem">${on?"✔ ":""}${h(txt)}</button>${onquitar?`<button onclick="${onquitar}" title="Sacar de la lista de hoy" style="background:none;border:none;color:inherit;opacity:.6;padding:.55rem .6rem .55rem .2rem">✖</button>`:""}</div>`; }
+
+// ── Catálogo de productos (admin, pestaña Animales) ──
+function renderCatalogoProd(){
+  const cat=catalogoProd(); if(state.catProdOpen===undefined)state.catProdOpen=false;
+  return `<div class="card" style="background:#f4f6fa;border:1.5px solid #6a8ab0">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="color:#1e3a5a;margin:0">💊 Catálogo de productos (${cat.length})</h2><button class="bs" onclick="state.catProdOpen=!state.catProdOpen;render()">${state.catProdOpen?"▲ Ocultar":"▼ Abrir"}</button></div>
+  ${state.catProdOpen?`
+  <p class="hint">Cada producto tiene categoría y dosis habitual, así en la manga el operario lo elige por tipo y la dosis ya viene cargada (se puede cambiar en el momento). Para cargar varios de una vez, pegá una lista: un producto por línea, con categoría y dosis separadas por punto y coma. Ej: <code>Ivermectina; Antiparasitario; 5 ml</code>. Si pegás solo nombres (por ejemplo la lista de Hook), quedan sin categoría y las completás acá.</p>
+  <textarea id="cp_txt" rows="3" oninput="state.prodTxt=this.value" placeholder="Ivermectina; Antiparasitario; 5 ml&#10;Oxitetraciclina; Antibiótico; 10 ml&#10;Aftosa" style="width:100%;border:1.5px solid #b8c8d8;border-radius:6px;padding:.5rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.prodTxt||"")}</textarea>
+  <div class="br"><button class="bp" onclick="importarProductos()">➕ Agregar los pegados</button></div>
+  <div class="tw"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Dosis habitual</th><th></th></tr></thead><tbody>
+  ${cat.map((p,i)=>`<tr><td><input id="cp_n_${i}" value="${h(p.nombre)}" style="min-width:140px"/></td><td><select id="cp_c_${i}" style="min-width:150px">${opts(CATEG_PROD,p.categoria||"","—")}</select></td><td><input id="cp_d_${i}" value="${h(p.dosis||"")}" placeholder="Ej: 5 ml" style="width:100px"/></td><td style="white-space:nowrap"><button class="bi" title="Guardar" onclick="guardarProducto(${i})">💾</button> <button class="bi" title="Eliminar" onclick="eliminarProducto(${i})">🗑️</button></td></tr>`).join("")}
+  </tbody></table></div>`:""}
+</div>`;
+}
+async function guardarCatalogoProd(lista){ state.mangaCatalogo.productos=lista; await set(ref(db,"mangaCatalogo"),state.mangaCatalogo); }
+window.guardarProducto=async function(i){ const cat=catalogoProd(); const p=cat[i]; if(!p)return; const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
+  const n={nombre:g("cp_n_"+i)||p.nombre,categoria:g("cp_c_"+i),dosis:g("cp_d_"+i)}; const lista=cat.map((x,k)=>k===i?n:x); await guardarCatalogoProd(lista); toast("💾 "+n.nombre+" guardado"); render(); };
+window.eliminarProducto=async function(i){ const cat=catalogoProd(); const p=cat[i]; if(!p||!confirm("¿Eliminar "+p.nombre+" del catálogo? (no borra las actividades ya registradas)"))return; await guardarCatalogoProd(cat.filter((x,k)=>k!==i)); render(); };
+window.importarProductos=async function(){ const el=document.getElementById("cp_txt"); const txt=(el?el.value:state.prodTxt)||""; const cat=catalogoProd(); const map={}; for(const p of cat)map[p.nombre]=p; let n=0;
+  for(const raw of txt.split(/\n/)){ const l=raw.trim(); if(!l)continue; const parts=l.split(/[;\t|]/).map(x=>x.trim()); const nombre=parts[0]; if(!nombre)continue;
+    let categoria=parts[1]||""; const cm=CATEG_PROD.find(c=>normTxt(c).startsWith(normTxt(categoria).slice(0,6))&&categoria); if(cm)categoria=cm;
+    map[nombre]={nombre,categoria:categoria||(map[nombre]?map[nombre].categoria:""),dosis:parts[2]||(map[nombre]?map[nombre].dosis:"")}; n++; }
+  await guardarCatalogoProd(Object.values(map)); state.prodTxt=""; toast("💊 "+n+" productos cargados"); render(); };
 function renderMangaTab(){ const M=state.manga; M.on=true; if(!M.fecha)M.fecha=hoyISO(); if(!M.ciclo)M.ciclo=cicloActual(); if(!M.campo&&!M.cfg&&!M.grupo.length)M.cfg=true; if(!M.sesionId)M.sesionId=uid(); return renderManga(); }
 function renderManga(){
   const M=state.manga; const clist=campos(); const a=M.animal?state.animales[M.animal]:null;
   const ult=a?pesadasDe(a.key).slice(-1)[0]:null;
   const cicl=[...new Set([...ciclos(),cicloActual()])].sort();
   const acts=mangaActsDe(M); const conTacto=acts.tipos.includes("Tacto");
-  const resumen=`${fmtF(M.fecha||hoyISO())} · <strong>${h(M.campo||"sin campo")}</strong> · ${h(M.ciclo||"")} · alta como ${M.altaCat} · ${M.pesar?"⚖️ pesa":"sin pesar"}${M.tipos.length?" · "+M.tipos.join(" + "):" · sin actividades"}${M.productos.length?" ("+M.productos.join(", ")+")":""}`;
+  const resumen=`${fmtF(M.fecha||hoyISO())} · <strong>${h(M.campo||"sin campo")}</strong> · ${h(M.ciclo||"")} · alta como ${M.altaCat} · ${M.pesar?"⚖️ pesa":"sin pesar"}${M.tipos.length?" · "+M.tipos.join(" + "):" · sin actividades"}${M.productos.length?" ("+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis}))+")":""}`;
   return `
 <div class="card" style="background:#fff3e0;border:3px solid #e08a20;padding:.9rem">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
@@ -3699,8 +3769,8 @@ function renderManga(){
     </div>
     ${esAdmin()?`<label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0;font-size:.85rem"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como "Nacimiento" (solo si esos animales NO están contados todavía)</label>`:""}
     <hr style="border:none;border-top:1px solid #eee;margin:.6rem 0"/>
-    ${renderChips(M.tipos,M.productos,M.dosis,"mangaTog")}
-    <div class="km" style="margin-top:.4rem">Lo que elijas acá se registra solo en cada animal que pasa. Si a uno hay que hacerle algo distinto, usás "➕ Distinto para este animal".</div>
+    ${renderChips(M,"mangaTog",true)}
+    <div class="km" style="margin-top:.4rem">Lo marcado con ✔ se registra solo en cada animal que pasa. Si a uno hay que hacerle algo distinto, usás "➕ Distinto para este animal" y ahí prendés o apagás de la misma lista.</div>
   </div>`:""}
 
   <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Tocá acá y pasá el bastón" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>
@@ -3723,7 +3793,7 @@ function renderManga(){
       <div style="font-size:1.1rem"><strong>${h(a.cat||"")}</strong> · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}${a.estadoRep?" · "+h(a.estadoRep):""}</div>
     </div>
     <div style="margin:.2rem 0 .6rem;font-size:.95rem;color:#5a4020">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha||hoyISO())+" días)":"Sin pesadas previas"}${M.grupo.includes(a.key)?' · <span style="color:#c82010;font-weight:700">⚠️ YA PASÓ HOY</span>':""}</div>
-    <div style="background:${M.over?"#eef3f8":"#eef5e6"};border-radius:8px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:1rem">${M.over?"✏️ <strong>Distinto para este animal:</strong> ":"Se registra: "}${acts.tipos.length?"<strong>"+acts.tipos.join(" + ")+"</strong>":"<span class='km'>ninguna actividad</span>"}${acts.productos.length?" · "+acts.productos.join(", "):""}${acts.dosis?" · "+h(acts.dosis):""}</div>
+    <div style="background:${M.over?"#eef3f8":"#eef5e6"};border-radius:8px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:1rem">${M.over?"✏️ <strong>Distinto para este animal:</strong> ":"Se registra: "}${acts.tipos.length?"<strong>"+acts.tipos.join(" + ")+"</strong>":"<span class='km'>ninguna actividad</span>"}${acts.productos.length?" · "+h(prodTexto(acts)):""}</div>
     ${conTacto?(()=>{const r=M.tactoRes; const esP=r==="preñada"||r==="cut"; const esV=r==="vacía"||r==="2da oportunidad"||r==="descarte";
       return `<div style="margin-bottom:.6rem;background:#fff8ee;border:2px solid #e0a050;border-radius:10px;padding:.7rem">
       <div style="font-size:1.1rem;font-weight:800;color:#7a4010">🩺 TACTO: ${r?`<span style="color:#2d4a1e">${h(r.toUpperCase())}</span>`:"¿resultado?"}</div>
@@ -3764,7 +3834,7 @@ function renderManga(){
     </div>`}
     ${M.extra?`<div style="background:#eef3f8;border-radius:10px;padding:.8rem;margin-top:.7rem;border:2px solid #6a8ab0">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem"><strong>✏️ Solo para ${h(nombreAnimal(a))}: tocá para agregar o sacar</strong><div><button class="bs" onclick="mangaOverReset()">↺ Volver a lo de la sesión</button> <button class="bs" onclick="mangaExtra(false)">Cerrar</button></div></div>
-      <div style="margin-top:.5rem">${renderChips(acts.tipos,acts.productos,acts.dosis,"mangaTogOver")}</div>
+      <div style="margin-top:.5rem">${renderChips(M,"mangaTogOver",false)}</div>
       <div class="km" style="margin-top:.3rem">Se guarda cuando toques ✔ GUARDAR. Al pasar el siguiente animal vuelve a lo configurado para la sesión.</div></div>`:""}
     ${M.catOpen?`<div style="background:#f6f4ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #b8a888"><strong>🔄 Hoy es ${h(a.cat||"—")}. ¿Pasa a ser…?</strong>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${CATS.filter(c=>c!==a.cat).map(c=>`<button style="${BTN_G};min-width:110px;padding:.7rem" onclick="mangaSetCat('${c}')">${c}</button>`).join("")}<button class="bs" onclick="mangaCat(false)">Cancelar</button></div></div>`:""}
@@ -3805,7 +3875,7 @@ window.tactoDesdeManga=function(){ const sel=document.getElementById("tt_ses"); 
 async function guardarSesionManga(){
   const M=state.manga; if(!M.sesionId)M.sesionId=uid();
   const prev=state.mangaSesiones[M.sesionId]||{};
-  const ss={id:M.sesionId,fecha:M.fecha||hoyISO(),campo:M.campo||"",ciclo:M.ciclo||"",tipos:M.tipos,productos:M.productos,animales:M.grupo,tactos:{...(prev.tactos||{}),...(M._tactos||{})},usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
+  const ss={id:M.sesionId,fecha:M.fecha||hoyISO(),campo:M.campo||"",ciclo:M.ciclo||"",tipos:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos:{...(prev.tactos||{}),...(M._tactos||{})},usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
   state.mangaSesiones[ss.id]=ss; await set(ref(db,"mangaSesiones/"+ss.id),ss);
 }
 window.mangaKey=function(k){ const M=state.manga; if(k==="⌫")M.peso=M.peso.slice(0,-1); else if(k==="."){ if(!M.peso.includes("."))M.peso=(M.peso||"0")+"."; } else if(M.peso.replace(".","").length<5)M.peso+=k; render(); };
@@ -3819,7 +3889,7 @@ function mangaHora(){ return new Date().toTimeString().slice(0,8); }
 function mangaLog(a,txt,ids){ const M=state.manga; M.log.push({key:a.key,nombre:nombreAnimal(a),txt,ids}); if(!M.grupo.includes(a.key))M.grupo.push(a.key); }
 async function mangaRegistrarActs(a,acts,origen){
   const M=state.manga; const fecha=M.fecha||hoyISO(); const ids=[]; const me={...state.eventos};
-  for(const x of acts){ const e={id:idEvento(a.key,fecha,mangaHora(),x.producto||x.tipo)+"_"+Date.now().toString(36),animal:a.key,fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:"",origen:origen||"manga",sesion:"manga"}; me[e.id]=e; ids.push(e.id); }
+  let n=0; for(const x of acts){ n++; const e={id:idEvento(a.key,fecha,mangaHora(),x.tipo+" "+(x.producto||""))+"_"+Date.now().toString(36)+n,animal:a.key,fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:"",origen:origen||"manga",sesion:"manga"}; me[e.id]=e; ids.push(e.id); }
   if(ids.length){ state.eventos=me; for(const id of ids)await set(ref(db,"eventos/"+id),me[id]); }
   return ids;
 }
@@ -3827,7 +3897,7 @@ window.mangaAlta=async function(cat){
   const M=state.manga; const eid=M.nuevoEID; if(!eid)return;
   if(!M.campo){ alert("Primero elegí el campo en ⚙️ Sesión."); M.cfg=true; render(); return; }
   const key=keyAnimal(eid,""); if(!key)return;
-  const a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?eid:"",campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha||hoyISO(),estado:"activo",origen:"manga",creado:hoyISO()});
+  const a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?eid:"",campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha||hoyISO(),ingresoTipo:"Nacimiento",estado:"activo",origen:"manga",creado:hoyISO(),origenNombre:M.campo,origenRenspa:(typeof renspaDe==="function"?renspaDe(M.campo):"")||""});
   state.animales[key]=a; await set(ref(db,"animales/"+key),a);
   let movId=null;
   if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:"Nacimiento",cant:1,obs:"Manga: alta "+(a.caravana||a.visual)}); }
@@ -3880,8 +3950,8 @@ async function aplicarMovAGrupo(e,refs){
     let a=buscarAnimalRef(r);
     if(e.tipo==="ingreso"){
       if(!a){ const eid=limpiarEID(r); const key=keyAnimal(eid,eid.length<12?r:""); if(!key)continue;
-        a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?String(r).toUpperCase():"",campo:e.campo,cat:e.cat,sexo:sexoDeCat(e.cat),ciclo:e.ciclo||"",ingreso:e.fecha,estado:"activo",origen:"mov",creado:hoyISO()}); ma[key]=a; altas++; }
-      else { ma[a.key]={...a,campo:e.campo,cat:e.cat,ciclo:a.ciclo||e.ciclo||"",estado:"activo",fechaBaja:"",modificado:hoyISO()}; cambios++; }
+        a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?String(r).toUpperCase():"",campo:e.campo,cat:e.cat,sexo:sexoDeCat(e.cat),ciclo:e.ciclo||"",ingreso:e.fecha,ingresoTipo:e.sub,estado:"activo",origen:"mov",creado:hoyISO(),origenNombre:e.origen?e.origen.nombre:"",origenCuit:e.origen?e.origen.cuit:"",origenRenspa:e.origen?e.origen.renspa:""}); ma[key]=a; altas++; }
+      else { ma[a.key]=sinUndef({...a,campo:e.campo,cat:e.cat,ciclo:a.ciclo||e.ciclo||"",estado:"activo",fechaBaja:"",modificado:hoyISO(),origenNombre:a.origenNombre||(e.origen?e.origen.nombre:""),origenCuit:a.origenCuit||(e.origen?e.origen.cuit:""),origenRenspa:a.origenRenspa||(e.origen?e.origen.renspa:"")}); cambios++; }
     } else {
       if(!a){ noEnc.push(r); continue; }
       const est=e.sub==="Venta"?"vendido":e.sub==="Muerte"?"muerto":e.sub==="Faena"?"faenado":e.sub==="Otro egreso"?"descartado":null;
@@ -3911,16 +3981,20 @@ window.mangaCfg=function(v){ state.manga.cfg=!!v; if(!v&&!state.manga.campo){ale
 window.setFAnimMg=function(k,v){ state.manga[k]=v; if(["altaCat","pesar","campo"].includes(k))render(); };
 function togList(arr,v){ const i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v); return arr; }
 async function catalogoAdd(kind,v){ v=String(v||"").trim(); if(!v)return; const c=state.mangaCatalogo; if(!c[kind].includes(v)){ c[kind]=[...c[kind],v]; await set(ref(db,"mangaCatalogo"),c); } }
-window.mangaTog=function(k,v){ const M=state.manga;
-  if(k==="tipo")togList(M.tipos,v); else if(k==="prod")togList(M.productos,v); else if(k==="dosis"){M.dosis=v;return;}
-  else if(k==="nuevoTipo"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("tipos",v); if(!M.tipos.includes(v))M.tipos.push(v); }
-  else if(k==="nuevoProd"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("productos",v); if(!M.productos.includes(v))M.productos.push(v); }
-  render(); };
-window.mangaTogOver=function(k,v){ const M=state.manga; if(!M.over)M.over={tipos:[...M.tipos],productos:[...M.productos],dosis:M.dosis}; const O=M.over;
-  if(k==="tipo")togList(O.tipos,v); else if(k==="prod")togList(O.productos,v); else if(k==="dosis"){O.dosis=v;return;}
-  else if(k==="nuevoTipo"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("tipos",v); if(!O.tipos.includes(v))O.tipos.push(v); }
-  else if(k==="nuevoProd"){ v=String(v||"").trim(); if(!v)return; catalogoAdd("productos",v); if(!O.productos.includes(v))O.productos.push(v); }
-  render(); };
+async function catalogoAddProd(nombre){ nombre=String(nombre||"").trim(); if(!nombre)return; if(catalogoProd().some(p=>p.nombre===nombre))return; state.mangaCatalogo.productos=[...(state.mangaCatalogo.productos||[]),{nombre,categoria:"",dosis:""}]; await set(ref(db,"mangaCatalogo"),state.mangaCatalogo); }
+function mangaTogCore(T,M,k,v,extra){
+  // T: objeto con tipos/productos/prodDosis a modificar. M: sesión (para listas disponibles)
+  if(k==="tipo")togList(T.tipos,v);
+  else if(k==="prod")togList(T.productos,v);
+  else if(k==="pdosis"){ T.prodDosis={...(T.prodDosis||{}),[v]:extra}; return false; }
+  else if(k==="addTipo"){ if(v==="__nueva"){ const n=prompt("Nombre de la nueva actividad:"); if(!n)return false; v=n.trim(); catalogoAdd("tipos",v); } if(!v)return false; if(!M.tiposDisp.includes(v))M.tiposDisp.push(v); if(!T.tipos.includes(v))T.tipos.push(v); }
+  else if(k==="quitarTipo"){ M.tiposDisp=M.tiposDisp.filter(x=>x!==v); T.tipos=T.tipos.filter(x=>x!==v); if(M.over)M.over.tipos=M.over.tipos.filter(x=>x!==v); }
+  else if(k==="addProd"){ if(v==="__nuevo"){ const n=prompt("Nombre del nuevo producto:"); if(!n)return false; v=n.trim(); catalogoAddProd(v); } if(!v)return false; if(!M.prodsDisp.includes(v))M.prodsDisp.push(v); if(!T.productos.includes(v))T.productos.push(v); if(!(T.prodDosis||{})[v]){ const d=prodInfo(v).dosis; if(d)T.prodDosis={...(T.prodDosis||{}),[v]:d}; } }
+  else if(k==="quitarProd"){ M.prodsDisp=M.prodsDisp.filter(x=>x!==v); T.productos=T.productos.filter(x=>x!==v); if(M.over)M.over.productos=M.over.productos.filter(x=>x!==v); }
+  return true;
+}
+window.mangaTog=function(k,v,extra){ const M=state.manga; const T={tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis}; const r=mangaTogCore(T,M,k,v,extra); M.tipos=T.tipos; M.productos=T.productos; M.prodDosis=T.prodDosis; if(r)render(); };
+window.mangaTogOver=function(k,v,extra){ const M=state.manga; if(!M.over)M.over={tipos:[...M.tipos],productos:[...M.productos],prodDosis:{...M.prodDosis}}; const r=mangaTogCore(M.over,M,k,v,extra); if(r)render(); };
 window.mangaOverReset=function(){ state.manga.over=null; render(); };
 window.mangaExtra=function(v){ const M=state.manga; M.extra=v!==false; M.catOpen=M.bajaOpen=false; render(); };
 window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
@@ -3931,8 +4005,8 @@ window.mangaOk=async function(){
   if(acts.tipos.includes("Tacto")&&!M.tactoRes){ alert("Marcá el resultado del tacto (preñada, vacía, etc.)."); return; }
   if(M.pesar&&peso>0){ const id=a.key+"_"+fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
   else if(M.pesar&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
-  const lista=acts.tipos.map(t=>({tipo:t,producto:t==="Tacto"?M.tactoRes:acts.productos.join(", "),dosis:t==="Tacto"?"":acts.dosis}));
-  if(lista.length){ ids.eventos=await mangaRegistrarActs(a,lista); partes.push(acts.tipos.join(" + ")+(acts.productos.length?" ("+acts.productos.join(", ")+")":"")); }
+  const lista=acts.tipos.map(t=>({tipo:t,producto:t==="Tacto"?M.tactoRes:acts.productos.join(", "),dosis:t==="Tacto"?"":acts.productos.map(p=>(acts.prodDosis||{})[p]?p+" "+acts.prodDosis[p]:"").filter(Boolean).join("; ")}));
+  if(lista.length){ ids.eventos=await mangaRegistrarActs(a,lista); partes.push(acts.tipos.join(" + ")+(acts.productos.length?" ("+prodTexto(acts)+")":"")); }
   if(acts.tipos.includes("Tacto")){ ids.estadoRepAnterior=a.estadoRep||""; const n={...a,estadoRep:M.tactoRes,fechaTacto:fecha}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); M._tactos={...(M._tactos||{}),[a.key]:M.tactoRes}; partes.push("tacto: "+M.tactoRes); }
   mangaLog(a,partes.join(" · ")||"pasó por la manga",ids);
   toast("✔ "+nombreAnimal(a)+(partes.length?": "+partes.join(" · "):""));
