@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.11-a";
+window.APP_VERSION="2026.09.11-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -1677,6 +1677,8 @@ function renderIatf(){
       <label>Caravana electrónica (15 díg.)<input id="to_caravana" inputmode="numeric" value="${h(et.caravana||"")}" placeholder="Cuando la tenga"/></label>
       <label>Caravana visual<input id="to_visual" value="${h(et.visual||"")}" placeholder="Ej: T12"/></label>
       <label>Uso<select id="to_uso">${opts(["Semen (IATF)","Toro a campo","Ambos"],et.uso||"Toro a campo")}</select></label>
+      <label>CUIT del origen<input id="to_cuit" list="origenes-list-to" value="${h(et.cuit||"")}" placeholder="Ej: 30-12345678-9"/><datalist id="origenes-list-to">${origenesLista().map(o=>`<option value="${h(o.cuit||"")}">${h(o.nombre)}</option>`).join("")}</datalist></label>
+      <label>RENSPA del origen<input id="to_renspa" value="${h(et.renspa||"")}" placeholder="Ej: 01.020.0.00748/03"/></label>
       <label>Cabaña / Origen<input id="to_cabana" value="${h(et.cabana||"")}" placeholder="Ej: Cabaña La Paz"/></label>
       <label>Precio dosis ($ IVA incluido)<input id="to_precio" type="number" min="0" value="${et.precio!=null?et.precio:""}" placeholder="Opcional"/></label>
       <label>Dosis compradas<input id="to_dosis" type="number" min="0" value="${et.dosisCompradas!=null?et.dosisCompradas:""}" placeholder="Ej: 40"/></label>
@@ -1708,13 +1710,13 @@ function renderIatf(){
   ${torosList.length===0&&et===undefined?`<p style="color:#4a2a6a;font-size:.85rem;text-align:center;padding:.5rem">Sin toros cargados. Tocá "➕ Nuevo toro" para empezar.</p>`:""}
   ${torosList.length>0?`
   <div class="tw"><table>
-    <thead><tr><th>Nombre</th><th>Raza</th><th>Cabaña</th><th>Precio dosis (IVA inc.)</th><th>Dosis (restan/compradas)</th><th>Obs.</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>Nombre</th><th>Raza</th><th>Cabaña / CUIT / RENSPA</th><th>Precio dosis (IVA inc.)</th><th>Dosis (restan/compradas)</th><th>Obs.</th><th>Estado</th><th></th></tr></thead>
     <tbody>
       ${torosList.map(t=>`
       <tr style="${t.activo?"":"opacity:.45"}">
         <td><strong>${h(t.nombre)}</strong></td>
         <td>${h(t.raza||"—")}</td>
-        <td>${h(t.cabana||"—")}</td>
+        <td>${h(t.cabana||"—")}${t.cuit||t.renspa?`<div class="km">${h(t.cuit||"")}${t.cuit&&t.renspa?" · ":""}${h(t.renspa||"")}</div>`:""}${t.caravana||t.visual?`<div class="km">🏷️ ${h(t.visual||"")}${t.visual&&t.caravana?" · ":""}${h(eidCorto(t.caravana))}</div>`:""}</td>
         <td>${t.precio!=null&&t.precio!==""?"$ "+Number(t.precio).toLocaleString("es-AR"):"—"}</td>
         <td>${(()=>{
           const comp=parseFloat(t.dosisCompradas)||0;
@@ -2453,15 +2455,17 @@ window.guardarToro=async function(){
   const dosisCompradas=dosisVal?parseInt(dosisVal):null;
   const obs=document.getElementById("to_obs").value.trim();
   const caravana=limpiarEID(document.getElementById("to_caravana").value); const visual=document.getElementById("to_visual").value.trim().toUpperCase(); const uso=document.getElementById("to_uso").value;
+  const cuit=document.getElementById("to_cuit").value.trim(); const renspa=document.getElementById("to_renspa").value.trim();
   if(caravana&&caravana.length<12)return alert("La caravana electrónica debe tener 15 dígitos (o dejala vacía).");
   const existe=Object.values(state.toros).some(t=>t.nombre.toLowerCase()===nombre.toLowerCase()&&t.id!==(state.editToro.id||""));
   if(existe)return alert("Ya existe un toro con ese nombre.");
   const id=state.editToro.id||uid();
   const activo=state.editToro.activo!==undefined?state.editToro.activo:true;
   const usos=state.editToro.usos||[];
-  await set(ref(db,`toros/${id}`),{id,nombre,raza,cabana,precio,dosisCompradas,usos,obs,activo,caravana,visual,uso});
+  await set(ref(db,`toros/${id}`),{id,nombre,raza,cabana,precio,dosisCompradas,usos,obs,activo,caravana,visual,uso,cuit,renspa});
+  if(cabana&&(cuit||renspa))await guardarOrigen({nombre:cabana,cuit,renspa});
   // vincular con la ficha individual (crea o actualiza el animal como Toros)
-  if(caravana||visual){ const key=keyAnimal(caravana,visual); if(key){ const prev=state.animales[key]||{}; const a=sinUndef({...prev,key,caravana:caravana||prev.caravana||"",visual:visual||prev.visual||"",cat:"Toros",sexo:"Macho",raza:raza||prev.raza||"",campo:prev.campo||"",estado:prev.estado||"activo",toroId:id,origen:prev.origen||"toro",creado:prev.creado||hoyISO(),ingreso:prev.ingreso||hoyISO()}); state.animales[key]=a; await set(ref(db,"animales/"+key),a); } }
+  if(caravana||visual){ const key=keyAnimal(caravana,visual); if(key){ const prev=state.animales[key]||{}; const a=sinUndef({...prev,key,caravana:caravana||prev.caravana||"",visual:visual||prev.visual||"",cat:"Toros",sexo:"Macho",raza:raza||prev.raza||"",campo:prev.campo||"",estado:prev.estado||"activo",toroId:id,origen:prev.origen||"toro",creado:prev.creado||hoyISO(),ingreso:prev.ingreso||hoyISO(),ingresoTipo:prev.ingresoTipo||"Compra",origenNombre:prev.origenNombre||cabana||"",origenCuit:prev.origenCuit||cuit||"",origenRenspa:prev.origenRenspa||renspa||""}); state.animales[key]=a; await set(ref(db,"animales/"+key),a); } }
   state.editToro=undefined;
   toast("✅ Toro guardado");
 };
@@ -4001,7 +4005,7 @@ window.mangaAlta=async function(cat,confirmado){
   let padreTxt=""; const pd=(M.altaPadre||M.padre||"").trim();
   if(madre){ const sug=sugerirPadre({...a,fechaNac:a.fechaNac||M.fecha||hoyISO()}); if(sug.txt){ a.padre=sug.txt; padreTxt=" · padre "+sug.txt; } else { if(pd){a.padre=pd;padreTxt=" · padre "+pd;} padreTxt+=" · madre "+(madre.visual||eidCorto(madre.caravana)); } }
   else if(pd){ a.padre=pd; padreTxt=" · padre "+pd; }
-  if(cat==="Toros"&&M._toroId){ a.toroId=M._toroId; M._toroId=null; }
+  if(cat==="Toros"&&M._toroId){ const t=state.toros[M._toroId]||{}; a.toroId=M._toroId; if(t.cabana){ a.ingresoTipo="Compra"; a.origenNombre=t.cabana; a.origenCuit=t.cuit||""; a.origenRenspa=t.renspa||""; } M._toroId=null; }
   state.animales[key]=a; await set(ref(db,"animales/"+key),a); M.altaMadre=""; M.altaRaza=""; M.altaPadre=""; M.altaToroSel=false;
   if(M.altaTipo==="Compra")await guardarOrigen(og);
   let movId=null;
