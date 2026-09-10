@@ -107,12 +107,26 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 </style>
 </head>
 <body>
+<div id="updBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#e08a20;color:#fff;padding:.8rem 1rem;justify-content:space-between;align-items:center;gap:.6rem;font-weight:700;box-shadow:0 -2px 8px rgba(0,0,0,.3)"><span>🆕 Hay una versión nueva de la app.</span><button onclick="actualizarApp()" style="background:#fff;color:#7a4010;border:none;border-radius:8px;padding:.6rem 1rem;font-weight:800;font-size:1rem">Actualizar ahora</button></div>
 <div id="root"><div class="loading"><div class="spinner"></div><span>Conectando con la base de datos...</span></div></div>
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
+window.APP_VERSION="2026.09.10-b";
+window.actualizarApp=async function(){
+  try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
+  try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
+  location.reload(true);
+};
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+  window.addEventListener("load",async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register("sw.js",{updateViaCache:"none"});
+      reg.update().catch(()=>{});
+      reg.addEventListener("updatefound",()=>{ const nw=reg.installing; if(!nw)return; nw.addEventListener("statechange",()=>{ if(nw.state==="installed"&&navigator.serviceWorker.controller){ const b=document.getElementById("updBanner"); if(b)b.style.display="flex"; } }); });
+      if(reg.waiting&&navigator.serviceWorker.controller){ const b=document.getElementById("updBanner"); if(b)b.style.display="flex"; }
+    }catch(e){}
+  });
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -565,7 +579,7 @@ function buildApp(){
 function buildHeader(){
   return `<header>
     <img src="${LOGO}" alt="Logo"/>
-    <div class="htitulo"><h1>Stock Ganadero</h1><p>Sistema de gestion de rodeo — Tiempo real</p></div>
+    <div class="htitulo"><h1>Stock Ganadero</h1><p>Sistema de gestion de rodeo — Tiempo real <span style="opacity:.6;font-size:.75rem">· v${window.APP_VERSION}</span> <button onclick="actualizarApp()" title="Buscar la última versión" style="background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:6px;padding:.1rem .45rem;font-size:.7rem;cursor:pointer;margin-left:.3rem">🔄 Actualizar</button></p></div>
     <div class="hbtns">
       <span style="display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:.3rem .8rem;font-size:.78rem;color:#f0e6c8;font-weight:600">
         👤 ${h(usuarioActual()?usuarioActual().nombre:"")}
