@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.10-b";
+window.APP_VERSION="2026.09.11-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -3257,7 +3257,7 @@ function renderFichaAnimal(a,clist,razasList){
     <label>Origen (nombre)<input id="an_origenNombre" list="origenes-list2" value="${h(a.origenNombre||"")}"/><datalist id="origenes-list2">${origenesLista().map(o=>`<option value="${h(o.nombre)}"/>`).join("")}</datalist></label>
     <label>Origen CUIT<input id="an_origenCuit" value="${h(a.origenCuit||"")}"/></label>
     <label>Origen RENSPA<input id="an_origenRenspa" value="${h(a.origenRenspa||"")}"/></label>
-    <label>Estado reproductivo<select id="an_estadoRep">${opts(["preñada","cut","vacía","2da oportunidad","descarte","entorada"],a.estadoRep||"","—")}</select></label>
+    <label>Estado reproductivo<select id="an_estadoRep">${opts(["preñada","cut","vacía","2da oportunidad","selección a IATF","descarte","entorada"],a.estadoRep||"","—")}</select></label>
     <label>Estado<select id="an_estado">${EST_ANIM.map(([v,l])=>`<option value="${v}"${(a.estado||"activo")===v?" selected":""}>${l}</option>`).join("")}</select></label>
     <label>Fecha de baja<input id="an_fechaBaja" type="date" value="${h(a.fechaBaja||"")}"/></label>
     <label class="s2">Observaciones<input id="an_obs" value="${h(a.obs||"")}"/></label>
@@ -3332,9 +3332,9 @@ function procesarLecturaBaston(txt){
   if(!a)a=Object.values(state.animales).find(x=>x&&limpiarEID(x.caravana).endsWith(eid)&&eid.length>=4)||null;
   if(!a){ const t=Object.values(state.toros).find(x=>x&&x.caravana&&limpiarEID(x.caravana).endsWith(eid)&&eid.length>=6); if(t){ const key=keyAnimal(t.caravana,t.visual); const na=sinUndef({key,caravana:limpiarEID(t.caravana),visual:t.visual||"",cat:"Toros",sexo:"Macho",raza:t.raza||"",campo:state.manga.campo||"",estado:"activo",toroId:t.id,origen:"toro",creado:hoyISO(),ingreso:hoyISO()}); state.animales[key]=na; set(ref(db,"animales/"+key),na); a=na; toast("🐂 Toro "+t.nombre+" vinculado a su caravana"); } }
   const M=state.manga;
-  if(M.on){ M.extra=M.catOpen=M.bajaOpen=false; M.peso=""; M.over=null; M.tactoRes="";
+  if(M.on){ M.extra=M.catOpen=M.bajaOpen=M.estRepOpen=false; M.peso=""; M.over=null; M.tactoRes="";
     if(a){ M.animal=a.key; M.nuevoEID=""; render();  return; }
-    M.animal=null; M.nuevoEID=eid; M.altaRaza=""; M.altaMadre=""; render(); return; }
+    M.animal=null; M.nuevoEID=eid; M.altaRaza=""; M.altaMadre=""; M.altaToroSel=false; render(); return; }
   if(a){ toast("🔎 "+nombreAnimal(a)+" · "+(a.cat||"")); setFAnimSel(a.key); }
   else { toast("❓ Caravana "+eid+" no registrada"); state.animNuevo=true; state.nuevoEID=limpiarEID(eid).length>=12?limpiarEID(eid):""; state.nuevoVisual=/[A-Za-z]/.test(eid)?eid:""; state.animSel=null; render(); enfocar("nu_visual"); }
   const el=document.getElementById("bl_eid"); if(el){el.value="";}
@@ -3865,8 +3865,11 @@ function renderManga(){
       <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneros')">♂ TERNERO</button>
       <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneras')">♀ TERNERA</button>
     </div>
-    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">${CATS.filter(c=>!["Terneros","Terneras"].includes(c)).map(c=>`<button class="bs" style="padding:.6rem .9rem" onclick="mangaAlta('${c}')">${c}</button>`).join("")}
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">${CATS.filter(c=>!["Terneros","Terneras"].includes(c)).map(c=>`<button class="bs" style="padding:.6rem .9rem;${M.altaToroSel&&c==="Toros"?"background:#2d4a1e;color:#fff":""}" onclick="mangaAlta('${c}')">${c}</button>`).join("")}
       <button class="bs" style="color:#c82010;padding:.6rem .9rem" onclick="mangaCancelar()">✖ No cargar</button></div>
+    ${M.altaToroSel?(()=>{const libres=Object.values(state.toros).filter(t=>t&&t.activo!==false&&!limpiarEID(t.caravana)); return `<div style="background:#eef3f8;border:2px solid #1e4a7a;border-radius:10px;padding:.7rem;margin-top:.6rem"><strong>🐂 ¿Qué toro es?</strong> <span class="km">Se vincula la caravana con su registro (nombre, raza, uso).</span>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem">${libres.length?libres.map(t=>chip(t.nombre+(t.raza?" · "+t.raza:""),false,`mangaAltaToro('${t.id}')`,"#1e4a7a")).join(""):`<span class="km">Todos los toros registrados ya tienen caravana.</span>`}
+      <input placeholder="toro nuevo: nombre…" onchange="mangaAltaToroNuevo(this.value)" style="width:180px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #1e4a7a"/></div></div>`;})():""}
   </div>`
   :a?`
   <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #2d4a1e">
@@ -3907,7 +3910,8 @@ function renderManga(){
       <div style="display:flex;flex-direction:column;gap:.5rem;flex:1;min-width:200px">
         <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaOk()">✔ GUARDAR<br><span style="font-size:.85rem;font-weight:400">y pasar el siguiente</span></button>
         <button style="${BTN_G}" onclick="mangaExtra()">➕ Distinto para este animal</button>
-        <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría</button>
+        <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría <span style="font-size:.75rem;font-weight:400">(stock)</span></button>
+        ${["Vacas","Vaquillonas"].includes(a.cat)?`<button style="${BTN_G};border-color:#6a3a8a;color:#6a3a8a" onclick="mangaEstRep()">🔁 Estado reproductivo</button>`:""}
         <button style="${BTN_R}" onclick="mangaBaja()">✝️ Dar de baja</button>
         <button class="bs" style="padding:.6rem" onclick="mangaCancelar()">Saltar sin guardar</button>
       </div>
@@ -3915,7 +3919,8 @@ function renderManga(){
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaOk()">✔ REGISTRAR y pasar el siguiente</button>
       <button style="${BTN_G}" onclick="mangaExtra()">➕ Distinto para este animal</button>
-      <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría</button>
+      <button style="${BTN_G}" onclick="mangaCat()">🔄 Cambiar categoría <span style="font-size:.75rem;font-weight:400">(stock)</span></button>
+      ${["Vacas","Vaquillonas"].includes(a.cat)?`<button style="${BTN_G};border-color:#6a3a8a;color:#6a3a8a" onclick="mangaEstRep()">🔁 Estado reproductivo</button>`:""}
       <button style="${BTN_R}" onclick="mangaBaja()">✝️ Dar de baja</button>
       <button class="bs" style="padding:.6rem" onclick="mangaCancelar()">Saltar</button>
     </div>`}
@@ -3923,6 +3928,11 @@ function renderManga(){
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem"><strong>✏️ Solo para ${h(nombreAnimal(a))}: tocá para agregar o sacar</strong><div><button class="bs" onclick="mangaOverReset()">↺ Volver a lo de la sesión</button> <button class="bs" onclick="mangaExtra(false)">Cerrar</button></div></div>
       <div style="margin-top:.5rem">${renderChips(M,"mangaTogOver",false)}</div>
       <div class="km" style="margin-top:.3rem">Se guarda cuando toques ✔ GUARDAR. Al pasar el siguiente animal vuelve a lo configurado para la sesión.</div></div>`:""}
+    ${M.estRepOpen?(()=>{const cur=estRepLote(a.estadoRep); const dest=["Preñez","Cut","Vacias","2da oportunidad","Selección a IATF","Descarte","Baja"].filter(x=>x!==cur); const mot=["(sin motivo especial)","Aborto","Muerte al parto","Muerte post-parto","Venta","Otro"];
+      return `<div style="background:#f4eef8;border-radius:10px;padding:.7rem;margin-top:.7rem;border:2px solid #6a3a8a"><strong style="color:#6a3a8a">🔁 Estado reproductivo (no toca el stock físico)</strong> <span class="km">Hoy: <strong>${h(cur||"sin estado")}</strong>. Genera el "Cambio de estado" del stock reproductivo por 1 animal.</span>
+      <div style="margin-top:.4rem"><span class="km">Pasa a:</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${dest.map(d=>chip(d,M.estRepDest===d,`mangaEstRepSel('dest','${h(d)}')`,"#6a3a8a")).join("")}</div></div>
+      <div style="margin-top:.4rem"><span class="km">Motivo:</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${mot.map(m=>chip(m,(M.estRepMotivo||"(sin motivo especial)")===m,`mangaEstRepSel('motivo','${h(m)}')`,"#6a3a8a")).join("")}</div></div>
+      <div class="br"><button style="${BTN_V};flex:0 0 auto;background:#6a3a8a" onclick="mangaEstRepOk()">✔ Registrar cambio</button><button class="bs" onclick="mangaEstRep(false)">Cancelar</button></div></div>`;})():""}
     ${M.catOpen?`<div style="background:#f6f4ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #b8a888"><strong>🔄 Hoy es ${h(a.cat||"—")}. ¿Pasa a ser…?</strong>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${CATS.filter(c=>c!==a.cat).map(c=>`<button style="${BTN_G};min-width:110px;padding:.7rem" onclick="mangaSetCat('${c}')">${c}</button>`).join("")}<button class="bs" onclick="mangaCat(false)">Cancelar</button></div></div>`:""}
     ${M.bajaOpen?`<div style="background:#fdf0ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #c82010"><strong>✝️ Dar de baja a ${h(nombreAnimal(a))} por:</strong>
@@ -3974,8 +3984,14 @@ async function mangaRegistrarActs(a,acts,origen){
   if(ids.length){ state.eventos=me; for(const id of ids)await set(ref(db,"eventos/"+id),me[id]); }
   return ids;
 }
-window.mangaAlta=async function(cat){
+window.mangaAltaToro=async function(toroId){ const M=state.manga; const t=state.toros[toroId]; if(!t)return; const eid=M.nuevoEID; const isE=limpiarEID(eid).length>=12;
+  const nt={...t,caravana:isE?limpiarEID(eid):(t.caravana||""),visual:isE?(t.visual||""):eid}; state.toros[toroId]=nt; await set(ref(db,"toros/"+toroId),nt);
+  M.altaToroSel=false; M.altaRaza=t.raza||M.altaRaza; M._toroId=toroId; await mangaAlta("Toros",true); };
+window.mangaAltaToroNuevo=async function(nombre){ nombre=String(nombre||"").trim(); if(!nombre)return; if(Object.values(state.toros).some(t=>t&&t.nombre.toLowerCase()===nombre.toLowerCase()))return alert("Ya existe un toro con ese nombre; elegilo de la lista.");
+  const id=uid(); const t={id,nombre,raza:state.manga.altaRaza||state.manga.raza||"",cabana:"",precio:null,dosisCompradas:null,usos:null,obs:"Creado desde la manga",activo:true,caravana:"",visual:"",uso:"Toro a campo"}; state.toros[id]=t; await set(ref(db,"toros/"+id),t); await mangaAltaToro(id); };
+window.mangaAlta=async function(cat,confirmado){
   const M=state.manga; const eid=M.nuevoEID; if(!eid)return;
+  if(cat==="Toros"&&!confirmado){ M.altaToroSel=!M.altaToroSel; render(); return; }
   if(!M.campo){ alert("Primero elegí el campo en ⚙️ Sesión."); M.cfg=true; render(); return; }
   const key=keyAnimal(eid,eid); if(!key)return;
   if(M.altaTipo!=="Nacimiento"&&!M.altaOrigen.nombre){ alert("Definí el origen ("+M.altaTipo+") en ⚙️ Configurar."); M.cfg=true; render(); return; }
@@ -3985,7 +4001,8 @@ window.mangaAlta=async function(cat){
   let padreTxt=""; const pd=(M.altaPadre||M.padre||"").trim();
   if(madre){ const sug=sugerirPadre({...a,fechaNac:a.fechaNac||M.fecha||hoyISO()}); if(sug.txt){ a.padre=sug.txt; padreTxt=" · padre "+sug.txt; } else { if(pd){a.padre=pd;padreTxt=" · padre "+pd;} padreTxt+=" · madre "+(madre.visual||eidCorto(madre.caravana)); } }
   else if(pd){ a.padre=pd; padreTxt=" · padre "+pd; }
-  state.animales[key]=a; await set(ref(db,"animales/"+key),a); M.altaMadre=""; M.altaRaza=""; M.altaPadre="";
+  if(cat==="Toros"&&M._toroId){ a.toroId=M._toroId; M._toroId=null; }
+  state.animales[key]=a; await set(ref(db,"animales/"+key),a); M.altaMadre=""; M.altaRaza=""; M.altaPadre=""; M.altaToroSel=false;
   if(M.altaTipo==="Compra")await guardarOrigen(og);
   let movId=null;
   if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:M.altaTipo,cant:1,obs:"Manga: alta "+(a.caravana||a.visual),origen:og}); }
@@ -4038,6 +4055,7 @@ window.mangaDeshacer=async function(i){
   for(const id of ids.pesadas||[]){ delete state.pesadas[id]; await remove(ref(db,"pesadas/"+id)); }
   for(const id of ids.eventos||[]){ delete state.eventos[id]; await remove(ref(db,"eventos/"+id)); }
   for(const id of ids.movs||[]){ await remove(ref(db,"mov/"+id)); }
+  for(const id of ids.acts||[]){ await remove(ref(db,"act/"+id)); }
   if(ids.mov){ await remove(ref(db,"mov/"+ids.mov)); }
   const a=state.animales[l.key];
   if(ids.animal){ delete state.animales[ids.animal]; await remove(ref(db,"animales/"+ids.animal)); }
@@ -4117,6 +4135,22 @@ window.mangaExtra=function(v){ const M=state.manga; M.extra=v!==false; M.catOpen
 window.mangaTogToro=function(id){ const M=state.manga; M.torosEntore=[...(M.torosEntore||[])]; const i=M.torosEntore.indexOf(id); if(i>=0)M.torosEntore.splice(i,1); else M.torosEntore.push(id); render(); };
 window.mangaSexoRapido=async function(cat){ const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a||a.cat===cat)return; const n={...a,cat,sexo:sexoDeCat(cat),modificado:hoyISO()}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); toast("✔ "+nombreAnimal(n)+" → "+cat); render(); };
 window.mangaRazaRapida=async function(r){ const M=state.manga; const a=M.animal?state.animales[M.animal]:null; r=String(r||"").trim(); if(r)M.raza=r; if(!a||!r||a.raza===r){render();return;} const n={...a,raza:r,modificado:hoyISO()}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); toast("✔ "+nombreAnimal(n)+" · "+r); render(); };
+function estRepLote(er){ const m={"preñada":"Preñez","cut":"Cut","vacía":"Vacias","2da oportunidad":"2da oportunidad","descarte":"Descarte","selección a iatf":"Selección a IATF","entorada":""}; return m[String(er||"").toLowerCase()]||""; }
+function estRepFicha(lote){ const m={"Preñez":"preñada","Cut":"cut","Vacias":"vacía","2da oportunidad":"2da oportunidad","Descarte":"descarte","Selección a IATF":"selección a IATF","Baja":"baja"}; return m[lote]||""; }
+window.mangaEstRep=function(v){ const M=state.manga; M.estRepOpen=v!==false; M.estRepDest=""; M.estRepMotivo="(sin motivo especial)"; M.catOpen=M.bajaOpen=M.extra=false; render(); };
+window.mangaEstRepSel=function(k,v){ const M=state.manga; if(k==="dest")M.estRepDest=v; else M.estRepMotivo=v; render(); };
+window.mangaEstRepOk=async function(){
+  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return; const dest=M.estRepDest; if(!dest)return alert("Elegí el estado al que pasa.");
+  const origen=estRepLote(a.estadoRep); if(!origen)return alert("Esta vaca no tiene estado reproductivo cargado (cargalo con el tacto o en su ficha) y no se puede calcular el cambio por lote.");
+  const fecha=M.fecha||hoyISO(); const motivo=M.estRepMotivo||"(sin motivo especial)"; const ciclo=M.ciclo||cicloActual();
+  const actId=uid(); const act={id:actId,fecha,campo:a.campo,cat:a.cat,ciclo,tipo:"Cambio de estado",cant:1,kg:null,obs:"Manga: "+(a.caravana||a.visual),ceOrigen:origen,ceDestino:dest,ceCant:1,ceMotivo:motivo,ceNota:""};
+  await set(ref(db,"act/"+actId),act);
+  const prevER=a.estadoRep||""; const n={...a,estadoRep:estRepFicha(dest),modificado:hoyISO()}; if(dest==="Baja"){ n.estado=motivo==="Venta"?"vendido":"muerto"; n.fechaBaja=fecha; }
+  state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n);
+  const ids=await mangaRegistrarActs(a,[{tipo:"Cambio de estado",producto:origen+" → "+dest+(motivo!=="(sin motivo especial)"?" ("+motivo+")":"")}]);
+  mangaLog(n,"🔁 "+origen+" → "+dest+(motivo!=="(sin motivo especial)"?" · "+motivo:""),{pesadas:[],eventos:ids,acts:[actId],estadoRepAnterior:prevER,estadoAnterior:dest==="Baja"?(a.estado||"activo"):undefined});
+  toast("🔁 "+nombreAnimal(a)+": "+origen+" → "+dest); M.estRepOpen=false; render(); guardarSesionManga();
+};
 window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
 window.mangaOk=async function(){
   const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
