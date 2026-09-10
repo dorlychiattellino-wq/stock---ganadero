@@ -3859,6 +3859,10 @@ function renderManga(){
       <div style="font-size:1.1rem"><strong>${h(a.cat||"")}</strong> · ${h(a.campo||"")}${a.raza?" · "+h(a.raza):""}${a.estadoRep?" · "+h(a.estadoRep):""}</div>
     </div>
     <div style="margin:.2rem 0 .6rem;font-size:.95rem;color:#5a4020">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha||hoyISO())+" días)":"Sin pesadas previas"}${M.grupo.includes(a.key)?' · <span style="color:#c82010;font-weight:700">⚠️ YA PASÓ HOY</span>':""}</div>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.6rem">
+      ${["Terneros","Terneras"].includes(a.cat)?`${chip("♂ Terneros",a.cat==="Terneros","mangaSexoRapido('Terneros')")}${chip("♀ Terneras",a.cat==="Terneras","mangaSexoRapido('Terneras')")}<span style="width:.6rem"></span>`:""}
+      ${[...new Set([...RAZAS.filter(r=>r!=="Otra"),...(a.raza?[a.raza]:[])])].map(r=>chip(r,a.raza===r,`mangaRazaRapida('${h(r)}')`,"#7a4010")).join("")}<input placeholder="otra raza…" onchange="mangaRazaRapida(this.value)" style="width:110px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #7a4010"/>
+    </div>
     <div style="background:${M.over?"#eef3f8":"#eef5e6"};border-radius:8px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:1rem">${M.over?"✏️ <strong>Distinto para este animal:</strong> ":"Se registra: "}${acts.tipos.length?"<strong>"+acts.tipos.join(" + ")+"</strong>":"<span class='km'>ninguna actividad</span>"}${acts.productos.length?" · "+h(prodTexto(acts)):""}</div>
     ${conTacto?(()=>{const r=M.tactoRes; const esP=r==="preñada"||r==="cut"; const esV=r==="vacía"||r==="2da oportunidad"||r==="descarte";
       return `<div style="margin-bottom:.6rem;background:#fff8ee;border:2px solid #e0a050;border-radius:10px;padding:.7rem">
@@ -4090,6 +4094,8 @@ window.setFAnimMg2=function(k,v){ state.manga.altaOrigen[k]=v; };
 window.mangaOverReset=function(){ state.manga.over=null; render(); };
 window.mangaExtra=function(v){ const M=state.manga; M.extra=v!==false; M.catOpen=M.bajaOpen=false; render(); };
 window.mangaTogToro=function(id){ const M=state.manga; M.torosEntore=[...(M.torosEntore||[])]; const i=M.torosEntore.indexOf(id); if(i>=0)M.torosEntore.splice(i,1); else M.torosEntore.push(id); render(); };
+window.mangaSexoRapido=async function(cat){ const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a||a.cat===cat)return; const n={...a,cat,sexo:sexoDeCat(cat),modificado:hoyISO()}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); toast("✔ "+nombreAnimal(n)+" → "+cat); render(); };
+window.mangaRazaRapida=async function(r){ const M=state.manga; const a=M.animal?state.animales[M.animal]:null; r=String(r||"").trim(); if(!a||!r||a.raza===r)return; const n={...a,raza:r,modificado:hoyISO()}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); toast("✔ "+nombreAnimal(n)+" · "+r); render(); };
 window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
 window.mangaOk=async function(){
   const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
