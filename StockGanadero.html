@@ -237,7 +237,7 @@ let state = {
   modoPesaje: false, pesFecha: "", pesAnimal: null, pesLog: [], papelTxt: "", papelPrev: null,
   eventos: {},        // {id: {animal, fecha, hora, tipo, producto, dosis, enfermedad, obs, origen, sesion}}
   trTxt: "", trPrev: null, masivaOpen: false,
-  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},over:null,tactoRes:"",animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false,sesionId:""},
+  manga: {on:false,cfg:false,fecha:"",campo:"",ciclo:"",altaCat:"Terneros",raza:"",pesar:true,altaMov:false,tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},over:null,altaTipo:"Nacimiento",altaOrigen:{nombre:"",cuit:"",renspa:""},tactoRes:"",animal:null,peso:"",nuevoEID:"",grupo:[],log:[],extra:false,catOpen:false,bajaOpen:false,sesionId:""},
   mangaSesiones: {},  // {id:{id,fecha,campo,ciclo,tipos,productos,animales:[],tactos:{key:res},usuario,actualizado}}
   mangaCatalogo: {tipos:[],productos:[]}, // productos: [{nombre,categoria,dosis}]
   origenes: {},       // {id:{id,nombre,cuit,renspa}}
@@ -3791,7 +3791,16 @@ function renderManga(){
       <button style="${M.pesar?BTN_V:BTN_G};flex:0 0 auto" onclick="setFAnimMg('pesar',${M.pesar?"false":"true"})">⚖️ ${M.pesar?"Se pesa cada animal":"No se pesa"}</button>
       <div style="flex:1;min-width:220px"><span class="km">Caravana nueva se da de alta como:</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem;align-items:center">${chip("♂ Terneros",M.altaCat==="Terneros","setFAnimMg('altaCat','Terneros')")}${chip("♀ Terneras",M.altaCat==="Terneras","setFAnimMg('altaCat','Terneras')")}<select onchange="setFAnimMg('altaCat',this.value)" style="width:auto">${opts(CATS,M.altaCat)}</select></div></div>
     </div>
-    ${esAdmin()?`<label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0;font-size:.85rem"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como "Nacimiento" (solo si esos animales NO están contados todavía)</label>`:""}
+    <div style="background:#f6f4ee;border:1.5px solid #b8a888;border-radius:10px;padding:.7rem;margin:.5rem 0">
+      <strong>📍 Los animales nuevos ingresan a ${h(M.campo||"(elegí campo)")} por:</strong>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.4rem 0">${["Nacimiento","Compra","Traslado entrada"].map(t=>chip(t,M.altaTipo===t,`setFAnimMgAltaTipo('${t}')`)).join("")}</div>
+      ${M.altaTipo==="Nacimiento"?`<div class="km">Origen: <strong>${h(M.campo||"—")}</strong> (campo propio, RENSPA ${h((typeof renspaDe==="function"&&M.campo?renspaDe(M.campo):"")||"—")}). Para cargar la madre de cada ternero, usá "➕ Distinto para este animal" o la ficha después.</div>`
+      :M.altaTipo==="Traslado entrada"?`<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap"><span class="km">Vienen del campo:</span><select onchange="setFAnimMgOrigen(this.value)" style="width:auto">${opts(clist.filter(c=>c!==M.campo),M.altaOrigen.nombre,"-- Elegir --")}</select><span class="km">${M.altaOrigen.renspa?"RENSPA "+h(M.altaOrigen.renspa):""}</span></div>`
+      :`<div class="fg" style="margin-top:.3rem"><label>Vendedor / establecimiento de origen<input id="mg_orig_nom" list="origenes-list-mg" value="${h(M.altaOrigen.nombre)}" onchange="setFAnimMgOrigen(this.value)" placeholder="Nombre"/><datalist id="origenes-list-mg">${origenesLista().filter(o=>!clist.includes(o.nombre)).map(o=>`<option value="${h(o.nombre)}">${h(o.cuit||"")} ${h(o.renspa||"")}</option>`).join("")}</datalist></label>
+        <label>CUIT<input id="mg_orig_cuit" value="${h(M.altaOrigen.cuit)}" onchange="setFAnimMg2('cuit',this.value)"/></label>
+        <label>RENSPA<input id="mg_orig_renspa" value="${h(M.altaOrigen.renspa)}" onchange="setFAnimMg2('renspa',this.value)"/></label></div>`}
+      <label style="display:flex;gap:.5rem;align-items:center;margin:.5rem 0 0;font-size:.85rem"><input type="checkbox" ${M.altaMov?"checked":""} onchange="setFAnimMg('altaMov',this.checked)" style="width:auto"/> Cada alta suma 1 al stock por lote como ingreso "${h(M.altaTipo)}" en ${h(M.campo||"…")} <span class="km">(dejalo apagado solo si ese lote ya fue cargado en Movimientos)</span></label>
+    </div>
     <hr style="border:none;border-top:1px solid #eee;margin:.6rem 0"/>
     ${renderChips(M,"mangaTog",true)}
     <div class="km" style="margin-top:.4rem">Lo marcado con ✔ se registra solo en cada animal que pasa. Si a uno hay que hacerle algo distinto, usás "➕ Distinto para este animal" y ahí prendés o apagás de la misma lista.</div>
@@ -3802,7 +3811,7 @@ function renderManga(){
   ${M.nuevoEID?`
   <div style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #c82010">
     <div style="font-size:1.2rem;color:#c82010;font-weight:800">❓ Animal nuevo: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
-    <div style="margin:.2rem 0 .7rem;font-size:1rem">¿Qué es? Se carga en <strong>${h(M.campo||"(falta elegir campo)")}</strong>.</div>
+    <div style="margin:.2rem 0 .7rem;font-size:1rem">¿Qué es? Ingresa a <strong>${h(M.campo||"(falta elegir campo)")}</strong> por <strong>${h(M.altaTipo)}</strong>${M.altaTipo!=="Nacimiento"?" desde <strong>"+h(M.altaOrigen.nombre||"(origen sin definir)")+"</strong>":""}. <a href="#" onclick="mangaCfg(true);return false">cambiar</a></div>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap">
       <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneros')">♂ TERNERO</button>
       <button style="${BTN_V};font-size:1.4rem;padding:1.1rem" onclick="mangaAlta('Terneras')">♀ TERNERA</button>
@@ -3921,11 +3930,15 @@ window.mangaAlta=async function(cat){
   const M=state.manga; const eid=M.nuevoEID; if(!eid)return;
   if(!M.campo){ alert("Primero elegí el campo en ⚙️ Sesión."); M.cfg=true; render(); return; }
   const key=keyAnimal(eid,""); if(!key)return;
-  const a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?eid:"",campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha||hoyISO(),ingresoTipo:"Nacimiento",estado:"activo",origen:"manga",creado:hoyISO(),origenNombre:M.campo,origenRenspa:(typeof renspaDe==="function"?renspaDe(M.campo):"")||""});
+  if(M.altaTipo!=="Nacimiento"&&!M.altaOrigen.nombre){ alert("Definí el origen ("+M.altaTipo+") en ⚙️ Configurar."); M.cfg=true; render(); return; }
+  const og=M.altaTipo==="Nacimiento"?{nombre:M.campo,cuit:"",renspa:(typeof renspaDe==="function"?renspaDe(M.campo):"")||""}:M.altaOrigen;
+  const a=sinUndef({key,caravana:eid.length>=12?eid:"",visual:eid.length<12?eid:"",campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha||hoyISO(),ingresoTipo:M.altaTipo,estado:"activo",origen:"manga",creado:hoyISO(),origenNombre:og.nombre||"",origenCuit:og.cuit||"",origenRenspa:og.renspa||""});
   state.animales[key]=a; await set(ref(db,"animales/"+key),a);
+  if(M.altaTipo==="Compra")await guardarOrigen(og);
   let movId=null;
-  if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:"Nacimiento",cant:1,obs:"Manga: alta "+(a.caravana||a.visual)}); }
-  mangaLog(a,"🆕 alta como "+cat+(movId?" (+1 stock)":""),{pesadas:[],eventos:[],animal:key,mov:movId});
+  if(M.altaMov){ movId=uid(); await set(ref(db,"mov/"+movId),{id:movId,fecha:M.fecha||hoyISO(),campo:M.campo,cat,ciclo:M.ciclo||"",tipo:"ingreso",sub:M.altaTipo,cant:1,obs:"Manga: alta "+(a.caravana||a.visual),origen:og}); }
+  const ev={id:idEvento(key,M.fecha||hoyISO(),mangaHora(),"Ingreso "+M.altaTipo)+"_"+Date.now().toString(36),animal:key,fecha:M.fecha||hoyISO(),hora:mangaHora(),tipo:"Otro",producto:"Ingreso: "+M.altaTipo,dosis:"",enfermedad:"",obs:"Origen: "+(og.nombre||"")+(og.renspa?" · RENSPA "+og.renspa:""),origen:"manga",sesion:"manga"}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev);
+  mangaLog(a,"🆕 alta como "+cat+" · "+M.altaTipo+(og.nombre?" desde "+og.nombre:"")+(movId?" (+1 stock)":""),{pesadas:[],eventos:[ev.id],animal:key,mov:movId});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
   M.nuevoEID=""; M.animal=key; M.peso=""; render(); if(!M.pesar&&!M.tipos.length){ M.animal=null; render(); enfocar("bl_eid"); } guardarSesionManga();
 };
@@ -4019,6 +4032,9 @@ function mangaTogCore(T,M,k,v,extra){
 }
 window.mangaTog=function(k,v,extra){ const M=state.manga; const T={tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis}; const r=mangaTogCore(T,M,k,v,extra); M.tipos=T.tipos; M.productos=T.productos; M.prodDosis=T.prodDosis; if(r)render(); };
 window.mangaTogOver=function(k,v,extra){ const M=state.manga; if(!M.over)M.over={tipos:[...M.tipos],productos:[...M.productos],prodDosis:{...M.prodDosis}}; const r=mangaTogCore(M.over,M,k,v,extra); if(r)render(); };
+window.setFAnimMgAltaTipo=function(t){ const M=state.manga; M.altaTipo=t; M.altaOrigen={nombre:"",cuit:"",renspa:""}; M.altaMov=(t!=="Nacimiento"); render(); };
+window.setFAnimMgOrigen=function(nombre){ const M=state.manga; const o=origenesLista().find(x=>normTxt(x.nombre)===normTxt(nombre)); M.altaOrigen={nombre:nombre||"",cuit:o?o.cuit||"":"",renspa:o?o.renspa||"":""}; render(); };
+window.setFAnimMg2=function(k,v){ state.manga.altaOrigen[k]=v; };
 window.mangaOverReset=function(){ state.manga.over=null; render(); };
 window.mangaExtra=function(v){ const M=state.manga; M.extra=v!==false; M.catOpen=M.bajaOpen=false; render(); };
 window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
