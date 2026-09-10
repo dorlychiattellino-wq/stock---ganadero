@@ -2158,7 +2158,7 @@ function buildModalActs(){
       <p>Podés desactivar cualquier actividad para que no aparezca en el desplegable de carga (los registros viejos no se tocan y los cálculos siguen igual). Las marcadas con 🔒 son del sistema y no se pueden desactivar.</p>
       <div style="max-height:45vh;overflow-y:auto">
         <p style="font-size:.78rem;font-weight:700;color:#5a4a2a;margin:.3rem 0 .2rem">Actividades base del sistema</p>
-        ${ACT.map(nombre=>{
+        ${[...ACT].sort((a,b)=>a.localeCompare(b)).map(nombre=>{
           const protegida=ACT_PROTEGIDAS.includes(nombre);
           const off=!!(state.actBaseOff&&state.actBaseOff[nombre]);
           return `
@@ -2173,10 +2173,11 @@ function buildModalActs(){
         }).join("")}
         <p style="font-size:.78rem;font-weight:700;color:#5a4a2a;margin:.6rem 0 .2rem">Actividades propias</p>
         ${custom.length===0&&heredadas.length===0?`<p style="color:#aaa;text-align:center;padding:1rem">No hay actividades propias aún. Agregá la primera.</p>`:""}
-        ${custom.map(([id,c])=>`
+        ${[...custom].sort((a,b)=>a[1].nombre.localeCompare(b[1].nombre)).map(([id,c])=>`
           <div class="campo-item${c.activo?"":" inactivo"}">
             <span>${h(c.nombre)}</span>
             <span style="display:flex;align-items:center;gap:.4rem">
+              <button onclick="editarActividadCustom('${id}')" title="Cambiar nombre" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">✏️ Editar</button>
               <span style="font-size:.75rem;color:${c.activo?"#3d6428":"#c84a28"}">${c.activo?"✅ Activa":"❌ Inactiva"}</span>
               <button onclick="toggleActividadCustom('${id}')" style="background:#e8dfc8;border:1px solid #b8a888;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.75rem">${c.activo?"🚫 Desactivar":"♻️ Reactivar"}</button>
             </span>
@@ -2772,6 +2773,18 @@ window.toggleActividadBase=async function(nombre){
   if(ACT_PROTEGIDAS.includes(nombre))return;
   if(state.actBaseOff&&state.actBaseOff[nombre]) await set(ref(db,`actBaseOff/${nombre}`),null);
   else await set(ref(db,`actBaseOff/${nombre}`),true);
+};
+window.editarActividadCustom=async function(id){
+  const c=state.actividadesCustom[id]; if(!c)return;
+  const nuevo=(prompt("Nuevo nombre para la actividad:",c.nombre)||"").trim(); if(!nuevo||nuevo===c.nombre)return;
+  if(actividadesAll(true).some(a=>a.toLowerCase()===nuevo.toLowerCase()))return alert("Ya existe una actividad con ese nombre.");
+  await set(ref(db,`actividadesCustom/${id}`),{...c,nombre:nuevo});
+  const regs=Object.values(state.act).filter(a=>a&&a.tipo===c.nombre); const evs=Object.values(state.eventos).filter(e=>e&&e.tipo===c.nombre);
+  if((regs.length||evs.length)&&confirm("Hay "+regs.length+" registros de actividades y "+evs.length+" actividades por animal con el nombre viejo. ¿Renombrarlos también?")){
+    for(const a of regs)await set(ref(db,"act/"+a.id),{...a,tipo:nuevo});
+    for(const e of evs)await set(ref(db,"eventos/"+e.id),{...e,tipo:nuevo});
+  }
+  toast("✏️ Actividad renombrada a '"+nuevo+"'");
 };
 window.toggleActividadCustom=async function(id){
   const c=state.actividadesCustom[id]; if(!c)return;
@@ -3506,7 +3519,7 @@ function renderEventosFicha(a){
     <label>Fecha<input id="ev_fecha" type="date" value="${hoyISO()}"/></label>
     <label>Tipo<select id="ev_tipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
     <label>Producto / detalle<input id="ev_producto" placeholder="Ej: Moskithion"/></label>
-    <label>Dosis<input id="ev_dosis" placeholder="Ej: 1 kg, 5 ml"/></label>
+    <label>Dosis (cc)<input id="ev_dosis" placeholder="Ej: 5 cc"/></label>
     <label>Enfermedad / motivo<input id="ev_enf"/></label>
     <label class="s2">Observación<input id="ev_obs"/></label>
     <label style="justify-content:flex-end"><button class="bp" onclick="guardarEventoFicha()">➕ Registrar</button></label>
@@ -3544,7 +3557,7 @@ function renderMasiva(lista){
     <label>Fecha<input id="ma_fecha" type="date" value="${hoyISO()}"/></label>
     <label>Tipo<select id="ma_tipo">${TIPOS_EV.map(t=>`<option>${t}</option>`).join("")}</select></label>
     <label>Producto / detalle<input id="ma_producto" placeholder="Ej: Moskithion"/></label>
-    <label>Dosis<input id="ma_dosis" placeholder="Ej: 1 kg"/></label>
+    <label>Dosis (cc)<input id="ma_dosis" placeholder="Ej: 5 cc"/></label>
     <label>Enfermedad / motivo<input id="ma_enf"/></label>
     <label class="s2">Observación<input id="ma_obs"/></label>
     <label class="s2">Caravanas (solo si elegís "Caravanas que pego"): una por línea o separadas por coma<input id="ma_lista" placeholder="296175, 296176, BT627A180"/></label>
@@ -3677,11 +3690,28 @@ function renderLectura(){
   </div>
 </div>`;
 }
-function TIPOS_MANGA(){ return [...new Set(["Caravaneo","Marcación","Señalada","Castración","Vacunación","Antiparasitario","Tratamiento","Vitaminas / minerales","Baño / mosquicida","Destete","Tacto","Pesaje","Cambio de rodeo","Observación",...(state.mangaCatalogo.tipos||[]),...(typeof actividadesAll==="function"?actividadesAll():[]).filter(x=>!["Tacto","Traslado de rodeo","Cambio de estado","IATF","Otro"].includes(x))])]; }
+function TIPOS_MANGA(){ return [...new Set(actividadesAll())].sort((a,b)=>a.localeCompare(b)); }
 function chip(txt,on,onclick,color){ return `<button onclick="${onclick}" style="border-radius:22px;padding:.55rem .9rem;font-size:.95rem;font-weight:700;border:2px solid ${color||"#2d4a1e"};background:${on?(color||"#2d4a1e"):"#fff"};color:${on?"#fff":(color||"#2d4a1e")}">${on?"✔ ":""}${h(txt)}</button>`; }
 const TACTO_RES=[["preñada","🟢 PREÑADA"],["cut","🟢 CUT"],["vacía","🔴 VACÍA"],["2da oportunidad","🟠 2DA OPORT."],["descarte","⚫ DESCARTE"]];
-const CATEG_PROD=["Antibiótico","Antiparasitario","Piojicida / mosquicida","Antiinflamatorio","Vitaminas / minerales","Vacuna","Hormonal / reproductivo","Desinfectante / cicatrizante","Otro"];
-function catalogoProd(){ const base=[{nombre:"Moskithion",categoria:"Piojicida / mosquicida",dosis:""},{nombre:"Nutrimin",categoria:"Vitaminas / minerales",dosis:""},{nombre:"Recomendasol",categoria:"Otro",dosis:""},{nombre:"Thilmicocina",categoria:"Antibiótico",dosis:""}];
+const CATEG_PROD=["Antibiótico","Antidiarreico","Antiparasitario","Piojicida / mosquicida","Antiinflamatorio","Vitaminas / minerales","Vacuna","Hormonal / reproductivo","Desinfectante / cicatrizante","Otro"];
+function catalogoProd(){ const base=[
+  {nombre:"Antidiarreico Overbiotic",categoria:"Antidiarreico",dosis:""},
+  {nombre:"Dectomax",categoria:"Antiparasitario",dosis:""},
+  {nombre:"Dexametasona LA",categoria:"Antiinflamatorio",dosis:""},
+  {nombre:"Diarrea Neonatal EnteroJ5/RotaCo",categoria:"Vacuna",dosis:""},
+  {nombre:"Doramectina 3.5% Treo Ace",categoria:"Antiparasitario",dosis:""},
+  {nombre:"Ivermectina",categoria:"Antiparasitario",dosis:""},
+  {nombre:"Kuramicina LA",categoria:"Antibiótico",dosis:""},
+  {nombre:"Leptospirosis Biolaptogen",categoria:"Vacuna",dosis:""},
+  {nombre:"Moskithion",categoria:"Piojicida / mosquicida",dosis:""},
+  {nombre:"Nutrimin",categoria:"Vitaminas / minerales",dosis:""},
+  {nombre:"Pack Reproductivo",categoria:"Vacuna",dosis:""},
+  {nombre:"Recomendasol",categoria:"Vitaminas / minerales",dosis:""},
+  {nombre:"T5 plus",categoria:"Vacuna",dosis:"",nota:"Clostridial: mancha, gangrena gaseosa, edema maligno, enterotoxemias, muerte súbita"},
+  {nombre:"Terravet LA Plus",categoria:"Antibiótico",dosis:""},
+  {nombre:"Thilmicocina",categoria:"Antibiótico",dosis:""},
+  {nombre:"Vacuna Aftosa",categoria:"Vacuna",dosis:""},
+  {nombre:"Vacuna Brucelosis",categoria:"Vacuna",dosis:""}];
   const cat=(state.mangaCatalogo.productos||[]); const map={}; for(const p of [...base,...cat]){ if(p&&p.nombre)map[p.nombre]={...(map[p.nombre]||{}),...p}; }
   return Object.values(map).sort((a,b)=>(a.categoria||"zz").localeCompare(b.categoria||"zz")||a.nombre.localeCompare(b.nombre)); }
 function prodInfo(n){ return catalogoProd().find(p=>p.nombre===n)||{nombre:n,categoria:"",dosis:""}; }
@@ -3712,7 +3742,7 @@ function renderChips(M,fn,esSesion){
     <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin:.4rem 0;min-height:2.2rem">${prodsDisp.length?prodsDisp.map(n=>{const p=prodInfo(n); const on=acts.productos.includes(n); const d=(acts.prodDosis||{})[n]||"";
       return `<div style="display:flex;align-items:center;gap:.3rem;border:2px solid #1e4a7a;border-radius:22px;padding:.25rem .3rem .25rem .7rem;background:${on?"#1e4a7a":"#fff"};color:${on?"#fff":"#1e4a7a"}">
         <button onclick="${fn}('prod','${h(n)}')" style="background:none;border:none;color:inherit;font-weight:700;font-size:.95rem;padding:.3rem .2rem">${on?"✔ ":""}${h(n)}${p.categoria?` <span style="font-weight:400;font-size:.75rem;opacity:.85">· ${h(p.categoria)}</span>`:""}</button>
-        <input value="${h(d)}" placeholder="dosis" onchange="${fn}('pdosis','${h(n)}',this.value)" onclick="event.stopPropagation()" style="width:70px;padding:.3rem .4rem;border-radius:14px;border:1px solid #9ab;font-size:.85rem;background:#fff;color:#1e4a7a"/>
+        <input value="${h(d)}" placeholder="cc" onchange="${fn}('pdosis','${h(n)}',this.value)" onclick="event.stopPropagation()" style="width:70px;padding:.3rem .4rem;border-radius:14px;border:1px solid #9ab;font-size:.85rem;background:#fff;color:#1e4a7a"/>
         ${esSesion?`<button onclick="${fn}('quitarProd','${h(n)}')" title="Sacar de la lista de hoy" style="background:none;border:none;color:inherit;opacity:.7;padding:.2rem .4rem">✖</button>`:""}</div>`;}).join(""):`<span class="km">Sin productos. Agregalos del desplegable si hoy se aplica algo.</span>`}</div>
   </div>`;
 }
@@ -3724,11 +3754,11 @@ function renderCatalogoProd(){
   return `<div class="card" style="background:#f4f6fa;border:1.5px solid #6a8ab0">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="color:#1e3a5a;margin:0">💊 Catálogo de productos (${cat.length})</h2><button class="bs" onclick="state.catProdOpen=!state.catProdOpen;render()">${state.catProdOpen?"▲ Ocultar":"▼ Abrir"}</button></div>
   ${state.catProdOpen?`
-  <p class="hint">Cada producto tiene categoría y dosis habitual, así en la manga el operario lo elige por tipo y la dosis ya viene cargada (se puede cambiar en el momento). Para cargar varios de una vez, pegá una lista: un producto por línea, con categoría y dosis separadas por punto y coma. Ej: <code>Ivermectina; Antiparasitario; 5 ml</code>. Si pegás solo nombres (por ejemplo la lista de Hook), quedan sin categoría y las completás acá.</p>
-  <textarea id="cp_txt" rows="3" oninput="state.prodTxt=this.value" placeholder="Ivermectina; Antiparasitario; 5 ml&#10;Oxitetraciclina; Antibiótico; 10 ml&#10;Aftosa" style="width:100%;border:1.5px solid #b8c8d8;border-radius:6px;padding:.5rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.prodTxt||"")}</textarea>
+  <p class="hint">Cada producto tiene categoría y dosis habitual, así en la manga el operario lo elige por tipo y la dosis ya viene cargada (se puede cambiar en el momento). Para cargar varios de una vez, pegá una lista: un producto por línea, con categoría y dosis separadas por punto y coma. Ej: <code>Ivermectina; Antiparasitario; 5 cc</code>. Si pegás solo nombres (por ejemplo la lista de Hook), quedan sin categoría y las completás acá.</p>
+  <textarea id="cp_txt" rows="3" oninput="state.prodTxt=this.value" placeholder="Ivermectina; Antiparasitario; 5 cc&#10;Kuramicina LA; Antibiótico; 10 cc&#10;Vacuna Aftosa; Vacuna; 2 cc" style="width:100%;border:1.5px solid #b8c8d8;border-radius:6px;padding:.5rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.prodTxt||"")}</textarea>
   <div class="br"><button class="bp" onclick="importarProductos()">➕ Agregar los pegados</button></div>
   <div class="tw"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Dosis habitual</th><th></th></tr></thead><tbody>
-  ${cat.map((p,i)=>`<tr><td><input id="cp_n_${i}" value="${h(p.nombre)}" style="min-width:140px"/></td><td><select id="cp_c_${i}" style="min-width:150px">${opts(CATEG_PROD,p.categoria||"","—")}</select></td><td><input id="cp_d_${i}" value="${h(p.dosis||"")}" placeholder="Ej: 5 ml" style="width:100px"/></td><td style="white-space:nowrap"><button class="bi" title="Guardar" onclick="guardarProducto(${i})">💾</button> <button class="bi" title="Eliminar" onclick="eliminarProducto(${i})">🗑️</button></td></tr>`).join("")}
+  ${cat.map((p,i)=>`<tr><td><input id="cp_n_${i}" value="${h(p.nombre)}" style="min-width:140px"/></td><td><select id="cp_c_${i}" style="min-width:150px">${opts(CATEG_PROD,p.categoria||"","—")}</select></td><td><input id="cp_d_${i}" value="${h(p.dosis||"")}" placeholder="Ej: 5 cc" style="width:100px"/></td><td style="white-space:nowrap"><button class="bi" title="Guardar" onclick="guardarProducto(${i})">💾</button> <button class="bi" title="Eliminar" onclick="eliminarProducto(${i})">🗑️</button></td></tr>`).join("")}
   </tbody></table></div>`:""}
 </div>`;
 }
@@ -3986,8 +4016,8 @@ function mangaTogCore(T,M,k,v,extra){
   // T: objeto con tipos/productos/prodDosis a modificar. M: sesión (para listas disponibles)
   if(k==="tipo")togList(T.tipos,v);
   else if(k==="prod")togList(T.productos,v);
-  else if(k==="pdosis"){ T.prodDosis={...(T.prodDosis||{}),[v]:extra}; return false; }
-  else if(k==="addTipo"){ if(v==="__nueva"){ const n=prompt("Nombre de la nueva actividad:"); if(!n)return false; v=n.trim(); catalogoAdd("tipos",v); } if(!v)return false; if(!M.tiposDisp.includes(v))M.tiposDisp.push(v); if(!T.tipos.includes(v))T.tipos.push(v); }
+  else if(k==="pdosis"){ let d=String(extra||"").trim(); if(/^\d+([.,]\d+)?$/.test(d))d=d+" cc"; T.prodDosis={...(T.prodDosis||{}),[v]:d}; return false; }
+  else if(k==="addTipo"){ if(v==="__nueva"){ const n=prompt("Nombre de la nueva actividad (queda también en la pestaña Actividades):"); if(!n)return false; v=n.trim(); if(!actividadesAll(true).some(a=>a.toLowerCase()===v.toLowerCase())){ const id=uid(); set(ref(db,"actividadesCustom/"+id),{id,nombre:v,activo:true}); state.actividadesCustom={...(state.actividadesCustom||{}),[id]:{id,nombre:v,activo:true}}; } } if(!v)return false; if(!M.tiposDisp.includes(v))M.tiposDisp.push(v); if(!T.tipos.includes(v))T.tipos.push(v); }
   else if(k==="quitarTipo"){ M.tiposDisp=M.tiposDisp.filter(x=>x!==v); T.tipos=T.tipos.filter(x=>x!==v); if(M.over)M.over.tipos=M.over.tipos.filter(x=>x!==v); }
   else if(k==="addProd"){ if(v==="__nuevo"){ const n=prompt("Nombre del nuevo producto:"); if(!n)return false; v=n.trim(); catalogoAddProd(v); } if(!v)return false; if(!M.prodsDisp.includes(v))M.prodsDisp.push(v); if(!T.productos.includes(v))T.productos.push(v); if(!(T.prodDosis||{})[v]){ const d=prodInfo(v).dosis; if(d)T.prodDosis={...(T.prodDosis||{}),[v]:d}; } }
   else if(k==="quitarProd"){ M.prodsDisp=M.prodsDisp.filter(x=>x!==v); T.productos=T.productos.filter(x=>x!==v); if(M.over)M.over.productos=M.over.productos.filter(x=>x!==v); }
