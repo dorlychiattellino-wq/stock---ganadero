@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-k";
+window.APP_VERSION="2026.09.12-l";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4278,6 +4278,9 @@ window.mangaAlta=async function(cat){
   M.log.push({key,nombre:nombreAnimal(a),txt:"🆕 alta como "+cat+(a.raza?" "+a.raza:"")+" · "+ingresoTipo+(og.nombre?" desde "+og.nombre:"")+padreTxt,ids:{pesadas:[],eventos:[ev.id]},alta:key,lote:[]});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
   M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba(); if(M.pesar)enfocar("pr_peso"); guardarSesionManga();
+  // si no hace falta cargar nada más (peso, tacto, estado), el alta completa el registro del trabajo de hoy
+  const necesita=M.pesar||M.tipos.includes("Tacto")||M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado");
+  if(!necesita){ await mangaOk(); }
 };
 
 // ── Registrar (aplica el trabajo de hoy al animal) ──
