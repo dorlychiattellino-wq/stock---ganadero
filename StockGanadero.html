@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-j";
+window.APP_VERSION="2026.09.12-k";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -256,6 +256,7 @@ let state = {
   mangaSesiones: {},  // {id:{id,fecha,campo,ciclo,tipos,productos,animales:[],tactos:{key:res},usuario,actualizado}}
   mangaCatalogo: {tipos:[],productos:[]}, // productos: [{nombre,categoria,dosis}]
   origenes: {},       // {id:{id,nombre,cuit,renspa}}
+  papelera: {},       // registros eliminados (mov/act) recuperables
   prodTxt: "",
   movGrupoTxt: "",
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
@@ -464,8 +465,20 @@ async function savePar(data){
   await set(ref(db,"par"),data);
   toast("✅ Parametros guardados");
 }
-async function delMov(id){ if(confirm("Eliminar movimiento?")){ await remove(ref(db,`mov/${id}`)); toast("Movimiento eliminado"); } }
-async function delAct(id){ if(confirm("Eliminar actividad?")){ await remove(ref(db,`act/${id}`)); toast("Actividad eliminada"); } }
+async function aPapelera(col,rec){ if(!rec)return; const id=col+"_"+rec.id; const item={id,col,rec,borrado:new Date().toISOString(),usuario:(state.sesion&&state.sesion.nombre)||""}; state.papelera[id]=item; await set(ref(db,"papelera/"+id),item); }
+async function delMov(id){ if(confirm("Eliminar movimiento? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",state.mov[id]); await remove(ref(db,`mov/${id}`)); toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
+async function delAct(id){ if(confirm("Eliminar actividad? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("act",state.act[id]); await remove(ref(db,`act/${id}`)); toast("Actividad eliminada (recuperable en Parámetros → Papelera)"); } }
+function renderPar(){ return renderParBase()+renderPapelera(); }
+window.restaurarPapelera=async function(id){ const it=state.papelera[id]; if(!it)return; if(state[it.col][it.rec.id]&&!confirm("Ya existe un registro con ese id. ¿Sobrescribir?"))return; await set(ref(db,it.col+"/"+it.rec.id),it.rec); delete state.papelera[id]; await remove(ref(db,"papelera/"+id)); toast("♻️ Registro recuperado en "+(it.col==="mov"?"Movimientos":"Actividades")); render(); };
+window.vaciarPapelera=async function(){ if(!confirm("¿Vaciar la papelera? Esto sí es definitivo."))return; for(const id of Object.keys(state.papelera)){ await remove(ref(db,"papelera/"+id)); } state.papelera={}; render(); };
+function renderPapelera(){
+  const items=Object.values(state.papelera).filter(Boolean).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
+  return `<div class="card" style="background:#f6f4ee;border:1.5px solid #b8a888"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="margin:0">🗑️ Papelera (${items.length})</h2>${items.length?`<button class="bs" onclick="vaciarPapelera()">Vaciar</button>`:""}</div>
+  <p class="hint">Movimientos y actividades eliminados. Se guardan 60 días y se pueden recuperar con un clic.</p>
+  ${items.length?`<div class="tw"><table><thead><tr><th>Borrado</th><th>Tipo</th><th>Fecha</th><th>Campo</th><th>Cat.</th><th>Detalle</th><th>Cant.</th><th></th></tr></thead><tbody>
+  ${items.map(it=>{const r=it.rec||{};return `<tr><td class="km">${h((it.borrado||"").slice(0,10))}<br>${h(it.usuario||"")}</td><td>${it.col==="mov"?"📋 Mov.":"🩺 Act."}</td><td>${fmtF(r.fecha)}</td><td>${h(r.campo||"")}</td><td>${h(r.cat||"")}</td><td>${h(it.col==="mov"?(r.tipo+" · "+(r.sub||"")):(r.tipo||""))}${r.ceDestino?" → "+h(r.ceDestino):""}${r.obs?`<div class="km">${h(r.obs)}</div>`:""}</td><td>${r.cant??"—"}</td><td><button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="restaurarPapelera('${h(it.id)}')">♻️ Recuperar</button></td></tr>`;}).join("")}
+  </tbody></table></div>`:`<p class="empty">Vacía.</p>`}</div>`;
+}
 
 // ── RENDER ──
 function render(){
@@ -1998,7 +2011,7 @@ ${clist.map(campo=>{
 }
 
 // ── PARAMETROS ──
-function renderPar(){
+function renderParBase(){
   const p=state.par;
   const sl=(k,min,max,step,label,isMax)=>`
     <label>${h(label)} (${isMax?"maximo":"minimo"})
@@ -2881,7 +2894,8 @@ window.delAct=delAct;
 window.delTacto=async function(tactoId){
   const regs=Object.values(state.act).filter(a=>a.tactoId===tactoId);
   if(regs.length===0)return;
-  if(!confirm("¿Eliminar TODO el tacto? Se borrarán los "+regs.length+" registros generados (Preñez, Cut, Vacías, etc.) de una sola vez."))return;
+  if(!confirm("¿Eliminar TODO el tacto? Se borrarán los "+regs.length+" registros generados (Preñez, Cut, Vacías, etc.) de una sola vez. (quedan 60 días en la papelera)"))return;
+  for(const r of regs)await aPapelera("act",r);
   await Promise.all(regs.map(r=>remove(ref(db,`act/${r.id}`))));
   toast("Tacto completo eliminado ("+regs.length+" registros)");
 };
@@ -3114,6 +3128,7 @@ onValue(ref(db,"eventos"), snap => { state.eventos = snap.val() || {}; render();
 onValue(ref(db,"mangaSesiones"), snap => { state.mangaSesiones = snap.val() || {}; render(); });
 onValue(ref(db,"mangaCatalogo"), snap => { const v=snap.val()||{}; state.mangaCatalogo={tipos:v.tipos||[],productos:(v.productos||[]).map(x=>typeof x==="string"?{nombre:x,categoria:"",dosis:""}:x)}; render(); });
 onValue(ref(db,"origenes"), snap => { state.origenes = snap.val() || {}; render(); });
+onValue(ref(db,"papelera"), snap => { state.papelera = snap.val() || {}; const lim=Date.now()-60*86400000; for(const [id,it] of Object.entries(state.papelera)){ if(it&&it.borrado&&new Date(it.borrado).getTime()<lim){ delete state.papelera[id]; remove(ref(db,"papelera/"+id)); } } render(); });
 
 // ── RENDER ──
 function renderAnimales(){
