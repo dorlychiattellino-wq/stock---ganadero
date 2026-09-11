@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-l";
+window.APP_VERSION="2026.09.12-m";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -3755,7 +3755,7 @@ function renderLectura(){
     <button class="bs" onclick="irATab(0)">🐂 Ir a la pestaña Manga</button>
   </div>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.7rem">
-    <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="Pasá el bastón o escribí los últimos dígitos" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.7rem .8rem;font-size:1.1rem;font-family:monospace;background:#fff"/>
+    <input id="bl_eid" inputmode="none" autocomplete="off" placeholder="Pasá el bastón o escribí los últimos dígitos" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.7rem .8rem;font-size:1.1rem;font-family:monospace;background:#fff"/>
     ${("serial" in navigator)?`<button class="bs" onclick="conectarBaston()">${state.serialPort?"🟢 Bastón conectado":"🔌 Conectar bastón (PC)"}</button>`:""}
   </div>
 </div>`;
@@ -4096,7 +4096,7 @@ function renderManga(){
   </div>
   <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}${mangaRequiereAprobacion()?` <span style="background:#fdf0ee;color:#c82010;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">⏳ este trabajo lo revisa y aprueba un administrador antes de pasar al stock</span>`:""}</div>
   ${M.cfg?renderMangaCfg(M,clist,cicl):""}
-  ${!M.cfg?`<input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Tocá acá y pasá el bastón" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>`:""}
+  ${!M.cfg?`<input id="bl_eid" inputmode="none" autocomplete="off" placeholder="👉 Pasá el bastón (o tocá 2 veces para escribir)" ondblclick="this.setAttribute('inputmode','numeric');this.blur();this.focus();" onblur="this.setAttribute('inputmode','none')" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>`:""}
   ${!M.cfg?(M.nuevoEID?renderMangaAlta(M):a?renderMangaAnimal(M,a):`<div style="background:#fff;border-radius:12px;padding:1.2rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.15rem">Esperando que pase el próximo animal…${M.auto?"<br><span style='font-size:.9rem'>⚡ Modo automático: cada caravana conocida se registra sola. Solo frena en animales nuevos"+(M.pesar||M.tipos.includes("Tacto")?" y cuando hay que cargar peso o resultado":"")+".</span>":""}</div>`):""}
   ${M.log.length?`<div style="margin-top:.8rem"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#7a4010">Registrados hoy (${M.log.length})</strong><button class="bs" style="padding:.3rem .6rem" onclick="MG().logTodos=!MG().logTodos;render()">${M.logTodos?"Ver solo los últimos":"Ver todos"}</button></div><div class="tw"><table><thead><tr><th>Animal</th><th>Qué se registró</th><th></th></tr></thead><tbody>
     ${M.log.slice(M.logTodos?0:-5).reverse().map((l,i)=>`<tr><td><strong style="font-size:1rem">${h(l.nombre)}</strong></td><td>${h(l.txt)}</td><td style="white-space:nowrap"><button class="bs" style="padding:.4rem .7rem" onclick="mangaEditar(${M.log.length-1-i})">✏️ Editar</button> <button class="bs" style="padding:.4rem .7rem" onclick="mangaDeshacer(${M.log.length-1-i})">↩️ Deshacer</button></td></tr>`).join("")}</tbody></table></div></div>`:""}
@@ -4256,7 +4256,7 @@ function mangaLeer(a,eidOrVisual){ const M=MG(); if(M.cfg){ alert("Primero tocá
   M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
   if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; toast("⚠️ "+nombreAnimal(a)+" ya pasó hoy (no se cuenta de nuevo)"); if(M.auto){ M.animal=null; M.nuevoEID=""; render(); enfocar("bl_eid"); return; } }
   if(a){ M.animal=a.key; M.nuevoEID=""; } else { M.animal=null; M.nuevoEID=eidOrVisual; }
-  render(); mangaScrollArriba(); if(a&&M.pesar)enfocar("pr_peso");
+  render(); mangaScrollArriba(); 
   if(a&&M.auto&&!M.grupo.includes(a.key)){ const necesita=M.pesar||M.tipos.includes("Tacto")||((M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado"))&&!a.estadoRep); if(!necesita){ mangaOk(); } } }
 
 // ── Alta ──
@@ -4277,7 +4277,7 @@ window.mangaAlta=async function(cat){
   const ev={id:idEvento(key,M.fecha,mangaHora(),"Alta "+ingresoTipo)+"_"+Date.now().toString(36),animal:key,fecha:M.fecha,hora:mangaHora(),tipo:"Otro",producto:"Alta: "+ingresoTipo,dosis:"",enfermedad:"",obs:"Origen: "+(og.nombre||"")+(og.renspa?" · RENSPA "+og.renspa:""),origen:"manga",sesion:"manga"}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev);
   M.log.push({key,nombre:nombreAnimal(a),txt:"🆕 alta como "+cat+(a.raza?" "+a.raza:"")+" · "+ingresoTipo+(og.nombre?" desde "+og.nombre:"")+padreTxt,ids:{pesadas:[],eventos:[ev.id]},alta:key,lote:[]});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
-  M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba(); if(M.pesar)enfocar("pr_peso"); guardarSesionManga();
+  M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba();  guardarSesionManga();
   // si no hace falta cargar nada más (peso, tacto, estado), el alta completa el registro del trabajo de hoy
   const necesita=M.pesar||M.tipos.includes("Tacto")||M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado");
   if(!necesita){ await mangaOk(); }
