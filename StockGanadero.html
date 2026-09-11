@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-f";
+window.APP_VERSION="2026.09.12-j";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -220,9 +220,9 @@ const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // fluj
 const ACT_CALC = [...ACT_PROTEGIDAS,"Preñez","Vacias","Cut","Descarte","2da oportunidad","Destete","Entore","Desentore","Pesaje","IATF","Otro"]; // nombres usados en cálculos: no se renombran
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
 const PADRE_ESTADO = {"Cut":"Preñez"};
-const TABS = ["📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","🐮 Animales","🐂 Manga","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
-const MANGA_TAB = 9;
-const OP_TABS = [MANGA_TAB]; // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
+const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
+const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
+const OP_TABS = [MANGA_TAB,4,6,7,8]; // Manga, Stock, Stock Reprod., Productivo, Comparativo (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -560,16 +560,16 @@ function buildApp(){
     ${buildModalActs()}
     ${buildPopupRecordatorios()}
     <main>
-      ${state.tab===0 ? renderMov() : ""}
-      ${state.tab===1 ? renderAct() : ""}
-      ${state.tab===2 ? renderStock() : ""}
-      ${state.tab===3 ? renderComercial() : ""}
-      ${state.tab===4 ? renderStockRep() : ""}
-      ${state.tab===5 ? renderProd() : ""}
-      ${state.tab===6 ? renderComp() : ""}
-      ${state.tab===7 ? renderIatf() : ""}
-      ${state.tab===8 ? renderAnimales() : ""}
-      ${state.tab===9 ? renderMangaTab() : ""}
+      ${state.tab===0 ? renderMangaTab() : ""}
+      ${state.tab===1 ? renderAnimales() : ""}
+      ${state.tab===2 ? renderMov() : ""}
+      ${state.tab===3 ? renderAct() : ""}
+      ${state.tab===4 ? renderStock() : ""}
+      ${state.tab===5 ? renderComercial() : ""}
+      ${state.tab===6 ? renderStockRep() : ""}
+      ${state.tab===7 ? renderProd() : ""}
+      ${state.tab===8 ? renderComp() : ""}
+      ${state.tab===9 ? renderIatf() : ""}
       ${state.tab===10 ? renderSenasa() : ""}
       ${state.tab===11 ? renderPar() : ""}
       ${state.tab===12 ? renderUsuarios() : ""}
@@ -718,7 +718,7 @@ function renderMov(){
       <tr class="${m.tipo==="ingreso"?"ri":"re"}">
         <td>${m.fecha?m.fecha.split('-').reverse().join('/'):''}</td><td>${h(m.campo)}</td><td>${h(m.cat)}</td><td>${h(m.ciclo||"—")}</td>
         <td><span class="${m.tipo==="ingreso"?"bi2":"be2"}">${m.tipo}</span></td>
-        <td>${h(m.sub)}</td><td>${m.cant}</td><td class="obs">${h(m.obs||"—")}</td>
+        <td>${h(m.sub)}</td><td>${m.cant}</td><td class="obs">${h(m.obs||"—")}${caravanasHtml(m)}</td>
         <td><button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
       </tr>`).join("")}
     </tbody>
@@ -903,7 +903,7 @@ function renderAct(){
         <td>${a.fecha?a.fecha.split('-').reverse().join('/'):''}</td><td>${a.tipo==="Traslado de rodeo"?h(a.campo)+" → "+h(a.trDestino||"?"):h(a.campo)}</td><td>${h(a.cat)}</td><td>${h(a.ciclo||"—")}</td>
         <td><span class="ba"${a.tipo==="Traslado de rodeo"?' style="background:#cfe0f5;color:#1e4a6a"':(a.tipo==="Cambio de estado"?' style="background:#ead4f5;color:#5a1e6a"':'')}>${h(a.tipo)}</span></td>
         <td>${a.cant!=null?a.cant:"—"}</td><td>${a.kg!=null?a.kg:"—"}</td>
-        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tipo==="Cambio de estado"?`${h(a.ceOrigen||"?")} → ${h(a.ceDestino||"?")}: ${a.ceCant||0}${a.ceMotivo?" ["+h(a.ceMotivo)+"]":""}${a.ceNota?" · "+h(a.ceNota):""}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—")))}</td>
+        <td class="obs">${a.tipo==="Traslado de rodeo"?`Pre:${a.trPre||0} (Cut:${a.trCut||0}) 2da:${a.trSeg||0} Dsc:${a.trDsc||0}`:(a.tipo==="Cambio de estado"?`${h(a.ceOrigen||"?")} → ${h(a.ceDestino||"?")}: ${a.ceCant||0}${a.ceMotivo?" ["+h(a.ceMotivo)+"]":""}${a.ceNota?" · "+h(a.ceNota):""}`:(a.tactoId?`🐄 <span style="color:#6a9a3a;font-size:.72rem">[Tacto]</span> ${h(a.obs||"")}`:h(a.obs||"—")))}${caravanasHtml(a)}</td>
         <td style="white-space:nowrap"><button class="bi" onclick="editActBtn('${a.id}')">✏️</button><button class="bi" onclick="delAct('${a.id}')">🗑️</button>${a.tactoId?`<button class="bi" title="Eliminar TODO el tacto (todos los registros generados)" onclick="delTacto('${a.tactoId}')" style="font-size:.85rem">🐄❌</button>`:""}</td>
       </tr>`).join("")}
     </tbody>
@@ -2254,8 +2254,8 @@ function attachEvents(){
   // nav tabs
   document.querySelectorAll("[data-tab]").forEach(btn=>{
     btn.addEventListener("click",()=>{
-      if(state.tab===0)saveFormMov();
-      if(state.tab===1)saveFormAct();
+      if(state.tab===MOV_TAB)saveFormMov();
+      if(state.tab===ACT_TAB)saveFormAct();
       state.tab=parseInt(btn.dataset.tab);state.editMov=null;state.editAct=null;render();
     });
   });
@@ -3403,6 +3403,16 @@ window.crearAnimal=async function(){
 window.eliminarAnimal=async function(){
   const a=state.animales[state.animSel]; if(!a)return;
   if(!confirm("¿Eliminar definitivamente el animal "+nombreAnimal(a)+" y sus "+pesadasDe(a.key).length+" pesadas?\n\nSi se vendió o murió, mejor cambiá el Estado en vez de eliminarlo."))return;
+  // registros por lote donde figura esta caravana
+  const ids=[a.visual,a.caravana,a.key].filter(Boolean);
+  const enLote=[...Object.values(state.mov).map(r=>({r,col:"mov"})),...Object.values(state.act).map(r=>({r,col:"act"}))].filter(x=>x.r&&Array.isArray(x.r.caravanas)&&x.r.caravanas.some(c=>ids.includes(c)));
+  if(enLote.length&&confirm("Este animal figura en "+enLote.length+" registro(s) por lote de Movimientos/Actividades hechos desde la manga.\n\n¿Descontarlo también de esos registros? (Aceptar = descontar 1 en cada uno; Cancelar = dejar los lotes como están)")){
+    for(const {r,col} of enLote){ const cv=r.caravanas.filter(c=>!ids.includes(c)); const n={...r,caravanas:cv}; if(typeof n.cant==="number")n.cant=Math.max(0,n.cant-1); if(typeof n.ceCant==="number")n.ceCant=Math.max(0,n.ceCant-1); ["trPre","trCut","trSeg","trDsc"].forEach(k=>{ if(typeof n[k]==="number"&&n[k]>0&&n.tipo==="Traslado de rodeo"){} });
+      if(n.obs)n.obs=n.obs.replace(/\d+ caravanas/,cv.length+" caravanas");
+      if((n.cant||0)<=0&&cv.length===0){ delete state[col][r.id]; await remove(ref(db,col+"/"+r.id)); } else { state[col][r.id]=n; await set(ref(db,col+"/"+r.id),sinUndef(n)); } }
+    toast("📉 Descontado de "+enLote.length+" registro(s) por lote");
+  }
+  for(const e of eventosDe(a.key)){ delete state.eventos[e.id]; await remove(ref(db,"eventos/"+e.id)); }
   for(const p of pesadasDe(a.key)){ delete state.pesadas[p.id]; await remove(ref(db,"pesadas/"+p.id)); }
   delete state.animales[a.key]; await remove(ref(db,"animales/"+a.key));
   state.animSel=null; toast("🗑️ Animal eliminado"); render();
@@ -3727,7 +3737,7 @@ function renderLectura(){
 <div class="card" style="background:#fdf7e8;border:2px solid #d0a040">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem">
     <div><h2 style="color:#7a5010;margin:0">📡 Bastón / Manga</h2><div class="km">Buscar un animal por caravana, o abrir el modo manga para trabajar con todos los que pasan.</div></div>
-    <button class="bs" onclick="irATab(9)">🐂 Ir a la pestaña Manga</button>
+    <button class="bs" onclick="irATab(0)">🐂 Ir a la pestaña Manga</button>
   </div>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.7rem">
     <input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="Pasá el bastón o escribí los últimos dígitos" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;min-width:220px;border:2px solid #d0a040;border-radius:8px;padding:.7rem .8rem;font-size:1.1rem;font-family:monospace;background:#fff"/>
@@ -3826,13 +3836,14 @@ function renderSesionesManga(){
   const ss=sesionesMangaLista().slice(0,15); if(!ss.length)return "";
   return `<div class="card" style="background:#fff8ee;border:1.5px solid #e0a050">
   <h2 style="color:#7a4010">🐂 Trabajos de manga guardados</h2>
-  <p class="hint">Cada sesión de manga guarda el grupo de animales que pasó. Desde acá lo usás para movimientos (venta, traslado, cambio de categoría), actividad masiva o el tacto por lote, sin volver a leer nada.</p>
-  <div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Actividades</th><th>Tactos</th><th>Usuario</th><th></th></tr></thead><tbody>
-  ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0;return `<tr><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td>
-    <td style="white-space:nowrap"><button class="bi" title="Usar en Movimiento" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Actividad masiva" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Eliminar sesión (no borra pesadas ni actividades)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
+  <p class="hint">Cada sesión de manga guarda el grupo de animales que pasó. Los trabajos hechos por <strong>operarios</strong> quedan <strong>⏳ pendientes</strong>: las fichas de los animales se actualizan en el momento, pero nada pasa a Movimientos ni Actividades hasta que un administrador lo aprueba acá. Los trabajos hechos por un admin pasan directo.</p>
+  <div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Trabajo</th><th>Tactos</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>
+  ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0; const nl=x.lote?Object.keys(x.lote).length:0; const cambios=x.aprobado&&x.actualizado>x.aprobadoEn; const est=x.rechazado?`<span style="color:#c82010">✖ Rechazado</span>`:x.aprobado?(cambios?`<span style="color:#a06a1f">⚠️ Aprobado, con cambios nuevos</span>`:`<span style="color:#2d4a1e">✅ Aprobado</span>`):x.pendiente?`<span style="color:#c82010;font-weight:700">⏳ Pendiente (${nl} reg.)</span>`:`<span class="km">directo</span>`;
+    return `<tr style="${x.pendiente&&!x.aprobado?"background:#fff4f0":""}"><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}${x.lote?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#1e4a7a">ver ${nl} registro(s)</summary>${Object.values(x.lote).map(({col,rec})=>`<div style="font-size:.78rem">${col==="mov"?"📋":"🩺"} ${h(rec.tipo||"")} ${h(rec.sub||"")} · ${h(rec.campo||"")} · ${h(rec.cat||"")} · <strong>${rec.cant||0}</strong>${rec.ceDestino?" → "+h(rec.ceDestino):""}${rec.trDestino?" → "+h(rec.trDestino):""}</div>`).join("")}</details>`:""}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td><td>${est}</td>
+    <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="Usar en Movimiento" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Actividad masiva" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Eliminar sesión (no borra pesadas ni actividades)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
   </tbody></table></div></div>`;
 }
-window.usarSesionEnMov=function(id){ const ss=state.mangaSesiones[id]; if(!ss)return; state.movGrupoTxt=(ss.animales||[]).map(k=>{const a=state.animales[k];return a?(a.caravana||a.visual||k):k;}).join("\n"); state.tab=0; render(); toast("📋 Grupo cargado en el formulario de movimiento"); };
+window.usarSesionEnMov=function(id){ const ss=state.mangaSesiones[id]; if(!ss)return; state.movGrupoTxt=(ss.animales||[]).map(k=>{const a=state.animales[k];return a?(a.caravana||a.visual||k):k;}).join("\n"); state.tab=MOV_TAB; render(); toast("📋 Grupo cargado en el formulario de movimiento"); };
 window.eliminarSesionManga=async function(id){ if(!confirm("¿Eliminar este trabajo de manga de la lista? No borra pesadas, actividades ni animales."))return; delete state.mangaSesiones[id]; await remove(ref(db,"mangaSesiones/"+id)); render(); };
 window.tactoDesdeManga=function(){ const sel=document.getElementById("tt_ses"); const ss=sel?state.mangaSesiones[sel.value]:null; if(!ss||!ss.tactos)return;
   const c={};for(const r of Object.values(ss.tactos))c[r]=(c[r]||0)+1;
@@ -4036,6 +4047,7 @@ window.mangaOk=async function(){
 const MOTIVOS_CE=["(sin motivo especial)","Aborto","Muerte al parto","Muerte post-parto","Venta","Otro"];
 const EST_CHIPS=[["preñada","🟢 Preñada"],["cut","🟢 Cut"],["vacía","🔴 Vacía"],["2da oportunidad","🟠 2da oport."],["descarte","⚫ Descarte"]];
 const CATS_TERN=["Terneros","Terneras"];
+function caravanasHtml(rec){ const l=rec&&rec.caravanas; if(!l||!l.length)return ""; return `<details style="margin-top:.2rem"><summary style="cursor:pointer;color:#2d4a1e;font-weight:600;font-size:.8rem">🐮 ${l.length} caravana${l.length>1?"s":""} ▾</summary><div style="font-family:monospace;font-size:.78rem;line-height:1.5;margin-top:.2rem;max-height:160px;overflow:auto;background:#f6f8f2;padding:.3rem .5rem;border-radius:6px">${l.map(x=>h(x)).join(" · ")}</div></details>`; }
 function mgDefaults(){ return {v2:true,on:true,cfg:true,modo:"",fecha:hoyISO(),campo:"",ciclo:cicloActual(),pesar:false,
   movTipo:"ingreso",movSub:"",movCat:"",movCampo2:"",movOrigen:{nombre:"",cuit:"",renspa:""},movCatNueva:"",
   tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},over:null,torosEntore:[],
@@ -4067,7 +4079,7 @@ function renderManga(){
       <button class="bs" onclick="mangaNuevaSesion()" title="Cerrar este trabajo y empezar otro">🆕 Nuevo trabajo</button>
     </div>
   </div>
-  <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}</div>
+  <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}${mangaRequiereAprobacion()?` <span style="background:#fdf0ee;color:#c82010;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">⏳ este trabajo lo revisa y aprueba un administrador antes de pasar al stock</span>`:""}</div>
   ${M.cfg?renderMangaCfg(M,clist,cicl):""}
   ${!M.cfg?`<input id="bl_eid" inputmode="numeric" autocomplete="off" placeholder="👉 Tocá acá y pasá el bastón" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>`:""}
   ${!M.cfg?(M.nuevoEID?renderMangaAlta(M):a?renderMangaAnimal(M,a):`<div style="background:#fff;border-radius:12px;padding:1.2rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.15rem">Esperando que pase el próximo animal…${M.auto?"<br><span style='font-size:.9rem'>⚡ Modo automático: cada caravana conocida se registra sola. Solo frena en animales nuevos"+(M.pesar||M.tipos.includes("Tacto")?" y cuando hay que cargar peso o resultado":"")+".</span>":""}</div>`):""}
@@ -4325,14 +4337,35 @@ window.mangaSetBaja=async function(sub){
   M.log.push({key:a.key,nombre:nombreAnimal(a),txt:"✝️ "+sub,ids:{pesadas:[],eventos:[e.id]},lote:[{id:`${M.sesionId}_x_${sub}_${a.campo}_${a.cat}`,col:"mov",base:{fecha:M.fecha,ciclo:M.ciclo,campo:a.campo,cat:a.cat,tipo:"egreso",sub,obs:"Manga "+fmtF(M.fecha)+" (excepción)"},n:{cant:1}}],prev});
   if(!M.grupo.includes(a.key))M.grupo.push(a.key); await sincronizarLote(M); toast("✝️ "+nombreAnimal(a)+": "+sub); mangaCancelar(); guardarSesionManga();
 };
+function mangaRequiereAprobacion(){ return esOperario(); }
 async function sincronizarLote(M){
-  const agg={}; for(const l of M.log){ for(const c of (l.lote||[])){ if(!agg[c.id])agg[c.id]={col:c.col,base:c.base,n:{}}; for(const [k,v] of Object.entries(c.n||{}))agg[c.id].n[k]=(agg[c.id].n[k]||0)+v; } }
+  if(mangaRequiereAprobacion()){ await sincronizarLotePendiente(M); return; }
+  const agg={}; for(const l of M.log){ const an=state.animales[l.key]; const cv=an?(an.visual||an.caravana||l.key):l.nombre; for(const c of (l.lote||[])){ if(!agg[c.id])agg[c.id]={col:c.col,base:c.base,n:{},cv:[]}; for(const [k,v] of Object.entries(c.n||{}))agg[c.id].n[k]=(agg[c.id].n[k]||0)+v; agg[c.id].cv.push(cv); } }
   const nuevos=Object.keys(agg);
-  for(const id of nuevos){ const g=agg[id]; const rec={id,...g.base}; for(const [k,v] of Object.entries(g.n)){ if(k.startsWith("_"))continue; rec[k]=v; } if(g.n._kgN)rec.kg=Math.round(g.n._kgSum/g.n._kgN*10)/10; if(rec.tipo==="Cambio de estado")rec.cant=rec.ceCant; if(rec.tipo==="Traslado de rodeo")rec.cant=(rec.trPre||0)+(rec.trSeg||0)+(rec.trDsc||0);
+  for(const id of nuevos){ const g=agg[id]; const rec={id,...g.base,caravanas:g.cv}; for(const [k,v] of Object.entries(g.n)){ if(k.startsWith("_"))continue; rec[k]=v; } if(g.n._kgN)rec.kg=Math.round(g.n._kgSum/g.n._kgN*10)/10; if(rec.tipo==="Cambio de estado")rec.cant=rec.ceCant; if(rec.tipo==="Traslado de rodeo")rec.cant=(rec.trPre||0)+(rec.trSeg||0)+(rec.trDsc||0);
     const coll=g.col==="mov"?"mov":"act"; if(coll==="mov"){ rec.obs=(rec.obs||"")+" · "+rec.cant+" caravanas"; state.mov[id]=rec; } else state.act[id]=rec; await set(ref(db,coll+"/"+id),sinUndef(rec)); }
   for(const id of (M.loteIds||[])){ if(!nuevos.includes(id)){ const coll=id.includes("_i_")||id.includes("_e_")||id.includes("_x_")?"mov":"act"; delete state[coll][id]; await remove(ref(db,coll+"/"+id)); } }
   M.loteIds=nuevos;
 }
+function calcularLote(M){
+  const agg={}; for(const l of M.log){ const an=state.animales[l.key]; const cv=an?(an.visual||an.caravana||l.key):l.nombre; for(const c of (l.lote||[])){ if(!agg[c.id])agg[c.id]={col:c.col,base:c.base,n:{},cv:[]}; for(const [k,v] of Object.entries(c.n||{}))agg[c.id].n[k]=(agg[c.id].n[k]||0)+v; agg[c.id].cv.push(cv); } }
+  const out={}; for(const id of Object.keys(agg)){ const g=agg[id]; const rec={id,...g.base,caravanas:g.cv}; for(const [k,v] of Object.entries(g.n)){ if(k.startsWith("_"))continue; rec[k]=v; } if(g.n._kgN)rec.kg=Math.round(g.n._kgSum/g.n._kgN*10)/10; if(rec.tipo==="Cambio de estado")rec.cant=rec.ceCant; if(rec.tipo==="Traslado de rodeo")rec.cant=(rec.trPre||0)+(rec.trSeg||0)+(rec.trDsc||0); if(g.col==="mov")rec.obs=(rec.obs||"")+" · "+rec.cant+" caravanas"; out[id]={col:g.col,rec:sinUndef(rec)}; }
+  return out;
+}
+async function sincronizarLotePendiente(M){ M.lotePend=calcularLote(M); M.loteIds=Object.keys(M.lotePend); }
+window.aprobarSesionManga=async function(id){
+  const ss=state.mangaSesiones[id]; if(!ss||!ss.lote)return; const lote=ss.lote; const ids=Object.keys(lote);
+  if(!confirm("¿Aprobar este trabajo de manga y pasar "+ids.length+" registro(s) a Movimientos/Actividades?"))return;
+  for(const id2 of ids){ const {col,rec}=lote[id2]; state[col][id2]=rec; await set(ref(db,col+"/"+id2),rec); }
+  for(const id2 of (ss.aprobadoIds||[])){ if(!ids.includes(id2)){ const col=id2.includes("_i_")||id2.includes("_e_")||id2.includes("_x_")?"mov":"act"; delete state[col][id2]; await remove(ref(db,col+"/"+id2)); } }
+  const n={...ss,aprobado:true,aprobadoEn:new Date().toISOString(),aprobadoPor:(state.sesion&&state.sesion.nombre)||"",aprobadoIds:ids}; state.mangaSesiones[id]=n; await set(ref(db,"mangaSesiones/"+id),sinUndef(n));
+  toast("✅ Trabajo aprobado: "+ids.length+" registro(s) en Movimientos/Actividades"); render();
+};
+window.rechazarSesionManga=async function(id){
+  const ss=state.mangaSesiones[id]; if(!ss)return; if(!confirm("¿Rechazar este trabajo? No se pasa nada a Movimientos/Actividades. Las fichas de los animales (pesadas, sanidad, estado) quedan como las cargó el operario; si hay que corregirlas, se hace desde Animales."))return;
+  for(const id2 of (ss.aprobadoIds||[])){ const col=id2.includes("_i_")||id2.includes("_e_")||id2.includes("_x_")?"mov":"act"; delete state[col][id2]; await remove(ref(db,col+"/"+id2)); }
+  const n={...ss,rechazado:true,aprobado:false,aprobadoIds:[],rechazadoEn:new Date().toISOString()}; state.mangaSesiones[id]=n; await set(ref(db,"mangaSesiones/"+id),sinUndef(n)); toast("✖ Trabajo rechazado"); render();
+};
 window.mangaDeshacer=async function(i){
   const M=MG(); const l=M.log[i]; if(!l)return; if(!M._silencio&&!confirm("¿Deshacer \""+l.txt+"\" de "+l.nombre+"?"))return;
   for(const id of l.ids.pesadas||[]){ delete state.pesadas[id]; await remove(ref(db,"pesadas/"+id)); }
@@ -4353,7 +4386,8 @@ window.mangaEditar=async function(i){
 async function guardarSesionManga(){
   const M=MG(); if(!M.sesionId)M.sesionId=uid();
   const tactos={}; for(const l of M.log){ if(l.tacto)tactos[l.key]=l.tacto; }
-  const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",ciclo:M.ciclo||"",modo:M.modo,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
+  const prev=state.mangaSesiones[M.sesionId]||{};
+  const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",ciclo:M.ciclo||"",modo:M.modo,pendiente:mangaRequiereAprobacion()&&M.log.length>0,lote:mangaRequiereAprobacion()?calcularLote(M):(prev.lote||null),aprobado:prev.aprobado||false,aprobadoEn:prev.aprobadoEn||"",aprobadoIds:prev.aprobadoIds||[],rechazado:false,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
   state.mangaSesiones[ss.id]=ss; await set(ref(db,"mangaSesiones/"+ss.id),sinUndef(ss));
 }
 
