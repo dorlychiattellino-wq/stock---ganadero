@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-m";
+window.APP_VERSION="2026.09.12-p";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -3854,8 +3854,8 @@ function renderSesionesManga(){
   <p class="hint">Cada sesión de manga guarda el grupo de animales que pasó. Los trabajos hechos por <strong>operarios</strong> quedan <strong>⏳ pendientes</strong>: las fichas de los animales se actualizan en el momento, pero nada pasa a Movimientos ni Actividades hasta que un administrador lo aprueba acá. Los trabajos hechos por un admin pasan directo.</p>
   <div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Trabajo</th><th>Tactos</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>
   ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0; const nl=x.lote?Object.keys(x.lote).length:0; const cambios=x.aprobado&&x.actualizado>x.aprobadoEn; const est=x.rechazado?`<span style="color:#c82010">✖ Rechazado</span>`:x.aprobado?(cambios?`<span style="color:#a06a1f">⚠️ Aprobado, con cambios nuevos</span>`:`<span style="color:#2d4a1e">✅ Aprobado</span>`):x.pendiente?`<span style="color:#c82010;font-weight:700">⏳ Pendiente (${nl} reg.)</span>`:`<span class="km">directo</span>`;
-    return `<tr style="${x.pendiente&&!x.aprobado?"background:#fff4f0":""}"><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}${x.lote?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#1e4a7a">ver ${nl} registro(s)</summary>${Object.values(x.lote).map(({col,rec})=>`<div style="font-size:.78rem">${col==="mov"?"📋":"🩺"} ${h(rec.tipo||"")} ${h(rec.sub||"")} · ${h(rec.campo||"")} · ${h(rec.cat||"")} · <strong>${rec.cant||0}</strong>${rec.ceDestino?" → "+h(rec.ceDestino):""}${rec.trDestino?" → "+h(rec.trDestino):""}</div>`).join("")}</details>`:""}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td><td>${est}</td>
-    <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="Usar en Movimiento" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Actividad masiva" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Eliminar sesión (no borra pesadas ni actividades)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
+    return `<tr style="${x.pendiente&&!x.aprobado?"background:#fff4f0":""}"><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}${(x.animales||[]).length?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#7a4010">ver caravanas</summary><div style="font-family:monospace;font-size:.75rem;max-height:120px;overflow:auto">${(x.animales||[]).map(k=>{const an=state.animales[k];return h(an?(an.visual||eidCorto(an.caravana)||k):k);}).join(" · ")}</div></details>`:""}${x.lote?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#1e4a7a">ver ${nl} registro(s)</summary>${Object.values(x.lote).map(({col,rec})=>`<div style="font-size:.78rem">${col==="mov"?"📋":"🩺"} ${h(rec.tipo||"")} ${h(rec.sub||"")} · ${h(rec.campo||"")} · ${h(rec.cat||"")} · <strong>${rec.cant||0}</strong>${rec.ceDestino?" → "+h(rec.ceDestino):""}${rec.trDestino?" → "+h(rec.trDestino):""}</div>`).join("")}</details>`:""}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td><td>${est}</td>
+    <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="Agregar una caravana a este trabajo (animal que no pasó por la manga): se le aplica el mismo movimiento/actividad con la fecha que indiques" onclick="sesionAgregarCaravana('${x.id}')">➕</button> <button class="bi" title="Quitar una caravana de este trabajo (revierte sus registros y descuenta del lote)" onclick="sesionQuitarCaravana('${x.id}')">➖</button> <button class="bi" title="Cargar estas caravanas en el formulario de Movimientos (para hacerles otro movimiento por lote)" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Aplicarles otra actividad a todo el grupo (Actividad masiva)" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Quitar este trabajo de la lista (no borra fichas, pesadas ni registros ya aprobados)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
   </tbody></table></div></div>`;
 }
 window.usarSesionEnMov=function(id){ const ss=state.mangaSesiones[id]; if(!ss)return; state.movGrupoTxt=(ss.animales||[]).map(k=>{const a=state.animales[k];return a?(a.caravana||a.visual||k):k;}).join("\n"); state.tab=MOV_TAB; render(); toast("📋 Grupo cargado en el formulario de movimiento"); };
@@ -4040,21 +4040,31 @@ window.mangaEstRepOk=async function(){
   toast("🔁 "+nombreAnimal(a)+": "+origen+" → "+dest); M.estRepOpen=false; render(); guardarSesionManga();
 };
 window.mangaTacto=function(v){ state.manga.tactoRes=v; render(); };
+async function registrarAnimal(M,a,inp){
+  // inp: {peso, tactoRes, estRepSel, ceDestAnim, over}. Aplica el trabajo de M al animal, actualiza ficha/eventos y agrega al log. Devuelve texto.
+  const acts=inp.over?inp.over:{tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis};
+  const peso=parseFloat(inp.peso); const ids={pesadas:[],eventos:[]}; const partes=[];
+  const Mx={...M,tactoRes:inp.tactoRes||"",estRepSel:inp.estRepSel||"",ceDestAnim:inp.ceDestAnim||"",peso:inp.peso||""};
+  if(M.pesar&&peso>0){ const id=a.key+"_"+M.fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha:M.fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
+  let c; if(M.modo==="mov"){ c=contribMov(Mx,a); if(acts.tipos.length){ const c2=contribAct(Mx,a,{...acts,tipos:acts.tipos.filter(t=>t!=="Traslado de rodeo")}); c={anim:{...c.anim,...c2.anim},lote:[...c.lote,...c2.lote],evs:c2.evs,txt:[c.txt,c2.txt].filter(Boolean).join(" · ")}; } } else c=contribAct(Mx,a,acts);
+  if(c.txt)partes.push(c.txt);
+  const prev={cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||"",sexo:a.sexo||"",ingresoTipo:a.ingresoTipo||"",origenNombre:a.origenNombre||"",fechaTacto:a.fechaTacto||""};
+  if(Object.keys(c.anim).length){ const n=sinUndef({...a,...c.anim,modificado:hoyISO()}); state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  const evs=M.modo==="mov"?[{tipo:"Otro",producto:(M.movTipo==="ingreso"?"Ingreso: ":"Egreso: ")+M.movSub,dosis:"",enfermedad:"",obs:c.txt},...(c.evs||[])]:(c.evs||[]);
+  let n=0; for(const x of evs){ n++; const e={id:idEvento(a.key,M.fecha,mangaHora(),x.tipo+" "+(x.producto||""))+"_"+Date.now().toString(36)+n,animal:a.key,fecha:M.fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:x.obs||"",origen:"manga",sesion:M.sesionId}; state.eventos[e.id]=e; await set(ref(db,"eventos/"+e.id),e); ids.eventos.push(e.id); }
+  M.log.push({key:a.key,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids,lote:c.lote,prev,tacto:inp.tactoRes||"",estRepSel:inp.estRepSel||"",ceDestAnim:inp.ceDestAnim||"",over:inp.over?JSON.parse(JSON.stringify(inp.over)):null,peso:inp.peso||"",fecha:M.fecha});
+  if(!M.grupo.includes(a.key))M.grupo.push(a.key);
+  return partes.join(" · ")||"registrado";
+}
 window.mangaOk=async function(){
-  const M=state.manga; const a=M.animal?state.animales[M.animal]:null; if(!a)return;
-  const fecha=M.fecha||hoyISO(); const ids={pesadas:[],eventos:[]}; const partes=[];
+  const M=MG(); const a=M.animal?state.animales[M.animal]:null; if(!a)return;
   const acts=mangaActsDe(M); const peso=parseFloat(M.peso);
-  if(acts.tipos.includes("Tacto")&&!M.tactoRes){ alert("Marcá el resultado del tacto (preñada, vacía, etc.)."); return; }
-  if(M.pesar&&peso>0){ const id=a.key+"_"+fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
-  else if(M.pesar&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
-  const torosN=(M.torosEntore||[]).map(id=>state.toros[id]&&state.toros[id].nombre).filter(Boolean);
-  const lista=acts.tipos.map(t=>({tipo:t,producto:t==="Tacto"?M.tactoRes:t==="Entore"?torosN.join(", "):acts.productos.join(", "),dosis:(t==="Tacto"||t==="Entore")?"":acts.productos.map(p=>(acts.prodDosis||{})[p]?p+" "+acts.prodDosis[p]:"").filter(Boolean).join("; ")}));
-  if(lista.length){ ids.eventos=await mangaRegistrarActs(a,lista); partes.push(acts.tipos.join(" + ")+(acts.productos.length?" ("+prodTexto(acts)+")":"")); }
-  if(acts.tipos.includes("Entore")&&!acts.tipos.includes("Tacto")){ ids.estadoRepAnterior=a.estadoRep||""; const n={...a,estadoRep:"entorada"}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
-  if(acts.tipos.includes("Tacto")){ ids.estadoRepAnterior=a.estadoRep||""; const n={...a,estadoRep:M.tactoRes,fechaTacto:fecha}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); M._tactos={...(M._tactos||{}),[a.key]:M.tactoRes}; partes.push("tacto: "+M.tactoRes); }
-  mangaLog(a,partes.join(" · ")||"pasó por la manga",ids);
-  toast("✔ "+nombreAnimal(a)+(partes.length?": "+partes.join(" · "):""));
-  M.animal=null; M.peso=""; M.over=null; M.tactoRes=""; M.extra=M.catOpen=M.bajaOpen=false; render(); enfocar("bl_eid"); guardarSesionManga();
+  if(M.grupo.includes(a.key)&&!M._editando&&!confirm(nombreAnimal(a)+" ya pasó hoy. ¿Registrarlo otra vez? (se contaría dos veces en el lote)"))return;
+  if(acts.tipos.includes("Tacto")&&!M.tactoRes)return alert("Marcá el resultado del tacto."); if(((M.modo==="act"&&acts.tipos.includes("Traslado de rodeo"))||acts.tipos.includes("Cambio de estado"))&&!(M.estRepSel||a.estadoRep))return alert("Indicá el estado actual de la vaca.");
+  if(M.pesar&&!(peso>0)&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
+  const txt=await registrarAnimal(M,a,{peso:M.peso,tactoRes:M.tactoRes,estRepSel:M.estRepSel,ceDestAnim:M.ceDestAnim,over:M.over});
+  await sincronizarLote(M); toast("✔ "+nombreAnimal(a)+": "+txt);
+  M.animal=null; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
 };
 
 
@@ -4147,11 +4157,11 @@ function renderMangaCfg(M,clist,cicl){
   </div>`;
 }
 function renderCfgAlta(M){
-  return `<div style="background:#f6f4ee;border:1.5px solid #b8a888;border-radius:10px;padding:.6rem;margin-top:.6rem"><strong>🆕 Si pasa una caravana que no está cargada</strong>
+  return `<div style="background:#f6f4ee;border:1.5px solid #b8a888;border-radius:10px;padding:.6rem;margin-top:.6rem"><strong>🆕 Solo para caravanas que NO estén cargadas</strong> <span class="km">Los animales ya cargados pasan sin elegir nada, sean de la categoría que sean. Esto son valores sugeridos: al aparecer una caravana nueva se puede elegir categoría, sexo, raza y padre en ese momento.</span>
     <div class="fg" style="margin-top:.3rem">
-      ${M.modo==="act"||!M.movCat?`<label>Se da de alta como<select onchange="setFAnimMg('altaCat',this.value)">${opts(CATS,M.altaCat)}</select></label>`:`<label>Se da de alta como<input value="${h(M.movCat)}" disabled/></label>`}
-      <label>Raza por defecto<input list="mg-razas" value="${h(M.raza)}" onchange="setFAnimMg('raza',this.value)"/><datalist id="mg-razas">${RAZAS.map(r=>`<option value="${h(r)}"/>`).join("")}</datalist></label>
-      <label>Padre por defecto (terneros/as)<input list="mg-toros" value="${h(M.padre)}" onchange="setFAnimMg('padre',this.value)" placeholder="Toro"/><datalist id="mg-toros">${torosLista().map(t=>`<option value="${h(t.nombre)}">${h(t.uso||"")}</option>`).join("")}</datalist></label>
+      ${M.modo==="act"||!M.movCat?`<label>Categoría sugerida<select onchange="setFAnimMg('altaCat',this.value)">${opts(CATS,M.altaCat)}</select></label>`:`<label>Categoría (la del movimiento)<input value="${h(M.movCat)}" disabled/></label>`}
+      <label>Raza sugerida<input list="mg-razas" value="${h(M.raza)}" onchange="setFAnimMg('raza',this.value)"/><datalist id="mg-razas">${RAZAS.map(r=>`<option value="${h(r)}"/>`).join("")}</datalist></label>
+      <label>Padre sugerido (terneros/as)<input list="mg-toros" value="${h(M.padre)}" onchange="setFAnimMg('padre',this.value)" placeholder="Toro"/><datalist id="mg-toros">${torosLista().map(t=>`<option value="${h(t.nombre)}">${h(t.uso||"")}</option>`).join("")}</datalist></label>
     </div><div class="km">Raza y padre se pueden cambiar en cada animal al pasar; lo último elegido queda para el siguiente.${M.modo==="act"?" En una actividad, el alta no suma al stock por lote (se asume que ya está contado).":""}</div></div>`;
 }
 function panelRazaPadre(M,a,fn){
@@ -4328,25 +4338,6 @@ function contribAct(M,a,acts){
   }
   return {anim,lote,evs,txt:partes.join(" · ")};
 }
-window.mangaOk=async function(){
-  const M=MG(); const a=M.animal?state.animales[M.animal]:null; if(!a)return;
-  const acts=mangaActsDe(M); const peso=parseFloat(M.peso);
-  if(M.grupo.includes(a.key)&&!M._editando&&!confirm(nombreAnimal(a)+" ya pasó hoy. ¿Registrarlo otra vez? (se contaría dos veces en el lote)"))return;
-  if(acts.tipos.includes("Tacto")&&!M.tactoRes)return alert("Marcá el resultado del tacto."); if(((M.modo==="act"&&acts.tipos.includes("Traslado de rodeo"))||acts.tipos.includes("Cambio de estado"))&&!(M.estRepSel||a.estadoRep))return alert("Indicá el estado actual de la vaca.");
-  if(M.pesar&&!(peso>0)&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
-  const ids={pesadas:[],eventos:[]}; const partes=[];
-  if(M.pesar&&peso>0){ const id=a.key+"_"+M.fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha:M.fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"); }
-  let c; if(M.modo==="mov"){ c=contribMov(M,a); if(acts.tipos.length){ const c2=contribAct(M,a,{...acts,tipos:acts.tipos.filter(t=>t!=="Traslado de rodeo")}); c={anim:{...c.anim,...c2.anim},lote:[...c.lote,...c2.lote],evs:c2.evs,txt:[c.txt,c2.txt].filter(Boolean).join(" · ")}; } } else c=contribAct(M,a,acts);
-  if(c.txt)partes.push(c.txt);
-  const prev={cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||"",sexo:a.sexo||"",ingresoTipo:a.ingresoTipo||"",origenNombre:a.origenNombre||"",fechaTacto:a.fechaTacto||""};
-  if(Object.keys(c.anim).length){ const n=sinUndef({...a,...c.anim,modificado:hoyISO()}); state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
-  const evs=M.modo==="mov"?[{tipo:"Otro",producto:(M.movTipo==="ingreso"?"Ingreso: ":"Egreso: ")+M.movSub,dosis:"",enfermedad:"",obs:c.txt},...(c.evs||[])]:(c.evs||[]);
-  let n=0; for(const x of evs){ n++; const e={id:idEvento(a.key,M.fecha,mangaHora(),x.tipo+" "+(x.producto||""))+"_"+Date.now().toString(36)+n,animal:a.key,fecha:M.fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:x.obs||"",origen:"manga",sesion:M.sesionId}; state.eventos[e.id]=e; await set(ref(db,"eventos/"+e.id),e); ids.eventos.push(e.id); }
-  M.log.push({key:a.key,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids,lote:c.lote,prev,tacto:M.tactoRes||"",estRepSel:M.estRepSel||"",ceDestAnim:M.ceDestAnim||"",over:M.over?JSON.parse(JSON.stringify(M.over)):null,peso:M.peso});
-  if(!M.grupo.includes(a.key))M.grupo.push(a.key);
-  await sincronizarLote(M); toast("✔ "+nombreAnimal(a)+": "+(partes.join(" · ")||"registrado"));
-  M.animal=null; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
-};
 window.mangaSetBaja=async function(sub){
   const M=MG(); const a=M.animal?state.animales[M.animal]:null; if(!a)return; if(!confirm("¿Confirmás "+sub+" de "+nombreAnimal(a)+"? Descuenta 1 del stock de "+a.cat+" en "+a.campo+"."))return;
   const estado=sub==="Muerte"?"muerto":sub==="Venta"?"vendido":"faenado"; const prev={estado:a.estado||"activo",fechaBaja:a.fechaBaja||""};
@@ -4358,6 +4349,9 @@ window.mangaSetBaja=async function(sub){
 function mangaRequiereAprobacion(){ return esOperario(); }
 async function sincronizarLote(M){
   if(mangaRequiereAprobacion()){ await sincronizarLotePendiente(M); return; }
+  await sincronizarLoteDirecto(M);
+}
+async function sincronizarLoteDirecto(M){
   const agg={}; for(const l of M.log){ const an=state.animales[l.key]; const cv=an?(an.visual||an.caravana||l.key):l.nombre; for(const c of (l.lote||[])){ if(!agg[c.id])agg[c.id]={col:c.col,base:c.base,n:{},cv:[]}; for(const [k,v] of Object.entries(c.n||{}))agg[c.id].n[k]=(agg[c.id].n[k]||0)+v; agg[c.id].cv.push(cv); } }
   const nuevos=Object.keys(agg);
   for(const id of nuevos){ const g=agg[id]; const rec={id,...g.base,caravanas:g.cv}; for(const [k,v] of Object.entries(g.n)){ if(k.startsWith("_"))continue; rec[k]=v; } if(g.n._kgN)rec.kg=Math.round(g.n._kgSum/g.n._kgN*10)/10; if(rec.tipo==="Cambio de estado")rec.cant=rec.ceCant; if(rec.tipo==="Traslado de rodeo")rec.cant=(rec.trPre||0)+(rec.trSeg||0)+(rec.trDsc||0);
@@ -4371,6 +4365,40 @@ function calcularLote(M){
   return out;
 }
 async function sincronizarLotePendiente(M){ M.lotePend=calcularLote(M); M.loteIds=Object.keys(M.lotePend); }
+function sesionComoM(ss){ const M2={...mgDefaults(),...(ss.cfg||{}),fecha:ss.fecha,campo:ss.campo,ciclo:ss.ciclo,modo:ss.modo||(ss.cfg&&ss.cfg.modo)||"act",sesionId:ss.id,log:JSON.parse(JSON.stringify(ss.log||[])),grupo:[...(ss.animales||[])],loteIds:[...(ss.aprobadoIds||ss.loteIds||[])]}; if(!M2.movOrigen)M2.movOrigen={nombre:"",cuit:"",renspa:""}; return M2; }
+async function persistirSesionEditada(ss,M2){
+  const esPend=ss.pendiente&&!ss.aprobado; const lote=calcularLote(M2);
+  if(esPend){ ss.lote=lote; ss.loteIds=Object.keys(lote); }
+  else { await sincronizarLoteDirecto(M2); ss.aprobadoIds=M2.loteIds; ss.loteIds=M2.loteIds; ss.lote=lote; ss.aprobadoEn=new Date().toISOString(); }
+  const tactos={}; for(const l of M2.log){ if(l.tacto)tactos[l.key]=l.tacto; }
+  const n={...ss,log:M2.log,animales:M2.grupo,tactos,actualizado:new Date().toISOString(),editadoPor:(state.sesion&&state.sesion.nombre)||""}; state.mangaSesiones[ss.id]=n; await set(ref(db,"mangaSesiones/"+ss.id),sinUndef(n));
+}
+window.sesionAgregarCaravana=async function(id){
+  const ss=state.mangaSesiones[id]; if(!ss)return; if(!ss.cfg)return alert("Este trabajo es anterior a la versión que guarda la configuración; no se le pueden agregar caravanas.");
+  const refTxt=(prompt("Caravana del animal a agregar a este trabajo (visual, últimos dígitos o completa):")||"").trim(); if(!refTxt)return;
+  const a=buscarAnimalRef(refTxt); if(!a)return alert("No encontré ese animal. Si no está cargado, dalo de alta primero en Animales (➕ Nuevo animal).");
+  if((ss.animales||[]).includes(a.key)&&!confirm(nombreAnimal(a)+" ya está en este trabajo. ¿Agregarlo igual?"))return;
+  const M2=sesionComoM(ss);
+  const fecha=(prompt("Fecha en que se le hizo el trabajo (aaaa-mm-dd):",ss.fecha)||"").trim(); if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha))return alert("Fecha inválida."); M2.fecha=fecha;
+  const inp={peso:"",tactoRes:"",estRepSel:"",ceDestAnim:"",over:null};
+  if(M2.pesar){ const pz=prompt("Peso (kg), o vacío si no se pesó:",""); inp.peso=(pz||"").trim(); }
+  if((M2.tipos||[]).includes("Tacto")){ const r=(prompt("Resultado del tacto: preñada / cut / vacía / 2da oportunidad / descarte","preñada")||"").trim().toLowerCase(); if(!["preñada","cut","vacía","2da oportunidad","descarte"].includes(r))return alert("Resultado inválido."); inp.tactoRes=r; }
+  if(((M2.tipos||[]).includes("Traslado de rodeo")||(M2.tipos||[]).includes("Cambio de estado"))&&!a.estadoRep){ const r=(prompt("Estado actual de la vaca: preñada / cut / vacía / 2da oportunidad / descarte","")||"").trim().toLowerCase(); if(!r)return; inp.estRepSel=r; }
+  const txt=await registrarAnimal(M2,a,inp); await persistirSesionEditada(ss,M2);
+  toast("➕ "+nombreAnimal(a)+" agregado: "+txt); render();
+};
+window.sesionQuitarCaravana=async function(id){
+  const ss=state.mangaSesiones[id]; if(!ss)return; if(!ss.log)return alert("Este trabajo es anterior a la versión que guarda el detalle; no se puede editar.");
+  const refTxt=(prompt("Caravana del animal a quitar de este trabajo:")||"").trim(); if(!refTxt)return;
+  const a=buscarAnimalRef(refTxt); const key=a?a.key:null; const M2=sesionComoM(ss);
+  const idx=M2.log.map((l,i)=>l.key===key?i:-1).filter(i=>i>=0); if(!idx.length)return alert("Ese animal no figura en este trabajo.");
+  if(!confirm("¿Quitar a "+(a?nombreAnimal(a):refTxt)+" de este trabajo? Se revierten sus registros de ese día (ficha, pesadas y actividades) y se descuenta del lote."))return;
+  for(const i of idx.reverse()){ const l=M2.log[i]; for(const pid of l.ids.pesadas||[]){ delete state.pesadas[pid]; await remove(ref(db,"pesadas/"+pid)); } for(const eid of l.ids.eventos||[]){ delete state.eventos[eid]; await remove(ref(db,"eventos/"+eid)); }
+    if(l.alta){ delete state.animales[l.alta]; await remove(ref(db,"animales/"+l.alta)); } else if(l.prev&&state.animales[l.key]){ const n=sinUndef({...state.animales[l.key],...l.prev}); state.animales[l.key]=n; await set(ref(db,"animales/"+l.key),n); }
+    M2.log.splice(i,1); }
+  M2.grupo=M2.grupo.filter(k=>k!==key||M2.log.some(l=>l.key===k));
+  await persistirSesionEditada(ss,M2); toast("➖ Quitado del trabajo"); render();
+};
 window.aprobarSesionManga=async function(id){
   const ss=state.mangaSesiones[id]; if(!ss||!ss.lote)return; const lote=ss.lote; const ids=Object.keys(lote);
   if(!confirm("¿Aprobar este trabajo de manga y pasar "+ids.length+" registro(s) a Movimientos/Actividades?"))return;
@@ -4405,7 +4433,9 @@ async function guardarSesionManga(){
   const M=MG(); if(!M.sesionId)M.sesionId=uid();
   const tactos={}; for(const l of M.log){ if(l.tacto)tactos[l.key]=l.tacto; }
   const prev=state.mangaSesiones[M.sesionId]||{};
-  const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",ciclo:M.ciclo||"",modo:M.modo,pendiente:mangaRequiereAprobacion()&&M.log.length>0,lote:mangaRequiereAprobacion()?calcularLote(M):(prev.lote||null),aprobado:prev.aprobado||false,aprobadoEn:prev.aprobadoEn||"",aprobadoIds:prev.aprobadoIds||[],rechazado:false,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
+  const cfg={}; for(const k of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp"])cfg[k]=M[k];
+  const logS=M.log.map(l=>({key:l.key,nombre:l.nombre,txt:l.txt,ids:l.ids,lote:l.lote,prev:l.prev,tacto:l.tacto||"",estRepSel:l.estRepSel||"",ceDestAnim:l.ceDestAnim||"",peso:l.peso||"",alta:l.alta||null,fecha:l.fecha||M.fecha}));
+  const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",ciclo:M.ciclo||"",modo:M.modo,cfg,log:logS,pendiente:mangaRequiereAprobacion()&&M.log.length>0,lote:mangaRequiereAprobacion()?calcularLote(M):(prev.lote||null),aprobado:prev.aprobado||false,aprobadoEn:prev.aprobadoEn||"",aprobadoIds:prev.aprobadoIds||[],rechazado:false,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
   state.mangaSesiones[ss.id]=ss; await set(ref(db,"mangaSesiones/"+ss.id),sinUndef(ss));
 }
 
