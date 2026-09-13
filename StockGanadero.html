@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.12-t";
+window.APP_VERSION="2026.09.13-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -157,8 +157,8 @@ function onValue(r,cb){
   });
 }
 function leerCola(){ try{ return JSON.parse(localStorage.getItem("sg_cola")||"[]"); }catch(e){ return []; } }
-function guardarCola(c){ try{ localStorage.setItem("sg_cola",JSON.stringify(c.slice(-500))); }catch(e){} }
-function encolar(op){ const c=leerCola(); c.push(op); guardarCola(c); }
+function guardarCola(c){ try{ localStorage.setItem("sg_cola",JSON.stringify(c.slice(-5000))); }catch(e){ try{ localStorage.setItem("sg_cola",JSON.stringify(c.slice(-2000))); }catch(e2){} } }
+function encolar(op){ let c=leerCola(); if(op.t==="set")c=c.filter(o=>!(o.t==="set"&&o.path===op.path)); /* una escritura nueva al mismo lugar reemplaza a la anterior pendiente */ c.push(op); guardarCola(c); }
 function sacarDeCola(id){ guardarCola(leerCola().filter(o=>o.id!==id)); }
 function opId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
 function set(r,val){
@@ -4113,7 +4113,7 @@ function renderManga(){
       <button class="bs" onclick="mangaNuevaSesion()" title="Cerrar este trabajo y empezar otro">🆕 Nuevo trabajo</button>
     </div>
   </div>
-  <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}${mangaRequiereAprobacion()?` <span style="background:#fdf0ee;color:#c82010;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">⏳ este trabajo lo revisa y aprueba un administrador antes de pasar al stock</span>`:""}</div>
+  <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}${(typeof navigator!=="undefined"&&navigator.onLine===false)||leerCola().length>0?` <span style="background:#fff8ee;color:#a06a1f;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">📡 ${navigator.onLine===false?"sin señal · ":""}${leerCola().length} cambio(s) guardados en la tablet, se suben solos cuando haya internet</span>`:""}${mangaRequiereAprobacion()?` <span style="background:#fdf0ee;color:#c82010;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">⏳ este trabajo lo revisa y aprueba un administrador antes de pasar al stock</span>`:""}</div>
   ${M.cfg?renderMangaCfg(M,clist,cicl):""}
   ${!M.cfg&&M.faltOpen?renderFaltantes(M):""}
   ${!M.cfg?`<input id="bl_eid" inputmode="none" autocomplete="off" placeholder="👉 Pasá el bastón (o tocá 2 veces para escribir)" ondblclick="this.setAttribute('inputmode','numeric');this.blur();this.focus();" onblur="this.setAttribute('inputmode','none')" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="width:100%;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff;margin-bottom:.7rem"/>`:""}
