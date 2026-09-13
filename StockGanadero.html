@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.13-b";
+window.APP_VERSION="2026.09.13-c";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4235,6 +4235,7 @@ function renderMangaAlta(M){
     <div style="margin-bottom:.5rem"><span class="km">Raza / color:</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${[...new Set([...RAZAS.filter(r=>r!=="Otra"),...(M.raza?[M.raza]:[])])].map(r=>chip(r,M.raza===r,`mangaRazaRapida('${h(r)}')`,"#7a4010")).join("")}<input placeholder="otra raza…" onchange="mangaRazaRapida(this.value)" style="width:120px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #7a4010"/></div></div>
     ${panelRazaPadre(M,null,"A")}
     ${altaCat==="Toros"?(()=>{const libres=torosLista().filter(t=>!limpiarEID(t.caravana)); return `<div style="background:#eef3f8;border:2px solid #1e4a7a;border-radius:10px;padding:.7rem;margin-bottom:.6rem"><strong>🐂 ¿Qué toro es?</strong><div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem">${libres.map(t=>chip(t.nombre+(t.raza?" · "+t.raza:""),M._toroId===t.id,`setFAnimMg('_toroId','${t.id}')`,"#1e4a7a")).join("")||"<span class='km'>Todos los toros ya tienen caravana.</span>"}<input placeholder="toro nuevo: nombre…" onchange="mangaAltaToroNuevo(this.value)" style="width:170px;border-radius:22px;padding:.5rem .8rem;border:2px dashed #1e4a7a"/></div></div>`;})():""}
+    ${M.tiposDisp.length||M.prodsDisp.length?`<div style="background:#eef5e6;border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem;font-size:1rem">${chipsAnimal(M,mangaActsDe(M))}</div>`:""}
     <div style="display:flex;gap:.6rem;flex-wrap:wrap"><button style="${BTN_V};font-size:1.3rem;padding:1rem" onclick="mangaAlta('${h(altaCat)}')">✔ DAR DE ALTA como ${h(altaCat)}</button><button class="bs" style="color:#c82010" onclick="mangaCancelar()">✖ No cargar</button></div>
   </div>`;
 }
@@ -4255,10 +4256,7 @@ function renderMangaAnimal(M,a){
     ${panelRazaPadre(M,a,"K")}
     <div style="background:#eef5e6;border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem;font-size:1rem">
       ${M.modo==="mov"?`<div style="margin-bottom:.3rem">${seRegistra.split(" · 🩺")[0]}</div>`:""}
-      ${M.tiposDisp.length||M.prodsDisp.length?`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.3rem"><span class="km">Tocá para marcar o desmarcar lo que se le hace a <strong>este</strong> animal (queda igual para el siguiente):</span>${M.over?`<button class="bs" style="padding:.2rem .5rem;font-size:.75rem" onclick="mangaOverReset()">↺ como la sesión</button>`:""}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0">${M.tiposDisp.map(t=>chip(t,acts.tipos.includes(t),`mangaTogOver('tipo','${h(t)}')`)).join("")}</div>
-      ${M.prodsDisp.length?`<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0">${M.prodsDisp.map(n=>{const on=acts.productos.includes(n); const d=(acts.prodDosis||{})[n]||""; return `<div style="display:flex;align-items:center;gap:.3rem;border:2px solid #1e4a7a;border-radius:22px;padding:.2rem .3rem .2rem .7rem;background:${on?"#1e4a7a":"#fff"};color:${on?"#fff":"#1e4a7a"}"><button onclick="mangaTogOver('prod','${h(n)}')" style="background:none;border:none;color:inherit;font-weight:700;font-size:.95rem;padding:.3rem .2rem">${on?"✔ ":""}${h(n)}</button><input value="${h(d)}" placeholder="cc" onchange="mangaTogOver('pdosis','${h(n)}',this.value)" onclick="event.stopPropagation()" style="width:60px;padding:.25rem .4rem;border-radius:14px;border:1px solid #9ab;font-size:.85rem;background:#fff;color:#1e4a7a"/></div>`;}).join("")}</div>`:""}`
-      :`<span class="km">Sin actividades en este trabajo.</span>`}
+      ${chipsAnimal(M,acts)}
     </div>
     ${conTacto?renderTactoBtns(M):""}
     ${(conTr||conCe)&&(necesitaEstado||M.estRepSel)?`<div style="background:#fff8ee;border:2px solid #e0a050;border-radius:10px;padding:.6rem;margin-bottom:.6rem"><strong>${er?"Estado actual: "+h(er):"⚠️ Esta vaca no tiene estado cargado. ¿Cuál es?"}</strong><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">${EST_CHIPS.map(([v,l])=>chip(l,(M.estRepSel||er)===v,`setFAnimMg('estRepSel','${v}')`,"#7a4010")).join("")}</div></div>`:""}
@@ -4274,6 +4272,10 @@ function renderMangaAnimal(M,a){
     ${M.bajaOpen?`<div style="background:#fdf0ee;border-radius:10px;padding:.7rem;margin-top:.7rem;border:1.5px solid #c82010"><strong>✝️ Baja de ${h(nombreAnimal(a))} (fuera del trabajo de hoy; descuenta 1 del stock):</strong><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem"><button style="${BTN_R}" onclick="mangaSetBaja('Muerte')">Muerte</button><button style="${BTN_R}" onclick="mangaSetBaja('Venta')">Venta</button><button style="${BTN_R}" onclick="mangaSetBaja('Faena')">Faena</button><button class="bs" onclick="mangaBaja(false)">Cancelar</button></div></div>`:""}
   </div>`;
 }
+function chipsAnimal(M,acts){ return `${M.tiposDisp.length||M.prodsDisp.length?`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.3rem"><span class="km">Tocá para marcar o desmarcar lo que se le hace a <strong>este</strong> animal (queda igual para el siguiente):</span>${M.over?`<button class="bs" style="padding:.2rem .5rem;font-size:.75rem" onclick="mangaOverReset()">↺ como la sesión</button>`:""}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0">${M.tiposDisp.map(t=>chip(t,acts.tipos.includes(t),`mangaTogOver('tipo','${h(t)}')`)).join("")}</div>
+      ${M.prodsDisp.length?`<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0">${M.prodsDisp.map(n=>{const on=acts.productos.includes(n); const d=(acts.prodDosis||{})[n]||""; return `<div style="display:flex;align-items:center;gap:.3rem;border:2px solid #1e4a7a;border-radius:22px;padding:.2rem .3rem .2rem .7rem;background:${on?"#1e4a7a":"#fff"};color:${on?"#fff":"#1e4a7a"}"><button onclick="mangaTogOver('prod','${h(n)}')" style="background:none;border:none;color:inherit;font-weight:700;font-size:.95rem;padding:.3rem .2rem">${on?"✔ ":""}${h(n)}</button><input value="${h(d)}" placeholder="cc" onchange="mangaTogOver('pdosis','${h(n)}',this.value)" onclick="event.stopPropagation()" style="width:60px;padding:.25rem .4rem;border-radius:14px;border:1px solid #9ab;font-size:.85rem;background:#fff;color:#1e4a7a"/></div>`;}).join("")}</div>`:""}`
+      :`<span class="km">Sin actividades en este trabajo.</span>`}`; }
 function renderTactoBtns(M){ const r=M.tactoRes; const esP=r==="preñada"||r==="cut"; const esV=["vacía","2da oportunidad","descarte"].includes(r);
   return `<div style="margin-bottom:.6rem;background:#fff8ee;border:2px solid #e0a050;border-radius:10px;padding:.7rem"><div style="font-size:1.1rem;font-weight:800;color:#7a4010">🩺 TACTO: ${r?`<span style="color:#2d4a1e">${h(r.toUpperCase())}</span>`:"¿resultado?"}</div>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem"><button style="${esP?BTN_V:BTN_G};font-size:1.4rem;padding:1rem" onclick="mangaTacto('preñada')">🟢 PREÑADA</button><button style="${esV?"background:#c82010;color:#fff;border:none;"+BIG:BTN_R};font-size:1.4rem;padding:1rem" onclick="mangaTacto('vacía')">🔴 VACÍA</button></div>
@@ -4332,7 +4334,7 @@ window.mangaAlta=async function(cat){
   const ev={id:idEvento(key,M.fecha,mangaHora(),"Alta "+ingresoTipo)+"_"+Date.now().toString(36),animal:key,fecha:M.fecha,hora:mangaHora(),tipo:"Otro",producto:"Alta: "+ingresoTipo,dosis:"",enfermedad:"",obs:"Origen: "+(og.nombre||"")+(og.renspa?" · RENSPA "+og.renspa:""),origen:"manga",sesion:"manga"}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev);
   M.log.push({key,nombre:nombreAnimal(a),txt:"🆕 alta como "+cat+(a.raza?" "+a.raza:"")+" · "+ingresoTipo+(og.nombre?" desde "+og.nombre:"")+padreTxt,ids:{pesadas:[],eventos:[ev.id]},alta:key,lote:[]});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
-  M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; render(); mangaScrollArriba();  guardarSesionManga();
+  M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba();  guardarSesionManga();
   // si no hace falta cargar nada más (peso, tacto, estado), el alta completa el registro del trabajo de hoy
   const necesita=M.pesar||M.tipos.includes("Tacto")||M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado");
   if(!necesita){ await mangaOk(); }
