@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.13-c";
+window.APP_VERSION="2026.09.14-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -162,9 +162,10 @@ function encolar(op){ let c=leerCola(); if(op.t==="set")c=c.filter(o=>!(o.t==="s
 function sacarDeCola(id){ guardarCola(leerCola().filter(o=>o.id!==id)); }
 function opId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
 function set(r,val){
+  if(val&&typeof val==="object")val=limpioProfundo(val); // Firebase rechaza "undefined" anidados: se limpian antes de guardar
   const op={id:opId(),t:"set",path:pathOf(r),val:val===undefined?null:val};
   encolar(op);
-  _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(()=>sacarDeCola(op.id));
+  _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(e=>{ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); });
   actualizarBarraPendientes();
   return Promise.resolve();  // no esperar al servidor: sin señal, la app sigue andando
 }
@@ -3058,6 +3059,7 @@ function fmtF(iso){ if(!iso)return "—"; const [y,m,d]=String(iso).split("-"); 
 function diasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function hoyISO(){ return new Date().toISOString().slice(0,10); }
 function sinUndef(o){ const r={}; for(const k of Object.keys(o)){ if(o[k]!==undefined)r[k]=o[k]; } return r; }
+function limpioProfundo(o){ try{ return JSON.parse(JSON.stringify(o,(k,v)=>v===undefined?null:(typeof v==="number"&&!isFinite(v)?null:v))); }catch(e){ return o; } }
 
 function catHook(cat,sexo){
   const c=normTxt(cat), s=normTxt(sexo);
@@ -3854,15 +3856,17 @@ window.importarProductos=async function(){ const el=document.getElementById("cp_
   await guardarCatalogoProd(Object.values(map)); state.prodTxt=""; toast("💊 "+n+" productos cargados"); render(); };
 function sesionesMangaLista(){ return Object.values(state.mangaSesiones).filter(Boolean).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")||(b.actualizado||"").localeCompare(a.actualizado||"")); }
 function renderSesionesManga(){
-  const ss=sesionesMangaLista().slice(0,15); if(!ss.length)return "";
+  const ss=sesionesMangaLista().slice(0,15);
+  const perdidos=Object.values(state.eventos).some(e=>e&&e.origen==="manga"&&e.sesion&&e.sesion!=="manga"&&!state.mangaSesiones[e.sesion]);
+  if(!ss.length&&!perdidos)return "";
   return `<div class="card" style="background:#fff8ee;border:1.5px solid #e0a050">
-  <h2 style="color:#7a4010">🐂 Trabajos de manga guardados</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="color:#7a4010;margin:0">🐂 Trabajos de manga guardados</h2>${perdidos?`<button class="bp" style="padding:.4rem .8rem" onclick="reconstruirSesiones()">🧩 Hay trabajos sin guardar: reconstruir</button>`:""}</div>
   <p class="hint">Cada sesión de manga guarda el grupo de animales que pasó. Los trabajos hechos por <strong>operarios</strong> quedan <strong>⏳ pendientes</strong>: las fichas de los animales se actualizan en el momento, pero nada pasa a Movimientos ni Actividades hasta que un administrador lo aprueba acá. Los trabajos hechos por un admin pasan directo.</p>
-  <div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Trabajo</th><th>Tactos</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>
+  ${ss.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Trabajo</th><th>Tactos</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>
   ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0; const nl=x.lote?Object.keys(x.lote).length:0; const cambios=x.aprobado&&x.actualizado>x.aprobadoEn; const est=x.rechazado?`<span style="color:#c82010">✖ Rechazado</span>`:x.aprobado?(cambios?`<span style="color:#a06a1f">⚠️ Aprobado, con cambios nuevos</span>`:`<span style="color:#2d4a1e">✅ Aprobado</span>`):x.pendiente?`<span style="color:#c82010;font-weight:700">⏳ Pendiente (${nl} reg.)</span>`:`<span class="km">directo</span>`;
     return `<tr style="${x.pendiente&&!x.aprobado?"background:#fff4f0":""}"><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}${(x.animales||[]).length?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#7a4010">ver caravanas</summary><div style="font-family:monospace;font-size:.75rem;max-height:120px;overflow:auto">${(x.animales||[]).map(k=>{const an=state.animales[k];return h(an?(an.visual||eidCorto(an.caravana)||k):k);}).join(" · ")}</div></details>`:""}${x.lote?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#1e4a7a">ver ${nl} registro(s)</summary>${Object.values(x.lote).map(({col,rec})=>`<div style="font-size:.78rem">${col==="mov"?"📋":"🩺"} ${h(rec.tipo||"")} ${h(rec.sub||"")} · ${h(rec.campo||"")} · ${h(rec.cat||"")} · <strong>${rec.cant||0}</strong>${rec.ceDestino?" → "+h(rec.ceDestino):""}${rec.trDestino?" → "+h(rec.trDestino):""}</div>`).join("")}</details>`:""}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td><td>${est}</td>
     <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="¿Quién faltó pasar en este trabajo? (compara contra los animales activos que elijas)" onclick="sesionFaltantes('${x.id}')" style="${state.faltSes===x.id?"background:#2d4a1e;color:#fff":""}">🔍</button> <button class="bi" title="Agregar una caravana a este trabajo (animal que no pasó por la manga): se le aplica el mismo movimiento/actividad con la fecha que indiques" onclick="sesionAgregarCaravana('${x.id}')">➕</button> <button class="bi" title="Quitar una caravana de este trabajo (revierte sus registros y descuenta del lote)" onclick="sesionQuitarCaravana('${x.id}')">➖</button> <button class="bi" title="Cargar estas caravanas en el formulario de Movimientos (para hacerles otro movimiento por lote)" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Aplicarles otra actividad a todo el grupo (Actividad masiva)" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Quitar este trabajo de la lista (no borra fichas, pesadas ni registros ya aprobados)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>`;}).join("")}
-  </tbody></table></div>
+  </tbody></table></div>`:""}
   ${state.faltSes&&state.mangaSesiones[state.faltSes]?`<div id="faltSesPanel" style="margin-top:.6rem"><div class="km" style="margin-bottom:.3rem">Faltantes del trabajo del <strong>${fmtF(state.mangaSesiones[state.faltSes].fecha)}</strong> en ${h(state.mangaSesiones[state.faltSes].campo||"")} (${(state.mangaSesiones[state.faltSes].animales||[]).length} pasaron):</div>${renderFaltantes(state.faltSesCtx)}</div>`:""}
   </div>`;
 }
@@ -4084,7 +4088,7 @@ const CATS_TERN=["Terneros","Terneras"];
 function caravanasHtml(rec){ const l=rec&&rec.caravanas; if(!l||!l.length)return ""; return `<details style="margin-top:.2rem"><summary style="cursor:pointer;color:#2d4a1e;font-weight:600;font-size:.8rem">🐮 ${l.length} caravana${l.length>1?"s":""} ▾</summary><div style="font-family:monospace;font-size:.78rem;line-height:1.5;margin-top:.2rem;max-height:160px;overflow:auto;background:#f6f8f2;padding:.3rem .5rem;border-radius:6px">${l.map(x=>h(x)).join(" · ")}</div></details>`; }
 function mgDefaults(){ return {v2:true,on:true,cfg:true,modo:"",fecha:hoyISO(),campo:"",ciclo:cicloActual(),pesar:false,
   movTipo:"ingreso",movSub:"",movCat:"",movCampo2:"",movOrigen:{nombre:"",cuit:"",renspa:""},movCatNueva:"",
-  tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},over:null,torosEntore:[],
+  tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},prodTipo:{},over:null,torosEntore:[],
   trDestino:"",trMov:true,ceDest:"",ceMotivo:"(sin motivo especial)",ceNota:"",
   altaCat:"Terneros",raza:"",padre:"",altaMadre:"",altaToroSel:false,_toroId:null,
   animal:null,nuevoEID:"",peso:"",tactoRes:"",estRepSel:"",ceDestAnim:"",panel:"",extra:false,bajaOpen:false,
@@ -4419,7 +4423,7 @@ async function persistirSesionEditada(ss,M2){
   if(esPend){ ss.lote=lote; ss.loteIds=Object.keys(lote); }
   else { await sincronizarLoteDirecto(M2); ss.aprobadoIds=M2.loteIds; ss.loteIds=M2.loteIds; ss.lote=lote; ss.aprobadoEn=new Date().toISOString(); }
   const tactos={}; for(const l of M2.log){ if(l.tacto)tactos[l.key]=l.tacto; }
-  const n={...ss,log:M2.log,animales:M2.grupo,tactos,actualizado:new Date().toISOString(),editadoPor:(state.sesion&&state.sesion.nombre)||""}; state.mangaSesiones[ss.id]=n; await set(ref(db,"mangaSesiones/"+ss.id),sinUndef(n));
+  const n=limpioProfundo({...ss,log:M2.log,animales:M2.grupo,tactos,actualizado:new Date().toISOString(),editadoPor:(state.sesion&&state.sesion.nombre)||""}); state.mangaSesiones[ss.id]=n; await set(ref(db,"mangaSesiones/"+ss.id),n);
 }
 window.sesionAgregarCaravana=async function(id){
   const ss=state.mangaSesiones[id]; if(!ss)return; if(!ss.cfg)return alert("Este trabajo es anterior a la versión que guarda la configuración; no se le pueden agregar caravanas.");
@@ -4446,6 +4450,35 @@ window.sesionQuitarCaravana=async function(id){
     M2.log.splice(i,1); }
   M2.grupo=M2.grupo.filter(k=>k!==key||M2.log.some(l=>l.key===k));
   await persistirSesionEditada(ss,M2); toast("➖ Quitado del trabajo"); render();
+};
+window.reconstruirSesiones=async function(){
+  // Busca actividades por animal hechas desde la manga cuyo trabajo no está guardado, y lo reconstruye (queda pendiente de aprobación)
+  const evs=Object.values(state.eventos).filter(e=>e&&e.origen==="manga"&&e.sesion&&e.sesion!=="manga"&&!state.mangaSesiones[e.sesion]);
+  if(!evs.length)return alert("No encontré trabajos de manga perdidos: todas las actividades hechas desde la manga tienen su trabajo guardado.");
+  const porSes={}; for(const e of evs)(porSes[e.sesion]=porSes[e.sesion]||[]).push(e);
+  const ids=Object.keys(porSes); if(!confirm("Encontré "+ids.length+" trabajo(s) sin guardar, con "+evs.length+" actividades por animal en total. ¿Reconstruirlos? Quedan como pendientes para que los revises y apruebes."))return;
+  let n=0;
+  for(const sid of ids){ const L=porSes[sid].sort((a,b)=>((a.fecha||"")+(a.hora||"")).localeCompare((b.fecha||"")+(b.hora||"")));
+    const fecha=L[0].fecha; const keys=[...new Set(L.map(e=>e.animal))]; const campos=[...new Set(keys.map(k=>state.animales[k]&&state.animales[k].campo).filter(Boolean))]; const campo=campos[0]||"";
+    const esMov=L.some(e=>/^(Ingreso|Egreso): /.test(e.producto||"")); const movEv=L.find(e=>/^(Ingreso|Egreso): /.test(e.producto||""));
+    const tipos=[...new Set(L.map(e=>e.tipo).filter(t=>t&&t!=="Otro"))]; const productos=[...new Set(L.flatMap(e=>(e.producto||"").split(", ")).filter(x=>x&&!/^(Ingreso|Egreso|Alta|Categoría)/.test(x)&&!["preñada","cut","vacía","2da oportunidad","descarte"].includes(x)))];
+    const M2={...mgDefaults(),sesionId:sid,fecha,campo,ciclo:cicloActual(),modo:esMov?"mov":"act",tipos,tiposDisp:tipos,productos,prodsDisp:productos,log:[],grupo:[],loteIds:[]};
+    if(esMov){ const mm=movEv.producto.match(/^(Ingreso|Egreso): (.+)$/); M2.movTipo=mm[1]==="Ingreso"?"ingreso":"egreso"; M2.movSub=mm[2]; }
+    for(const k of keys){ const a=state.animales[k]; if(!a)continue; const mios=L.filter(e=>e.animal===k); const lote=[]; const partes=[];
+      const S=sid; const campoA=a.campo||campo; const CA=campoA.replace(/[.#$\[\]\/]/g,"_"); const base={fecha,campo:campoA,cat:a.cat,ciclo:M2.ciclo,obs:"Manga "+fmtF(fecha)+" (reconstruido)"};
+      for(const e of mios){ const t=e.tipo; const pr=e.producto||"";
+        if(t==="Otro"&&/^Alta: /.test(pr)){ partes.push("🆕 "+pr.slice(6)); continue; }
+        if(t==="Otro"&&/^(Ingreso|Egreso): /.test(pr)){ const mm=pr.match(/^(Ingreso|Egreso): (.+)$/); const tipo=mm[1]==="Ingreso"?"ingreso":"egreso"; lote.push({id:`${S}_${tipo==="ingreso"?"i":"e"}_${CA}_${a.cat}`,col:"mov",base:{fecha,ciclo:M2.ciclo,campo:campoA,cat:a.cat,tipo,sub:mm[2],obs:"Manga "+fmtF(fecha)+" (reconstruido)"},n:{cant:1}}); partes.push(pr); continue; }
+        if(t==="Tacto"){ const r=pr; const tb={...base,tactoId:S}; if(r==="preñada"||r==="cut")lote.push({id:`${S}_t_${CA}_${a.cat}_Preñez`,col:"act",base:{...tb,tipo:"Preñez"},n:{cant:1}}); if(r==="cut")lote.push({id:`${S}_t_${CA}_${a.cat}_Cut`,col:"act",base:{...tb,tipo:"Cut"},n:{cant:1}}); if(["vacía","2da oportunidad","descarte"].includes(r))lote.push({id:`${S}_t_${CA}_${a.cat}_Vacias`,col:"act",base:{...tb,tipo:"Vacias"},n:{cant:1}}); if(r==="2da oportunidad")lote.push({id:`${S}_t_${CA}_${a.cat}_2da`,col:"act",base:{...tb,tipo:"2da oportunidad"},n:{cant:1}}); if(r==="descarte")lote.push({id:`${S}_t_${CA}_${a.cat}_Desc`,col:"act",base:{...tb,tipo:"Descarte"},n:{cant:1}}); partes.push("tacto: "+r); continue; }
+        if(t==="Cambio de estado"||t==="Traslado de rodeo"||t==="Otro")continue;
+        lote.push({id:`${S}_a_${CA}_${a.cat}_${t}`,col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(fecha)+" (reconstruido)"+(pr?" · "+pr:"")},n:{cant:1}}); partes.push(t+(pr?" ("+pr+(e.dosis?" · "+e.dosis:"")+")":"")); }
+      M2.log.push({key:k,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids:{pesadas:[],eventos:mios.map(e=>e.id)},lote,prev:{cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||""},tacto:(mios.find(e=>e.tipo==="Tacto")||{}).producto||"",fecha});
+      M2.grupo.push(k); }
+    const cfg={}; for(const kk of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp"])cfg[kk]=M2[kk];
+    const tactos={}; for(const l of M2.log)if(l.tacto)tactos[l.key]=l.tacto;
+    const ss=limpioProfundo({id:sid,fecha,campo,ciclo:M2.ciclo,modo:M2.modo,cfg,log:M2.log,pendiente:true,lote:calcularLote(M2),aprobado:false,aprobadoEn:"",aprobadoIds:[],rechazado:false,tipos:M2.modo==="mov"?[(M2.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M2.movSub,...tipos]:tipos,productos,animales:M2.grupo,tactos,loteIds:Object.keys(calcularLote(M2)),usuario:"(reconstruido)",actualizado:new Date().toISOString()});
+    state.mangaSesiones[sid]=ss; await set(ref(db,"mangaSesiones/"+sid),ss); n++; }
+  toast("🧩 "+n+" trabajo(s) reconstruido(s), pendientes de aprobación"); render();
 };
 window.aprobarSesionManga=async function(id){
   const ss=state.mangaSesiones[id]; if(!ss||!ss.lote)return; const lote=ss.lote; const ids=Object.keys(lote);
@@ -4484,7 +4517,8 @@ async function guardarSesionManga(){
   const cfg={}; for(const k of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp"])cfg[k]=M[k];
   const logS=M.log.map(l=>({key:l.key,nombre:l.nombre,txt:l.txt,ids:l.ids,lote:l.lote,prev:l.prev,tacto:l.tacto||"",estRepSel:l.estRepSel||"",ceDestAnim:l.ceDestAnim||"",peso:l.peso||"",alta:l.alta||null,fecha:l.fecha||M.fecha}));
   const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",ciclo:M.ciclo||"",modo:M.modo,cfg,log:logS,pendiente:mangaRequiereAprobacion()&&M.log.length>0,lote:mangaRequiereAprobacion()?calcularLote(M):(prev.lote||null),aprobado:prev.aprobado||false,aprobadoEn:prev.aprobadoEn||"",aprobadoIds:prev.aprobadoIds||[],rechazado:false,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
-  state.mangaSesiones[ss.id]=ss; await set(ref(db,"mangaSesiones/"+ss.id),sinUndef(ss));
+  const limpio=limpioProfundo(ss); state.mangaSesiones[ss.id]=limpio;
+  try{ await set(ref(db,"mangaSesiones/"+ss.id),limpio); }catch(e){ console.error("guardarSesionManga",e); toast("⚠️ No se pudo guardar el trabajo: "+(e&&e.message||e)); }
 }
 
 </script>
