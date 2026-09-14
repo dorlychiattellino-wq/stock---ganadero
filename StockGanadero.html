@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-d";
+window.APP_VERSION="2026.09.14-e";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -3182,7 +3182,7 @@ ${esAdmin()?`
 <div class="card" style="background:#eaf2f8;border:1.5px solid #4a7ab0">
   <h2 style="color:#1e4a7a">📥 Importar desde Hook (Excel de sesión de manga)</h2>
   <p class="hint" style="color:#2a4a6a">Exportá la sesión desde app.balanzashook.com.ar (Excel) y subila acá. Se crean los animales nuevos, se actualizan los existentes y se guardan las pesadas (peso > 0). Cada pesada se importa una sola vez aunque subas el mismo archivo dos veces. Cuando vengan la balanza y las tolvas, el mismo botón recibe esos archivos.</p>
-  ${!p?`<input type="file" id="hookFile" accept=".xlsx,.xls,.csv" onchange="importarHookArchivo(this.files[0])" style="font-size:.9rem"/>`:`
+  ${!p?`<div class="fg" style="margin-bottom:.4rem"><label>Campo por defecto (si el archivo no trae "Productor")<select id="hookCampoDef" onchange="state.hookCampoDef=this.value">${opts(clist,state.hookCampoDef||"","-- Elegir --")}</select></label></div><input type="file" id="hookFile" accept=".xlsx,.xls,.csv" onchange="importarHookArchivo(this.files[0])" style="font-size:.9rem"/><div class="km">Acepta el Excel de la sesión de manga (con Productor) y el de la lista Animales de Hook (situación, nacimiento, padre, lugar de nacimiento).</div>`:`
   <div style="background:#fff;border-radius:8px;padding:.9rem;border:1px solid #b8c8d8">
     <div style="font-weight:700;color:#1e4a7a;margin-bottom:.4rem">📄 ${h(p.sesion)} — ${p.total} filas leídas</div>
     <div class="kg">
@@ -3485,7 +3485,9 @@ function procesarHook(rows,fname){
     if(eid.length<12){ sinCaravana++; continue; }
     const fecha=colVal(r,["Fecha"]); const fISO=fechaISO(fecha), hora=horaDe(fecha);
     const prod=colVal(r,["Productor","Productor ganadero","Establecimiento","Campo"]);
-    const campo=campoHook(prod); if(prod){ if(!camposMap[prod])camposMap[prod]={campo,n:0}; camposMap[prod].n++; }
+    const campo=prod?campoHook(prod):(state.hookCampoDef||""); if(prod){ if(!camposMap[prod])camposMap[prod]={campo,n:0}; camposMap[prod].n++; } else if(campo){ if(!camposMap["(sin productor → por defecto)"])camposMap["(sin productor → por defecto)"]={campo,n:0}; camposMap["(sin productor → por defecto)"].n++; }
+    const situ=normTxt(colVal(r,["Situacion","Situación","Estado"])); const estadoHook=situ.startsWith("muer")?"muerto":situ.startsWith("vend")?"vendido":situ.startsWith("faen")?"faenado":"";
+    const padreHook=String(colVal(r,["Padre"])||"").trim(); const lugarNac=String(colVal(r,["Lugar de nacimiento"])||"").trim(); const nacHook=fechaISO(colVal(r,["Nacimiento","Fecha de nacimiento","Fecha nac"])); const egresoHook=fechaISO(colVal(r,["Egreso","Fecha de venta"]));
     const catRaw=colVal(r,["Categoria","Categoría"]); const sexoRaw=colVal(r,["Sexo"]);
     const cat=catHook(catRaw,sexoRaw); const sexo=sexoHook(sexoRaw,cat); cats[cat]=(cats[cat]||0)+1;
     const raza=String(colVal(r,["Raza"])||"").trim(); if(raza)razas[raza]=(razas[raza]||0)+1;
@@ -3498,9 +3500,11 @@ function procesarHook(rows,fname){
       campo:campo||(cur&&cur.campo)||"",cat,sexo,raza,
       corral:String(colVal(r,["Corral"])||"").trim(),tropa:String(colVal(r,["Tropa"])||"").trim(),
       ingreso:(cur&&cur.ingreso)||fechaISO(colVal(r,["Ingreso"]))||fISO,
-      fechaNac:(cur&&cur.fechaNac)||nac||"",pesoNac:(cur&&cur.pesoNac)||(pesoNacRaw>0?pesoNacRaw:""),
-      madre:(cur&&cur.madre)||"",padre:(cur&&cur.padre)||"",
-      estado:(cur&&cur.estado)||"activo",obs:(cur&&cur.obs)||String(colVal(r,["Observacion","Observación"])||"").trim(),
+      fechaNac:(cur&&cur.fechaNac)||nac||nacHook||"",pesoNac:(cur&&cur.pesoNac)||(pesoNacRaw>0?pesoNacRaw:""),
+      madre:(cur&&cur.madre)||"",padre:(cur&&cur.padre)||padreHook||"",
+      estado:estadoHook||(cur&&cur.estado)||"activo",fechaBaja:estadoHook?(egresoHook||(cur&&cur.fechaBaja)||""):((cur&&cur.fechaBaja)||""),
+      origenNombre:(cur&&cur.origenNombre)||lugarNac||"",
+      obs:(cur&&cur.obs)||String(colVal(r,["Observacion","Observación"])||"").trim(),
       origen:(cur&&cur.origen)||"hook",sesion,
       ciclo:(cur&&cur.ciclo)||cicloDe({fechaNac:nac,corral:String(colVal(r,["Corral"])||""),ingreso:fechaISO(colVal(r,["Ingreso"]))||fISO})
     });
@@ -3510,6 +3514,7 @@ function procesarHook(rows,fname){
     else sinPeso++;
   }
   if(nuevos.length+exist.length===0){ alert("No encontré caravanas electrónicas de 15 dígitos en el archivo. Revisá que sea la exportación de la sesión de Hook (columna Caravana)."); return; }
+  if(nuevos.some(a=>!a.campo)){ alert("El archivo no trae la columna Productor y no elegiste un campo por defecto. Elegí el campo arriba del botón de archivo y volvé a subirlo."); return; }
   state.importAnim={sesion,total:rows.length,nuevos,exist,pesN,pesDup,sinCaravana,sinPeso,campos:camposMap,cats,razas,actualizar:true};
   render();
 }
@@ -3517,7 +3522,7 @@ window.confirmarImportHook=async function(){
   const p=state.importAnim; if(!p)return;
   const merged={...state.animales};
   for(const a of p.nuevos)merged[a.key]={...a,creado:hoyISO()};
-  for(const a of p.exist){ const c=merged[a.key]||{}; merged[a.key]=sinUndef(p.actualizar?{...c,campo:a.campo||c.campo,cat:a.cat||c.cat,sexo:a.sexo||c.sexo,raza:a.raza||c.raza,corral:a.corral||c.corral,tropa:a.tropa||c.tropa,fechaNac:c.fechaNac||a.fechaNac,pesoNac:c.pesoNac||a.pesoNac,ingreso:c.ingreso||a.ingreso,sesion:a.sesion}:{...c,sesion:c.sesion||a.sesion}); }
+  for(const a of p.exist){ const c=merged[a.key]||{}; merged[a.key]=sinUndef(p.actualizar?{...c,campo:a.campo||c.campo,cat:a.cat||c.cat,sexo:a.sexo||c.sexo,raza:a.raza||c.raza,corral:a.corral||c.corral,tropa:a.tropa||c.tropa,fechaNac:c.fechaNac||a.fechaNac,pesoNac:c.pesoNac||a.pesoNac,ingreso:c.ingreso||a.ingreso,padre:c.padre||a.padre,origenNombre:c.origenNombre||a.origenNombre,estado:(a.estado&&a.estado!=="activo")?a.estado:c.estado,fechaBaja:(a.estado&&a.estado!=="activo")?(a.fechaBaja||c.fechaBaja):c.fechaBaja,sesion:a.sesion}:{...c,sesion:c.sesion||a.sesion}); }
   state.animales=merged; await set(ref(db,"animales"),merged);
   if(p.pesN.length){ const mp={...state.pesadas}; for(const x of p.pesN)mp[x.id]=x; state.pesadas=mp; await set(ref(db,"pesadas"),mp); }
   toast(`✅ Importado: ${p.nuevos.length} nuevos, ${p.exist.length} actualizados, ${p.pesN.length} pesadas`);
