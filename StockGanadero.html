@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-e";
+window.APP_VERSION="2026.09.15-g";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4770,18 +4770,22 @@ window.actualizarTC=async function(manual){
 };
 function tcVencido(){ if(!state.tc||!state.tc.fecha)return true; return (Date.now()-new Date(state.tc.fecha).getTime())>3600000; }
 function listaDe(campo,filtro){ const set2=new Set(); for(const r of Object.values(state.presu||{})){ if(!r)continue; if(filtro&&Object.entries(filtro).some(([k,v])=>v&&normTxt(r[k])!==normTxt(v)))continue; if(r[campo])set2.add(String(r[campo]).trim()); } return [...set2].sort((a,b)=>a.localeCompare(b,"es")); }
-function renderPresu(){
+function presuFiltrados(){
   if(!state.filtPresu)state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"};
-  const f=state.filtPresu; const e=state.editPresu||{}; const esEdit=!!(state.editPresu&&state.editPresu.id);
-  if(esAdmin()&&!state._tcPedido&&navigator.onLine!==false&&tcVencido()){ state._tcPedido=true; setTimeout(()=>actualizarTC(),300); }
-  const regs=Object.values(state.presu||{}).filter(Boolean).filter(r=>{
+  const f=state.filtPresu;
+  return Object.values(state.presu||{}).filter(Boolean).filter(r=>{
     if(f.proveedor&&normTxt(r.proveedor)!==normTxt(f.proveedor))return false; if(f.insumo&&normTxt(r.insumo)!==normTxt(f.insumo))return false;
     if(f.estado==="pend"&&(r.abonado))return false; if(f.estado==="comprado"&&!r.comprado)return false; if(f.estado==="nocomprado"&&r.comprado)return false; if(f.estado==="abonado"&&!r.abonado)return false; if(f.estado==="deuda"&&!(r.comprado&&!r.abonado))return false;
     if(f.desde&&r.fecha<f.desde)return false; if(f.hasta&&r.fecha>f.hasta)return false;
     if(f.q){ const q=normTxt(f.q); if(!["proveedor","insumo","marca","variedad","obs","fecha"].some(k=>normTxt(r[k]).includes(q)))return false; }
     return true; }).sort((a,b)=>{ const c=(a.fecha||"").localeCompare(b.fecha||"")||(a.creado||"").localeCompare(b.creado||""); return f.orden==="asc"?c:-c; });
-  const tot={ars:0,usd:0,deudaArs:0,deudaUsd:0,presArs:0,presUsd:0};
-  for(const r of regs){ const c=calcPresu(r); tot.ars+=c.arsTotal||0; tot.usd+=c.usdTotal||0; if(r.comprado&&!r.abonado){tot.deudaArs+=c.arsTotal||0;tot.deudaUsd+=c.usdTotal||0;} if(!r.comprado){tot.presArs+=c.arsTotal||0;tot.presUsd+=c.usdTotal||0;} }
+}
+function presuTotales(regs){ const tot={ars:0,usd:0,deudaArs:0,deudaUsd:0,presArs:0,presUsd:0,pagArs:0,pagUsd:0};
+  for(const r of regs){ const c=calcPresu(r); tot.ars+=c.arsTotal||0; tot.usd+=c.usdTotal||0; if(r.comprado&&!r.abonado){tot.deudaArs+=c.arsTotal||0;tot.deudaUsd+=c.usdTotal||0;} if(!r.comprado){tot.presArs+=c.arsTotal||0;tot.presUsd+=c.usdTotal||0;} if(r.abonado){tot.pagArs+=c.arsTotal||0;tot.pagUsd+=c.usdTotal||0;} } return tot; }
+function renderPresu(){
+  const f=state.filtPresu||(state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"}); const e=state.editPresu||{}; const esEdit=!!(state.editPresu&&state.editPresu.id);
+  if(esAdmin()&&!state._tcPedido&&navigator.onLine!==false&&tcVencido()){ state._tcPedido=true; setTimeout(()=>actualizarTC(),300); }
+  const regs=presuFiltrados(); const tot=presuTotales(regs);
   const dl=(id,arr)=>`<datalist id="${id}">${arr.map(x=>`<option value="${h(x)}"/>`).join("")}</datalist>`;
   const tc=state.tc||{};
   return `
@@ -4825,7 +4829,7 @@ ${esAdmin()?`<div class="card">
     <label>TC del pago (si fue en dólares)<input id="pr_tcpago" type="number" step="any" value="${h(e.tcPago??"")}" placeholder="se toma el de hoy al marcar abonado"/></label>
     <label class="s2">Observaciones<input id="pr_obs" value="${h(e.obs||"")}"/></label>
   </div>
-  <div class="br"><button class="bp" onclick="guardarPresu()">💾 ${esEdit?"Guardar cambios":"Agregar"}</button>${esEdit||e.insumo?`<button class="bs" onclick="state.editPresu=null;render()">Cancelar</button>`:""}</div>
+  <div class="br"><button class="bp" onclick="guardarPresu()">💾 ${esEdit?"Guardar cambios":"Agregar"}</button>${esEdit||e.insumo?`<button class="bs" onclick="limpiarPresuForm()">Cancelar</button>`:""}</div>
 </div>`:`<p class="hint">Vista de consulta: podés filtrar y buscar; la carga y edición la hace un administrador.</p>`}
 
 <div class="card">
@@ -4838,7 +4842,7 @@ ${esAdmin()?`<div class="card">
     <label>Desde<input type="date" value="${h(f.desde)}" onchange="setFPresu('desde',this.value)"/></label>
     <label>Hasta<input type="date" value="${h(f.hasta)}" onchange="setFPresu('hasta',this.value)"/></label>
   </div>
-  <div class="br">${esAdmin()?`<button class="bs" onclick="exportarPresuCSV()">⬇️ CSV</button>`:""}<button class="bs" onclick="setFPresu('reset')">Limpiar filtros</button></div>
+  <div class="br"><button class="bs" onclick="setFPresuPDF()">🖨️ PDF / compartir lo filtrado</button>${esAdmin()?`<button class="bs" onclick="exportarPresuCSV()">⬇️ CSV</button>`:""}<button class="bs" onclick="setFPresu('reset')">Limpiar filtros</button></div>
 </div>
 
 <div class="card">
@@ -4863,6 +4867,21 @@ ${esAdmin()?`<div class="card">
 </div>`;
 }
 window.setFPresu=function(k,v,soloEstado){ if(!state.filtPresu)state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"}; if(k==="reset"){ state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"}; render(); return; } if(k==="orden"){ state.filtPresu.orden=state.filtPresu.orden==="desc"?"asc":"desc"; render(); return; } state.filtPresu[k]=v; if(!soloEstado)render(); };
+window.setFPresuPDF=function(){
+  const regs=presuFiltrados(); if(!regs.length)return alert("No hay registros con esos filtros."); const tot=presuTotales(regs); const f=state.filtPresu||{}; const tc=state.tc||{}; const hoy=fmtF(hoyISO());
+  const filtros=[f.q?"búsqueda \""+f.q+"\"":"",f.proveedor?"proveedor "+f.proveedor:"",f.insumo?"insumo "+f.insumo:"",f.estado?{nocomprado:"presupuestado",comprado:"comprado",deuda:"comprado sin pagar",abonado:"abonado",pend:"no abonado"}[f.estado]:"",f.desde?"desde "+fmtF(f.desde):"",f.hasta?"hasta "+fmtF(f.hasta):""].filter(Boolean).join(" · ")||"todos los registros";
+  const td="padding:4px 5px;border:1px solid #bbb;vertical-align:top"; const usdS=v=>v==null?"":`<div style="color:#777;font-size:9px">${fmtUSD(v)}</div>`;
+  const filas=regs.map(r=>{const c=calcPresu(r); const usd=r.moneda==="USD"; return `<tr style="${r.abonado?"color:#666":r.comprado?"background:#fff8ee":""}"><td style="${td};white-space:nowrap">${fmtF(r.fecha)}</td><td style="${td}">${h(r.proveedor||"")}</td><td style="${td}"><strong>${h(r.insumo||"")}</strong>${r.marca?"<br>"+h(r.marca):""}${r.variedad?"<br><span style='color:#555'>"+h(r.variedad)+"</span>":""}</td><td style="${td};text-align:right;white-space:nowrap">${r.cantidad??""} ${h(r.unidad||"")}</td><td style="${td};text-align:right;white-space:nowrap">${usd?fmtUSD(r.precio):fmtARS(r.precio)}${usd&&c.tc?usdS(null)+`<div style="color:#777;font-size:9px">${fmtARS((parseFloat(r.precio)||0)*c.tc)}</div>`:""}</td><td style="${td};text-align:center">${r.ivaModo==="mas"?"+"+h(r.ivaAlic||"21")+"%":"incl."}</td><td style="${td};text-align:right;white-space:nowrap"><strong>${fmtARS(c.arsTotal)}</strong>${usd?usdS(c.usdTotal)+(c.tc?`<div style="color:#777;font-size:9px">TC ${Number(c.tc).toLocaleString("es-AR")}</div>`:""):""}</td><td style="${td};text-align:center">${r.comprado?"Sí"+(r.fechaCompra?"<br><span style='font-size:9px'>"+fmtF(r.fechaCompra)+"</span>":""):"No"}</td><td style="${td};text-align:center">${r.abonado?"Sí"+(r.fechaPago?"<br><span style='font-size:9px'>"+fmtF(r.fechaPago)+"</span>":""):"No"}</td><td style="${td};font-size:10px">${h(r.obs||"")}</td></tr>`;}).join("");
+  const box=(t,ars,usd,color)=>`<div style="border:1px solid #bbb;border-radius:6px;padding:6px 10px;min-width:150px"><div style="font-size:9px;color:#555;text-transform:uppercase">${t}</div><div style="font-size:14px;font-weight:700;color:${color||"#222"}">${fmtARS(ars)}</div><div style="font-size:9px;color:#777">${fmtUSD(usd)}</div></div>`;
+  const w=window.open("","_blank"); if(!w)return alert("El navegador bloqueó la ventana. Permití ventanas emergentes para este sitio.");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Presupuestos ${hoy}</title><style>body{font-family:Arial,sans-serif;color:#222;margin:14px;font-size:11px}@media print{button{display:none}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:center"><h1 style="margin:0;font-size:17px">💰 Presupuestos de insumos</h1><button onclick="window.print()" style="padding:8px 14px;font-size:13px">🖨️ Imprimir / Guardar PDF</button></div>
+    <div style="color:#555;margin:3px 0 8px">Generado el ${hoy} · Filtro: ${h(filtros)} · ${regs.length} registro(s) · Dólar BNA vendedor ${tc.venta?fmtARS(tc.venta):"—"} (los importes en dólares no abonados están convertidos a este valor; los abonados, al TC del día de pago)</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${box("Total listado",tot.ars,tot.usd)}${box("Presupuestado (sin comprar)",tot.presArs,tot.presUsd,"#7a4010")}${box("Comprado, pendiente de pago",tot.deudaArs,tot.deudaUsd,"#c82010")}${box("Abonado",tot.pagArs,tot.pagUsd,"#2d4a1e")}</div>
+    <table style="border-collapse:collapse;width:100%"><thead><tr style="background:#eef5e6"><th style="${td}">Fecha</th><th style="${td}">Proveedor</th><th style="${td}">Insumo / marca / detalle</th><th style="${td}">Cant.</th><th style="${td}">P. unit.</th><th style="${td}">IVA</th><th style="${td}">Total</th><th style="${td}">Comprado</th><th style="${td}">Abonado</th><th style="${td}">Obs.</th></tr></thead><tbody>${filas}</tbody>
+    <tfoot><tr style="background:#eef5e6"><td colspan="6" style="${td}"><strong>TOTAL (${regs.length})</strong></td><td style="${td};text-align:right"><strong>${fmtARS(tot.ars)}</strong><div style="color:#777;font-size:9px">${fmtUSD(tot.usd)}</div></td><td colspan="3" style="${td}"></td></tr></tfoot></table>
+    <div style="color:#777;font-size:9px;margin-top:8px">Para compartir por WhatsApp: Imprimir → "Guardar como PDF" y adjuntar el archivo.</div></body></html>`); w.document.close(); setTimeout(()=>{ try{ w.print(); }catch(e){} },400);
+};
 window.guardarPresu=async function(){
   const g=id=>{const el=document.getElementById(id);return el?String(el.value).trim():"";};
   const r={id:(state.editPresu&&state.editPresu.id)||uid(),fecha:g("pr_fecha")||hoyISO(),proveedor:g("pr_prov"),insumo:g("pr_ins"),marca:g("pr_marca"),variedad:g("pr_var"),cantidad:g("pr_cant")===""?null:parseFloat(g("pr_cant")),unidad:g("pr_uni"),precio:g("pr_precio")===""?null:parseFloat(g("pr_precio")),moneda:g("pr_mon")||"ARS",ivaModo:g("pr_ivam")||"incl",ivaAlic:g("pr_ivaa")||"21",comprado:g("pr_comp")==="Sí",fechaCompra:g("pr_fcomp"),abonado:g("pr_abon")==="Sí",fechaPago:g("pr_fpago"),tcPago:g("pr_tcpago")===""?null:parseFloat(g("pr_tcpago")),obs:g("pr_obs"),creado:(state.editPresu&&state.editPresu.creado)||new Date().toISOString()};
@@ -4870,8 +4889,12 @@ window.guardarPresu=async function(){
   if(r.abonado&&!r.fechaPago)r.fechaPago=hoyISO();
   if(r.abonado&&r.moneda==="USD"&&!(r.tcPago>0)){ if(!tcHoy())return alert("Para marcar abonado en dólares hace falta el tipo de cambio: actualizalo o cargalo a mano."); r.tcPago=tcHoy(); }
   if(r.comprado&&!r.fechaCompra)r.fechaCompra=r.fecha;
-  state.presu[r.id]=r; await set(ref(db,"presupuestos/"+r.id),r); state.editPresu=null; toast("💾 Presupuesto guardado"); render();
+  state.presu[r.id]=r; await set(ref(db,"presupuestos/"+r.id),r);
+  // dejar el formulario limpio (conserva solo la fecha), sin que la conservación de campos lo rellene de nuevo
+  state.editPresu={fecha:r.fecha}; for(const id of ["pr_prov","pr_ins","pr_marca","pr_var","pr_cant","pr_uni","pr_precio","pr_fcomp","pr_fpago","pr_tcpago","pr_obs"]){ const el=document.getElementById(id); if(el)el.value=""; } for(const [id,v] of [["pr_mon","ARS"],["pr_ivam","incl"],["pr_ivaa","21"],["pr_comp","No"],["pr_abon","No"]]){ const el=document.getElementById(id); if(el)el.value=v; }
+  toast("💾 Presupuesto guardado"); render(); setTimeout(()=>{const el=document.getElementById("pr_prov");if(el)el.focus();},60);
 };
+window.limpiarPresuForm=function(){ state.editPresu=null; for(const id of ["pr_prov","pr_ins","pr_marca","pr_var","pr_cant","pr_uni","pr_precio","pr_fcomp","pr_fpago","pr_tcpago","pr_obs"]){ const el=document.getElementById(id); if(el)el.value=""; } render(); };
 window.editarPresu=function(id){ const r=state.presu[id]; if(!r)return; state.editPresu={...r}; render(); window.scrollTo({top:0,behavior:"smooth"}); };
 window.eliminarPresu=async function(id){ const r=state.presu[id]; if(!r||!confirm("¿Eliminar este presupuesto ("+(r.insumo||"")+" · "+(r.proveedor||"")+")?"))return; delete state.presu[id]; await remove(ref(db,"presupuestos/"+id)); render(); };
 window.marcarAbonado=async function(id){ const r=state.presu[id]; if(!r)return; if(r.moneda==="USD"&&!tcHoy())return alert("Actualizá el dólar antes de marcar el pago, así queda congelado el tipo de cambio del día."); if(!confirm("¿Marcar como abonado hoy"+(r.moneda==="USD"?" al TC "+fmtARS(tcHoy()):"")+"?"))return; const n={...r,abonado:true,fechaPago:hoyISO(),comprado:true,fechaCompra:r.fechaCompra||hoyISO(),tcPago:r.moneda==="USD"?tcHoy():(r.tcPago||null)}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),n); toast("💵 Marcado como abonado"); render(); };
