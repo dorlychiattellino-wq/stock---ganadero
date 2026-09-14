@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-b";
+window.APP_VERSION="2026.09.15-d";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -230,9 +230,9 @@ const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // fluj
 const ACT_CALC = [...ACT_PROTEGIDAS,"Preñez","Vacias","Cut","Descarte","2da oportunidad","Destete","Entore","Desentore","Pesaje","IATF","Otro"]; // nombres usados en cálculos: no se renombran
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
 const PADRE_ESTADO = {"Cut":"Preñez"};
-const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
+const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
-const OP_TABS = [MANGA_TAB,4,6,7,8]; // Manga, Stock, Stock Reprod., Productivo, Comparativo (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
+const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -267,6 +267,7 @@ let state = {
   mangaCatalogo: {tipos:[],productos:[]}, // productos: [{nombre,categoria,dosis}]
   origenes: {},       // {id:{id,nombre,cuit,renspa}}
   papelera: {},       // registros eliminados (mov/act) recuperables
+  presu: {}, editPresu: null, tc: null,
   prodTxt: "",
   movGrupoTxt: "",
   tactoIatfSel: {},   // caravanas marcadas como vacias en la UI del tacto {iatfId:true}
@@ -497,7 +498,7 @@ function render(){
   if(!state.loaded||!state.usuariosLoaded){ root.innerHTML=`<div class="loading"><div class="spinner"></div><span>Conectando...</span></div>`; return; }
   // Preservar lo tipeado en login/setup/alta de usuario si un dato de Firebase llega en el medio
   const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave",
-    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"],input[id^="mo_"],textarea[id^="cp_"],input[id^="cp_"],select[id^="cp_"]')).map(e=>e.id)];
+    ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"],input[id^="mo_"],textarea[id^="cp_"],input[id^="cp_"],select[id^="cp_"],input[id^="pr_"],select[id^="pr_"]')).map(e=>e.id)];
   const saved={}; let focusId=null;
   for(const id of preserveIds){const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
   // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
@@ -576,7 +577,7 @@ function buildApp(){
     ${buildHeader()}
     ${buildSyncBar()}
     <nav id="nav">${TABS.map((t,i)=>{
-      if(i===12&&!esAdmin())return "";
+      if(i===13&&!esAdmin())return "";
       if(esOperario()&&!OP_TABS.includes(i))return "";
       return `<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`;
     }).join("")}</nav>
@@ -594,9 +595,10 @@ function buildApp(){
       ${state.tab===7 ? conProyeccion(renderProd,"Productivo") : ""}
       ${state.tab===8 ? renderComp() : ""}
       ${state.tab===9 ? renderIatf() : ""}
-      ${state.tab===10 ? renderSenasa() : ""}
-      ${state.tab===11 ? renderPar() : ""}
-      ${state.tab===12 ? renderUsuarios() : ""}
+      ${state.tab===10 ? renderPresu() : ""}
+      ${state.tab===11 ? renderSenasa() : ""}
+      ${state.tab===12 ? renderPar() : ""}
+      ${state.tab===13 ? renderUsuarios() : ""}
     </main>`;
 }
 
@@ -2153,6 +2155,7 @@ async function restaurarBackup(file){
       if(data.mangaSesiones) await set(ref(db,"mangaSesiones"),data.mangaSesiones);
       if(data.mangaCatalogo) await set(ref(db,"mangaCatalogo"),data.mangaCatalogo);
       if(data.origenes) await set(ref(db,"origenes"),data.origenes);
+      if(data.presupuestos) await set(ref(db,"presupuestos"),data.presupuestos);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -2161,7 +2164,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,presupuestos:state.presu,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+hoyISO()+".json";a.click();
@@ -3179,6 +3182,8 @@ onValue(ref(db,"eventos"), snap => { state.eventos = snap.val() || {}; render();
 onValue(ref(db,"mangaSesiones"), snap => { state.mangaSesiones = snap.val() || {}; render(); });
 onValue(ref(db,"mangaCatalogo"), snap => { const v=snap.val()||{}; state.mangaCatalogo={tipos:v.tipos||[],productos:(v.productos||[]).map(x=>typeof x==="string"?{nombre:x,categoria:"",dosis:""}:x)}; render(); });
 onValue(ref(db,"origenes"), snap => { state.origenes = snap.val() || {}; render(); });
+onValue(ref(db,"presupuestos"), snap => { state.presu = snap.val() || {}; render(); });
+onValue(ref(db,"tc"), snap => { state.tc = snap.val() || null; render(); });
 onValue(ref(db,"papelera"), snap => { state.papelera = snap.val() || {}; const lim=Date.now()-60*86400000; for(const [id,it] of Object.entries(state.papelera)){ if(it&&it.borrado&&new Date(it.borrado).getTime()<lim){ delete state.papelera[id]; remove(ref(db,"papelera/"+id)); } } render(); });
 
 // ── RENDER ──
@@ -4744,6 +4749,133 @@ async function guardarSesionManga(){
   const limpio=limpioProfundo(ss); state.mangaSesiones[ss.id]=limpio;
   try{ await set(ref(db,"mangaSesiones/"+ss.id),limpio); }catch(e){ console.error("guardarSesionManga",e); toast("⚠️ No se pudo guardar el trabajo: "+(e&&e.message||e)); }
 }
+
+
+// ══════════════════ PRESUPUESTOS DE INSUMOS ══════════════════
+const IVA_OPCIONES=["21","10.5","27","5","2.5","0"];
+function fmtARS(v){ if(v===null||v===undefined||isNaN(v))return "—"; return "$ "+Number(v).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtUSD(v){ if(v===null||v===undefined||isNaN(v))return "—"; return "US$ "+Number(v).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function tcHoy(){ return (state.tc&&state.tc.venta>0)?state.tc.venta:0; }
+function tcDe(r){ return r.abonado&&r.tcPago>0?r.tcPago:tcHoy(); } // cuando se abona, el tipo de cambio queda congelado
+function calcPresu(r){
+  const cant=parseFloat(r.cantidad)||0, pu=parseFloat(r.precio)||0; const iva=r.ivaModo==="mas"?(parseFloat(r.ivaAlic)||0):0;
+  const neto=cant*pu; const ivaImp=neto*iva/100; const total=neto+ivaImp; const tc=tcDe(r);
+  if(r.moneda==="USD"){ return {usdNeto:neto,usdTotal:total,arsNeto:tc?neto*tc:null,arsTotal:tc?total*tc:null,tc,iva}; }
+  return {arsNeto:neto,arsTotal:total,usdNeto:tc?neto/tc:null,usdTotal:tc?total/tc:null,tc,iva};
+}
+window.actualizarTC=async function(manual){
+  if(manual!==undefined){ const v=parseFloat(String(manual).replace(",",".")); if(!(v>0))return alert("Tipo de cambio inválido."); const t={venta:v,fecha:new Date().toISOString(),fuente:"manual"}; state.tc=t; await set(ref(db,"tc"),t); render(); return; }
+  try{ const r=await fetch("https://dolarapi.com/v1/dolares/oficial",{cache:"no-store"}); const j=await r.json(); const v=parseFloat(j.venta); if(!(v>0))throw new Error("sin dato"); const t={venta:v,compra:parseFloat(j.compra)||null,fecha:new Date().toISOString(),fuenteFecha:j.fechaActualizacion||"",fuente:"BNA (dolarapi)"}; state.tc=t; await set(ref(db,"tc"),t); toast("💵 Dólar BNA vendedor: "+fmtARS(v)); render(); }
+  catch(e){ toast("⚠️ No se pudo actualizar el dólar (sin conexión o servicio caído). Se usa el último guardado."); }
+};
+function tcVencido(){ if(!state.tc||!state.tc.fecha)return true; return (Date.now()-new Date(state.tc.fecha).getTime())>3600000; }
+function listaDe(campo,filtro){ const set2=new Set(); for(const r of Object.values(state.presu||{})){ if(!r)continue; if(filtro&&Object.entries(filtro).some(([k,v])=>v&&normTxt(r[k])!==normTxt(v)))continue; if(r[campo])set2.add(String(r[campo]).trim()); } return [...set2].sort((a,b)=>a.localeCompare(b,"es")); }
+function renderPresu(){
+  if(!state.filtPresu)state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"};
+  const f=state.filtPresu; const e=state.editPresu||{}; const esEdit=!!(state.editPresu&&state.editPresu.id);
+  if(esAdmin()&&!state._tcPedido&&navigator.onLine!==false&&tcVencido()){ state._tcPedido=true; setTimeout(()=>actualizarTC(),300); }
+  const regs=Object.values(state.presu||{}).filter(Boolean).filter(r=>{
+    if(f.proveedor&&normTxt(r.proveedor)!==normTxt(f.proveedor))return false; if(f.insumo&&normTxt(r.insumo)!==normTxt(f.insumo))return false;
+    if(f.estado==="pend"&&(r.abonado))return false; if(f.estado==="comprado"&&!r.comprado)return false; if(f.estado==="nocomprado"&&r.comprado)return false; if(f.estado==="abonado"&&!r.abonado)return false; if(f.estado==="deuda"&&!(r.comprado&&!r.abonado))return false;
+    if(f.desde&&r.fecha<f.desde)return false; if(f.hasta&&r.fecha>f.hasta)return false;
+    if(f.q){ const q=normTxt(f.q); if(!["proveedor","insumo","marca","variedad","obs","fecha"].some(k=>normTxt(r[k]).includes(q)))return false; }
+    return true; }).sort((a,b)=>{ const c=(a.fecha||"").localeCompare(b.fecha||"")||(a.creado||"").localeCompare(b.creado||""); return f.orden==="asc"?c:-c; });
+  const tot={ars:0,usd:0,deudaArs:0,deudaUsd:0,presArs:0,presUsd:0};
+  for(const r of regs){ const c=calcPresu(r); tot.ars+=c.arsTotal||0; tot.usd+=c.usdTotal||0; if(r.comprado&&!r.abonado){tot.deudaArs+=c.arsTotal||0;tot.deudaUsd+=c.usdTotal||0;} if(!r.comprado){tot.presArs+=c.arsTotal||0;tot.presUsd+=c.usdTotal||0;} }
+  const dl=(id,arr)=>`<datalist id="${id}">${arr.map(x=>`<option value="${h(x)}"/>`).join("")}</datalist>`;
+  const tc=state.tc||{};
+  return `
+<div class="card" style="background:#eef3f8;border:1.5px solid #4a7ab0">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <h2 style="margin:0;color:#1e3a5a">💰 Presupuestos de insumos</h2>
+    <div style="background:#fff;border:2px solid #1e4a7a;border-radius:10px;padding:.4rem .8rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <span>💵 <strong>Dólar BNA vendedor: ${tc.venta?fmtARS(tc.venta):"—"}</strong></span>
+      <span class="km">${tc.fecha?"actualizado "+fmtF(tc.fecha.slice(0,10))+" "+tc.fecha.slice(11,16)+" · "+h(tc.fuente||""):"sin cotización cargada"}${tcVencido()&&tc.fecha?' · <span style="color:#a06a1f">hace más de 1 h</span>':""}</span>
+      ${esAdmin()?`<button class="bs" style="padding:.25rem .6rem" onclick="actualizarTC()">🔄 Actualizar</button>
+      <input id="pr_tcman" placeholder="cargar a mano" onchange="actualizarTC(this.value);this.value=''" style="width:110px;padding:.3rem"/>`:""}
+    </div>
+  </div>
+  <p class="hint" style="color:#2a4a6a">Los importes en dólares se convierten a pesos con el dólar de hoy y se recalculan solos cada vez que se actualiza la cotización, hasta que el registro se marca como <strong>abonado</strong>: ahí el tipo de cambio queda congelado al del día de pago.</p>
+  <div class="kg">
+    <div class="kp"><div class="kl">Total listado</div><div class="kv" style="font-size:1.1rem">${fmtARS(tot.ars)}</div><div class="km">${fmtUSD(tot.usd)}</div></div>
+    <div class="kp" style="background:#fff8ee"><div class="kl">Presupuestado (sin comprar)</div><div class="kv" style="font-size:1.1rem">${fmtARS(tot.presArs)}</div><div class="km">${fmtUSD(tot.presUsd)}</div></div>
+    <div class="kp" style="background:#fdf0ee"><div class="kl">Comprado, pendiente de pago</div><div class="kv" style="font-size:1.1rem;color:#c82010">${fmtARS(tot.deudaArs)}</div><div class="km">${fmtUSD(tot.deudaUsd)}</div></div>
+    <div class="kp"><div class="kl">Registros</div><div class="kv">${regs.length}</div><div class="km">de ${Object.keys(state.presu||{}).length}</div></div>
+  </div>
+</div>
+
+${esAdmin()?`<div class="card">
+  <h2>${esEdit?"✏️ Editar presupuesto":"➕ Nuevo presupuesto"}</h2>
+  <div class="fg">
+    <label>Fecha<input id="pr_fecha" type="date" value="${h(e.fecha||hoyISO())}"/></label>
+    <label>Proveedor<input id="pr_prov" list="pr-prov" value="${h(e.proveedor||"")}" placeholder="Escribí o elegí"/>${dl("pr-prov",listaDe("proveedor"))}</label>
+    <label>Insumo<input id="pr_ins" list="pr-ins" value="${h(e.insumo||"")}" onchange="state.editPresu={...(state.editPresu||{}),insumo:this.value,fecha:document.getElementById('pr_fecha').value,proveedor:document.getElementById('pr_prov').value};render()" placeholder="Ej: Vacuna aftosa, alambre, semilla"/>${dl("pr-ins",listaDe("insumo"))}</label>
+    <label>Marca<input id="pr_marca" list="pr-marca" value="${h(e.marca||"")}" onchange="state.editPresu={...(state.editPresu||{}),marca:this.value,insumo:document.getElementById('pr_ins').value,fecha:document.getElementById('pr_fecha').value,proveedor:document.getElementById('pr_prov').value};render()"/>${dl("pr-marca",listaDe("marca",{insumo:e.insumo}))}</label>
+    <label>Variedad / detalle<input id="pr_var" list="pr-var" value="${h(e.variedad||"")}"/>${dl("pr-var",listaDe("variedad",{insumo:e.insumo,marca:e.marca}))}</label>
+    <label>Cantidad<input id="pr_cant" type="number" step="any" inputmode="decimal" value="${h(e.cantidad??"")}"/></label>
+    <label>Unidad<input id="pr_uni" list="pr-uni" value="${h(e.unidad||"")}" placeholder="dosis, kg, lts, rollos…"/>${dl("pr-uni",listaDe("unidad"))}</label>
+    <label>Precio unitario<input id="pr_precio" type="number" step="any" inputmode="decimal" value="${h(e.precio??"")}"/></label>
+    <label>Moneda<select id="pr_mon">${opts(["ARS","USD"],e.moneda||"ARS")}</select></label>
+    <label>IVA<select id="pr_ivam" onchange="document.getElementById('pr_ivaa').style.display=this.value==='mas'?'':'none'"><option value="incl"${(e.ivaModo||"incl")==="incl"?" selected":""}>IVA incluido</option><option value="mas"${e.ivaModo==="mas"?" selected":""}>+ IVA</option></select></label>
+    <label>Alícuota (%)<input id="pr_ivaa" list="pr-iva" value="${h(e.ivaAlic??"21")}" style="${e.ivaModo==="mas"?"":"display:none"}"/>${dl("pr-iva",IVA_OPCIONES)}</label>
+    <label>Comprado<select id="pr_comp">${opts(["No","Sí"],e.comprado?"Sí":"No")}</select></label>
+    <label>Fecha compra<input id="pr_fcomp" type="date" value="${h(e.fechaCompra||"")}"/></label>
+    <label>Abonado<select id="pr_abon">${opts(["No","Sí"],e.abonado?"Sí":"No")}</select></label>
+    <label>Fecha pago<input id="pr_fpago" type="date" value="${h(e.fechaPago||"")}"/></label>
+    <label>TC del pago (si fue en dólares)<input id="pr_tcpago" type="number" step="any" value="${h(e.tcPago??"")}" placeholder="se toma el de hoy al marcar abonado"/></label>
+    <label class="s2">Observaciones<input id="pr_obs" value="${h(e.obs||"")}"/></label>
+  </div>
+  <div class="br"><button class="bp" onclick="guardarPresu()">💾 ${esEdit?"Guardar cambios":"Agregar"}</button>${esEdit||e.insumo?`<button class="bs" onclick="state.editPresu=null;render()">Cancelar</button>`:""}</div>
+</div>`:`<p class="hint">Vista de consulta: podés filtrar y buscar; la carga y edición la hace un administrador.</p>`}
+
+<div class="card">
+  <h2>🔍 Filtros</h2>
+  <div class="fg">
+    <label class="s2">Buscar<input value="${h(f.q)}" oninput="setFPresu('q',this.value,true)" onchange="setFPresu('q',this.value)" placeholder="proveedor, insumo, marca, detalle, obs…"/></label>
+    <label>Proveedor<select onchange="setFPresu('proveedor',this.value)">${opts(listaDe("proveedor"),f.proveedor,"Todos")}</select></label>
+    <label>Insumo<select onchange="setFPresu('insumo',this.value)">${opts(listaDe("insumo"),f.insumo,"Todos")}</select></label>
+    <label>Estado<select onchange="setFPresu('estado',this.value)"><option value="">Todos</option><option value="nocomprado"${f.estado==="nocomprado"?" selected":""}>Presupuestado (sin comprar)</option><option value="comprado"${f.estado==="comprado"?" selected":""}>Comprado</option><option value="deuda"${f.estado==="deuda"?" selected":""}>Comprado y sin pagar</option><option value="abonado"${f.estado==="abonado"?" selected":""}>Abonado</option><option value="pend"${f.estado==="pend"?" selected":""}>Todo lo no abonado</option></select></label>
+    <label>Desde<input type="date" value="${h(f.desde)}" onchange="setFPresu('desde',this.value)"/></label>
+    <label>Hasta<input type="date" value="${h(f.hasta)}" onchange="setFPresu('hasta',this.value)"/></label>
+  </div>
+  <div class="br">${esAdmin()?`<button class="bs" onclick="exportarPresuCSV()">⬇️ CSV</button>`:""}<button class="bs" onclick="setFPresu('reset')">Limpiar filtros</button></div>
+</div>
+
+<div class="card">
+  <h2>📋 Listado (${regs.length})</h2>
+  ${regs.length===0?`<p class="empty">Sin presupuestos.</p>`:`
+  <div class="tw"><table>
+    <thead><tr><th style="white-space:nowrap">Fecha <button class="bi" title="Ordenar" onclick="setFPresu('orden')">${f.orden==="desc"?"⬇️":"⬆️"}</button></th><th>Proveedor</th><th>Insumo</th><th>Marca</th><th>Detalle</th><th>Cant.</th><th>P. unit.</th><th>IVA</th><th>Total</th><th>Comprado</th><th>Abonado</th><th>Obs.</th><th></th></tr></thead>
+    <tbody>${regs.map(r=>{const c=calcPresu(r); const usd=r.moneda==="USD"; const sub=v=>v===null?"":`<div style="color:#888;font-size:.75rem">(${fmtUSD(v)}${usd&&c.tc?" · TC "+Number(c.tc).toLocaleString("es-AR"):""})</div>`;
+      return `<tr style="${r.abonado?"opacity:.75":r.comprado?"background:#fff8ee":""}">
+        <td style="white-space:nowrap">${fmtF(r.fecha)}</td><td>${h(r.proveedor||"—")}</td><td><strong>${h(r.insumo||"—")}</strong></td><td>${h(r.marca||"—")}</td><td>${h(r.variedad||"—")}</td>
+        <td style="text-align:right">${r.cantidad??"—"} ${h(r.unidad||"")}</td>
+        <td style="text-align:right;white-space:nowrap">${usd?fmtUSD(r.precio):fmtARS(r.precio)}${usd&&c.tc?`<div style="color:#888;font-size:.75rem">(${fmtARS((parseFloat(r.precio)||0)*c.tc)})</div>`:""}</td>
+        <td style="text-align:center;font-size:.8rem">${r.ivaModo==="mas"?"+ "+h(r.ivaAlic||"21")+"%":"incl."}</td>
+        <td style="text-align:right;white-space:nowrap"><strong>${fmtARS(c.arsTotal)}</strong>${usd?sub(c.usdTotal):""}</td>
+        <td style="text-align:center">${r.comprado?"✅"+(r.fechaCompra?"<div class='km'>"+fmtF(r.fechaCompra)+"</div>":""):"—"}</td>
+        <td style="text-align:center">${r.abonado?"💵"+(r.fechaPago?"<div class='km'>"+fmtF(r.fechaPago)+"</div>":"")+(usd&&r.tcPago?"<div class='km'>TC "+Number(r.tcPago).toLocaleString("es-AR")+"</div>":""):(esAdmin()?`<button class='bs' style='padding:.2rem .5rem;font-size:.75rem' onclick="marcarAbonado('${r.id}')">marcar pagado</button>`:"—")}</td>
+        <td class="km">${h(r.obs||"")}</td>
+        <td style="white-space:nowrap">${esAdmin()?`<button class="bi" onclick="editarPresu('${r.id}')">✏️</button><button class="bi" onclick="eliminarPresu('${r.id}')">🗑️</button>`:""}</td></tr>`;}).join("")}
+    </tbody>
+    <tfoot><tr class="tr"><td colspan="8"><strong>TOTAL (${regs.length})</strong></td><td style="text-align:right"><strong>${fmtARS(tot.ars)}</strong><div style="color:#888;font-size:.75rem">(${fmtUSD(tot.usd)})</div></td><td colspan="4"></td></tr></tfoot>
+  </table></div>`}
+</div>`;
+}
+window.setFPresu=function(k,v,soloEstado){ if(!state.filtPresu)state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"}; if(k==="reset"){ state.filtPresu={q:"",proveedor:"",insumo:"",estado:"",desde:"",hasta:"",orden:"desc"}; render(); return; } if(k==="orden"){ state.filtPresu.orden=state.filtPresu.orden==="desc"?"asc":"desc"; render(); return; } state.filtPresu[k]=v; if(!soloEstado)render(); };
+window.guardarPresu=async function(){
+  const g=id=>{const el=document.getElementById(id);return el?String(el.value).trim():"";};
+  const r={id:(state.editPresu&&state.editPresu.id)||uid(),fecha:g("pr_fecha")||hoyISO(),proveedor:g("pr_prov"),insumo:g("pr_ins"),marca:g("pr_marca"),variedad:g("pr_var"),cantidad:g("pr_cant")===""?null:parseFloat(g("pr_cant")),unidad:g("pr_uni"),precio:g("pr_precio")===""?null:parseFloat(g("pr_precio")),moneda:g("pr_mon")||"ARS",ivaModo:g("pr_ivam")||"incl",ivaAlic:g("pr_ivaa")||"21",comprado:g("pr_comp")==="Sí",fechaCompra:g("pr_fcomp"),abonado:g("pr_abon")==="Sí",fechaPago:g("pr_fpago"),tcPago:g("pr_tcpago")===""?null:parseFloat(g("pr_tcpago")),obs:g("pr_obs"),creado:(state.editPresu&&state.editPresu.creado)||new Date().toISOString()};
+  if(!r.insumo&&!r.proveedor)return alert("Cargá al menos el insumo o el proveedor.");
+  if(r.abonado&&!r.fechaPago)r.fechaPago=hoyISO();
+  if(r.abonado&&r.moneda==="USD"&&!(r.tcPago>0)){ if(!tcHoy())return alert("Para marcar abonado en dólares hace falta el tipo de cambio: actualizalo o cargalo a mano."); r.tcPago=tcHoy(); }
+  if(r.comprado&&!r.fechaCompra)r.fechaCompra=r.fecha;
+  state.presu[r.id]=r; await set(ref(db,"presupuestos/"+r.id),r); state.editPresu=null; toast("💾 Presupuesto guardado"); render();
+};
+window.editarPresu=function(id){ const r=state.presu[id]; if(!r)return; state.editPresu={...r}; render(); window.scrollTo({top:0,behavior:"smooth"}); };
+window.eliminarPresu=async function(id){ const r=state.presu[id]; if(!r||!confirm("¿Eliminar este presupuesto ("+(r.insumo||"")+" · "+(r.proveedor||"")+")?"))return; delete state.presu[id]; await remove(ref(db,"presupuestos/"+id)); render(); };
+window.marcarAbonado=async function(id){ const r=state.presu[id]; if(!r)return; if(r.moneda==="USD"&&!tcHoy())return alert("Actualizá el dólar antes de marcar el pago, así queda congelado el tipo de cambio del día."); if(!confirm("¿Marcar como abonado hoy"+(r.moneda==="USD"?" al TC "+fmtARS(tcHoy()):"")+"?"))return; const n={...r,abonado:true,fechaPago:hoyISO(),comprado:true,fechaCompra:r.fechaCompra||hoyISO(),tcPago:r.moneda==="USD"?tcHoy():(r.tcPago||null)}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),n); toast("💵 Marcado como abonado"); render(); };
+window.exportarPresuCSV=function(){ const rows=[["Fecha","Proveedor","Insumo","Marca","Detalle","Cantidad","Unidad","Precio unit.","Moneda","IVA","Alicuota","Total ARS","Total USD","TC","Comprado","Fecha compra","Abonado","Fecha pago","Obs"]]; for(const r of Object.values(state.presu||{}).filter(Boolean)){ const c=calcPresu(r); rows.push([r.fecha,r.proveedor,r.insumo,r.marca,r.variedad,r.cantidad,r.unidad,r.precio,r.moneda,r.ivaModo==="mas"?"+IVA":"incl",r.ivaModo==="mas"?r.ivaAlic:"",c.arsTotal!=null?c.arsTotal.toFixed(2):"",c.usdTotal!=null?c.usdTotal.toFixed(2):"",c.tc||"",r.comprado?"Si":"No",r.fechaCompra,r.abonado?"Si":"No",r.fechaPago,r.obs].map(v=>`"${String(v??"").replace(/"/g,'""')}"`)); } const blob=new Blob(["\ufeff"+rows.map(r=>r.join(";")).join("\n")],{type:"text/csv;charset=utf-8"}); const el=document.createElement("a"); el.href=URL.createObjectURL(blob); el.download="Presupuestos_"+hoyISO()+".csv"; el.click(); };
 
 </script>
 </body>
