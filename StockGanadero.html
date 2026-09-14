@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-g";
+window.APP_VERSION="2026.09.14-i";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -162,7 +162,8 @@ function encolar(op){ let c=leerCola(); if(op.t==="set")c=c.filter(o=>!(o.t==="s
 function sacarDeCola(id){ guardarCola(leerCola().filter(o=>o.id!==id)); }
 function opId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
 function set(r,val){
-  if(val&&typeof val==="object")val=limpioProfundo(val); // Firebase rechaza "undefined" anidados: se limpian antes de guardar
+  if(val&&typeof val==="object")val=limpioProfundo(val);
+  if(typeof r==="string")r=ref(db,r); // Firebase rechaza "undefined" anidados: se limpian antes de guardar
   const op={id:opId(),t:"set",path:pathOf(r),val:val===undefined?null:val};
   encolar(op);
   _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(e=>{ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); });
@@ -185,9 +186,10 @@ function reintentarCola(){
   for(const op of c){
     const r=ref(db,op.path);
     const p=op.t==="del"?_remove(r):_set(r,op.val);
-    p.then(()=>sacarDeCola(op.id)).catch(()=>{}).finally(()=>{ if(--rest===0){colaReintentando=false;actualizarBarraPendientes();} });
+    p.then(()=>sacarDeCola(op.id)).catch(e=>{ const msg=String(e&&(e.code||e.message)||e); const red=/network|offline|timeout|disconnect/i.test(msg); if(!red){ const c2=leerCola(); const o2=c2.find(x=>x.id===op.id); if(o2){ o2.fails=(o2.fails||0)+1; o2.err=msg; if(o2.fails>=3){ try{ const pe=JSON.parse(localStorage.getItem("sg_cola_err")||"[]"); pe.push({...o2,descartado:new Date().toISOString()}); localStorage.setItem("sg_cola_err",JSON.stringify(pe.slice(-200))); }catch(_){} guardarCola(c2.filter(x=>x.id!==op.id)); if(typeof toast==="function")toast("⚠️ Un cambio no se pudo subir ("+msg.slice(0,60)+") y se apartó. Verlo en Parámetros → Papelera."); } else guardarCola(c2); } } }).finally(()=>{ if(--rest===0){colaReintentando=false;actualizarBarraPendientes();} });
   }
 }
+setInterval(()=>{ try{ if(navigator.onLine&&leerCola().length)reintentarCola(); }catch(e){} },30000);
 function actualizarBarraPendientes(){ if(typeof render==="function"&&state&&state.loaded&&state.usuariosLoaded)render(); }
 // Aviso si la app nunca se abrio con internet en este dispositivo
 setTimeout(()=>{
@@ -476,6 +478,7 @@ function renderPapelera(){
   const items=Object.values(state.papelera).filter(Boolean).sort((a,b)=>(b.borrado||"").localeCompare(a.borrado||""));
   return `<div class="card" style="background:#f6f4ee;border:1.5px solid #b8a888"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="margin:0">🗑️ Papelera (${items.length})</h2>${items.length?`<button class="bs" onclick="vaciarPapelera()">Vaciar</button>`:""}</div>
   <p class="hint">Movimientos y actividades eliminados. Se guardan 60 días y se pueden recuperar con un clic.</p>
+  ${(()=>{let pe=[];try{pe=JSON.parse(localStorage.getItem("sg_cola_err")||"[]");}catch(e){} return pe.length?`<div style="background:#fdf0ee;border:1.5px solid #c82010;border-radius:8px;padding:.6rem;margin-bottom:.6rem"><strong style="color:#c82010">⚠️ Cambios de esta tablet/PC que la base rechazó (${pe.length})</strong><div class="km">No se subieron. Si son importantes, cargá el dato a mano; si son de prueba, limpiá la lista.</div><div style="max-height:160px;overflow:auto;font-family:monospace;font-size:.75rem;margin:.3rem 0">${pe.slice().reverse().map(o=>`<div>${h((o.descartado||"").slice(0,16))} · ${h(o.t)} ${h(o.path)} · ${h(o.err||"")}</div>`).join("")}</div><button class="bs" onclick="localStorage.removeItem('sg_cola_err');render()">Limpiar lista</button></div>`:"";})()}
   ${items.length?`<div class="tw"><table><thead><tr><th>Borrado</th><th>Tipo</th><th>Fecha</th><th>Campo</th><th>Cat.</th><th>Detalle</th><th>Cant.</th><th></th></tr></thead><tbody>
   ${items.map(it=>{const r=it.rec||{};return `<tr><td class="km">${h((it.borrado||"").slice(0,10))}<br>${h(it.usuario||"")}</td><td>${it.col==="mov"?"📋 Mov.":"🩺 Act."}</td><td>${fmtF(r.fecha)}</td><td>${h(r.campo||"")}</td><td>${h(r.cat||"")}</td><td>${h(it.col==="mov"?(r.tipo+" · "+(r.sub||"")):(r.tipo||""))}${r.ceDestino?" → "+h(r.ceDestino):""}${r.obs?`<div class="km">${h(r.obs)}</div>`:""}</td><td>${r.cant??"—"}</td><td><button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="restaurarPapelera('${h(it.id)}')">♻️ Recuperar</button></td></tr>`;}).join("")}
   </tbody></table></div>`:`<p class="empty">Vacía.</p>`}</div>`;
@@ -949,7 +952,7 @@ function renderStock(){
   const campos2=Object.keys(smap);
   return `
 <div class="card">
-  <h2>📊 Resumen de Stock</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="margin:0">📊 Resumen de Stock</h2>${esAdmin()?`<button class="bs" onclick="imprimirCaravaneoPendiente()" title="Planilla para imprimir: cuántos faltan caravanear por campo y categoría, con casillas para ir tachando">🖨️ Planilla de caravaneo pendiente</button>`:""}</div>
   <p class="hint">Filtra por fecha para ver el stock en una fecha determinada. CSV compatible con Power Query.</p>
   <div class="fg">
     <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFS('hasta',this.value)"/></label>
@@ -3061,7 +3064,8 @@ function fmtF(iso){ if(!iso)return "—"; const [y,m,d]=String(iso).split("-"); 
 function diasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function hoyISO(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); } // fecha LOCAL (no UTC)
 function sinUndef(o){ const r={}; for(const k of Object.keys(o)){ if(o[k]!==undefined)r[k]=o[k]; } return r; }
-function limpioProfundo(o){ try{ return JSON.parse(JSON.stringify(o,(k,v)=>v===undefined?null:(typeof v==="number"&&!isFinite(v)?null:v))); }catch(e){ return o; } }
+function claveFB(k){ return String(k).replace(/[.#$\/\[\]]/g,"_"); } // Firebase no admite . # $ / [ ] en las claves
+function limpioProfundo(o){ try{ const j=JSON.parse(JSON.stringify(o,(k,v)=>v===undefined?null:(typeof v==="number"&&!isFinite(v)?null:v))); const fix=x=>{ if(Array.isArray(x))return x.map(fix); if(x&&typeof x==="object"){ const r={}; for(const k of Object.keys(x))r[claveFB(k)]=fix(x[k]); return r; } return x; }; return fix(j); }catch(e){ return o; } }
 
 function catHook(cat,sexo){
   const c=normTxt(cat), s=normTxt(sexo);
@@ -4028,6 +4032,32 @@ window.mangaTog=function(k,v,extra){ const M=state.manga; const T={tipos:M.tipos
 window.mangaTogOver=function(k,v,extra){ const M=state.manga; if(!M.over)M.over={tipos:[...M.tipos],productos:[...M.productos],prodDosis:{...M.prodDosis}}; const r=mangaTogCore(M.over,M,k,v,extra); if(r)render(); };
 window.togToroEntore=function(id){ const tgt=state.editAct||state.formAct; tgt.toros=[...(tgt.toros||[])]; const i=tgt.toros.indexOf(id); if(i>=0)tgt.toros.splice(i,1); else tgt.toros.push(id); render(); };
 window.toggleToroProc=function(v){ const l=document.getElementById("to_campo_lbl"); if(l)l.style.display=v==="Producción propia"?"":"none"; const c=document.getElementById("to_cuit"),r=document.getElementById("to_renspa"),cab=document.getElementById("to_cabana"); const propio=v==="Producción propia"; [c,r,cab].forEach(el=>{ if(el){ el.disabled=propio; if(propio)el.value=""; } }); };
+window.imprimirCaravaneoPendiente=function(){
+  const clist=campos(); const hoy=fmtF(hoyISO()); let html=""; let totF=0;
+  for(const campo of clist){
+    const filas=[];
+    for(const cat of CATS){
+      // stock por lote por ciclo (movimientos), y fichas con caravana electrónica por ciclo
+      const porCiclo={}; for(const m of Object.values(state.mov)){ if(!m||m.campo!==campo||m.cat!==cat)continue; const c=m.ciclo||"(sin ciclo)"; porCiclo[c]=(porCiclo[c]||0)+(m.tipo==="ingreso"?m.cant:-m.cant); }
+      const conC={}; for(const a of Object.values(state.animales)){ if(!a||(a.estado||"activo")!=="activo"||a.campo!==campo||a.cat!==cat||limpiarEID(a.caravana).length<12)continue; const c=cicloDe(a)||"(sin ciclo)"; conC[c]=(conC[c]||0)+1; }
+      const ciclos=[...new Set([...Object.keys(porCiclo),...Object.keys(conC)])].sort();
+      for(const c of ciclos){ const st=porCiclo[c]||0, con=conC[c]||0; if(st<=0&&con<=0)continue; filas.push({cat,ciclo:c,st,con,faltan:Math.max(0,st-con)}); }
+    }
+    if(!filas.length)continue;
+    const totCampo=filas.reduce((x,f)=>x+f.faltan,0); totF+=totCampo;
+    html+=`<section style="page-break-inside:avoid;margin-bottom:22px"><h2 style="margin:0 0 4px;border-bottom:2px solid #2d4a1e;padding-bottom:3px">${h(campo)} <span style="font-weight:400;font-size:13px;color:#555">· faltan caravanear <strong>${totCampo}</strong></span></h2>
+      <table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:8px"><tr style="background:#eef5e6"><th style="text-align:left;padding:3px 6px;border:1px solid #bbb">Categoría</th><th style="padding:3px 6px;border:1px solid #bbb">Ciclo</th><th style="padding:3px 6px;border:1px solid #bbb">Stock por lote</th><th style="padding:3px 6px;border:1px solid #bbb">Con caravana</th><th style="padding:3px 6px;border:1px solid #bbb">Faltan</th></tr>
+      ${filas.map(f=>`<tr><td style="padding:3px 6px;border:1px solid #bbb">${h(f.cat)}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${h(f.ciclo)}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.st}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.con}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center;font-weight:700">${f.faltan}</td></tr>`).join("")}</table>
+      ${filas.filter(f=>f.faltan>0).map(f=>`<div style="margin:6px 0 10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">${h(f.cat)} ${h(f.ciclo)} — tachar una casilla por animal caravaneado (${f.faltan})</div><div style="display:flex;flex-wrap:wrap;gap:3px">${Array.from({length:f.faltan},(_,i)=>`<span style="display:inline-block;width:22px;height:22px;border:1.5px solid #333;border-radius:3px;font-size:8px;color:#999;text-align:center;line-height:22px">${i+1}</span>`).join("")}</div></div>`).join("")}
+    </section>`;
+  }
+  if(!html)return alert("No hay stock por lote cargado para armar la planilla.");
+  const w=window.open("","_blank"); if(!w)return alert("El navegador bloqueó la ventana de impresión. Permití ventanas emergentes para este sitio.");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Caravaneo pendiente ${hoy}</title><style>body{font-family:Arial,sans-serif;color:#222;margin:18px}@media print{button{display:none}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:center"><h1 style="margin:0;font-size:20px">🏷️ Caravaneo pendiente por campo</h1><button onclick="window.print()" style="padding:8px 14px;font-size:14px">🖨️ Imprimir / Guardar PDF</button></div>
+    <div style="font-size:12px;color:#555;margin:4px 0 14px">Generado el ${hoy} · Total a caravanear: <strong>${totF}</strong> · "Faltan" = stock por lote menos fichas con caravana electrónica activas. Llevá esta hoja a la manga: en cada tropa, tachá una casilla por animal de ese campo/categoría a medida que lo caravaneás, para no pasarte ni quedarte corto.</div>
+    ${html}</body></html>`); w.document.close(); setTimeout(()=>{ try{ w.print(); }catch(e){} },400);
+};
 window.irATab=function(t){ state.tab=t; render(); };
 window.toggleCatProd=function(){ state.catProdOpen=!state.catProdOpen; render(); };
 window.abrirMasiva=function(){ state.masivaOpen=true; render(); enfocar('ma_grupo'); };
@@ -4397,7 +4427,7 @@ function contribAct(M,a,acts){
     if(t==="Pesaje"){ lote.push({id:`${S}_a_${CA}_${a.cat}_Pesaje`,col:"act",base:{...base,tipo:"Pesaje"},n:{cant:1,_kgSum:parseFloat(M.peso)||0,_kgN:parseFloat(M.peso)>0?1:0}}); evs.push({tipo:"Pesaje",producto:M.peso?M.peso+" kg":""}); continue; }
     const prods=acts.productos.filter(p=>tipoParaProducto(M,p,acts.tipos)===t);
     const prodTxt=prods.join(", "); const dosisTxt=prods.map(p=>(acts.prodDosis||{})[p]?p+" "+acts.prodDosis[p]:"").filter(Boolean).join("; ");
-    lote.push({id:`${S}_a_${CA}_${a.cat}_${t}`,col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(M.fecha)+(prodTxt?" · "+prodTxt:"")},n:{cant:1}}); evs.push({tipo:t,producto:prodTxt,dosis:dosisTxt}); partes.push(t+(prodTxt?" ("+prodTexto({productos:prods,prodDosis:acts.prodDosis})+")":""));
+    lote.push({id:claveFB(`${S}_a_${CA}_${a.cat}_${t}`),col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(M.fecha)+(prodTxt?" · "+prodTxt:"")},n:{cant:1}}); evs.push({tipo:t,producto:prodTxt,dosis:dosisTxt}); partes.push(t+(prodTxt?" ("+prodTexto({productos:prods,prodDosis:acts.prodDosis})+")":""));
   }
   return {anim,lote,evs,txt:partes.join(" · ")};
 }
@@ -4482,7 +4512,7 @@ window.reconstruirSesiones=async function(){
         if(t==="Otro"&&/^(Ingreso|Egreso): /.test(pr)){ const mm=pr.match(/^(Ingreso|Egreso): (.+)$/); const tipo=mm[1]==="Ingreso"?"ingreso":"egreso"; lote.push({id:`${S}_${tipo==="ingreso"?"i":"e"}_${CA}_${a.cat}`,col:"mov",base:{fecha,ciclo:M2.ciclo,campo:campoA,cat:a.cat,tipo,sub:mm[2],obs:"Manga "+fmtF(fecha)+" (reconstruido)"},n:{cant:1}}); partes.push(pr); continue; }
         if(t==="Tacto"){ const r=pr; const tb={...base,tactoId:S}; if(r==="preñada"||r==="cut")lote.push({id:`${S}_t_${CA}_${a.cat}_Preñez`,col:"act",base:{...tb,tipo:"Preñez"},n:{cant:1}}); if(r==="cut")lote.push({id:`${S}_t_${CA}_${a.cat}_Cut`,col:"act",base:{...tb,tipo:"Cut"},n:{cant:1}}); if(["vacía","2da oportunidad","descarte"].includes(r))lote.push({id:`${S}_t_${CA}_${a.cat}_Vacias`,col:"act",base:{...tb,tipo:"Vacias"},n:{cant:1}}); if(r==="2da oportunidad")lote.push({id:`${S}_t_${CA}_${a.cat}_2da`,col:"act",base:{...tb,tipo:"2da oportunidad"},n:{cant:1}}); if(r==="descarte")lote.push({id:`${S}_t_${CA}_${a.cat}_Desc`,col:"act",base:{...tb,tipo:"Descarte"},n:{cant:1}}); partes.push("tacto: "+r); continue; }
         if(t==="Cambio de estado"||t==="Traslado de rodeo"||t==="Otro")continue;
-        lote.push({id:`${S}_a_${CA}_${a.cat}_${t}`,col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(fecha)+" (reconstruido)"+(pr?" · "+pr:"")},n:{cant:1}}); partes.push(t+(pr?" ("+pr+(e.dosis?" · "+e.dosis:"")+")":"")); }
+        lote.push({id:claveFB(`${S}_a_${CA}_${a.cat}_${t}`),col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(fecha)+" (reconstruido)"+(pr?" · "+pr:"")},n:{cant:1}}); partes.push(t+(pr?" ("+pr+(e.dosis?" · "+e.dosis:"")+")":"")); }
       M2.log.push({key:k,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids:{pesadas:[],eventos:mios.map(e=>e.id)},lote,prev:{cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||""},tacto:(mios.find(e=>e.tipo==="Tacto")||{}).producto||"",fecha});
       M2.grupo.push(k); }
     const cfg={}; for(const kk of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp"])cfg[kk]=M2[kk];
