@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-i";
+window.APP_VERSION="2026.09.14-k";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -166,27 +166,34 @@ function set(r,val){
   if(typeof r==="string")r=ref(db,r); // Firebase rechaza "undefined" anidados: se limpian antes de guardar
   const op={id:opId(),t:"set",path:pathOf(r),val:val===undefined?null:val};
   encolar(op);
-  _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(e=>{ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); });
+  try{ _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(e=>{ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); }); }
+  catch(e){ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); }
   actualizarBarraPendientes();
   return Promise.resolve();  // no esperar al servidor: sin señal, la app sigue andando
 }
 function remove(r){
   const op={id:opId(),t:"del",path:pathOf(r)};
   encolar(op);
-  _remove(r).then(()=>sacarDeCola(op.id)).catch(()=>sacarDeCola(op.id));
+  try{ _remove(r).then(()=>sacarDeCola(op.id)).catch(()=>sacarDeCola(op.id)); }catch(e){ sacarDeCola(op.id); }
   actualizarBarraPendientes();
   return Promise.resolve();
 }
 let colaReintentando=false;
+function apartarOp(op,msg){ try{ const pe=JSON.parse(localStorage.getItem("sg_cola_err")||"[]"); pe.push({...op,err:msg,descartado:new Date().toISOString()}); localStorage.setItem("sg_cola_err",JSON.stringify(pe.slice(-200))); }catch(_){} guardarCola(leerCola().filter(x=>x.id!==op.id)); if(typeof toast==="function")toast("⚠️ Un cambio no se pudo subir ("+String(msg).slice(0,60)+") y se apartó. Verlo en Parámetros → Papelera."); }
 function reintentarCola(){
   if(colaReintentando)return;
   const c=leerCola(); if(c.length===0)return;
   colaReintentando=true;
   let rest=c.length;
+  const fin=()=>{ if(--rest===0){colaReintentando=false;actualizarBarraPendientes();} };
   for(const op of c){
-    const r=ref(db,op.path);
-    const p=op.t==="del"?_remove(r):_set(r,op.val);
-    p.then(()=>sacarDeCola(op.id)).catch(e=>{ const msg=String(e&&(e.code||e.message)||e); const red=/network|offline|timeout|disconnect/i.test(msg); if(!red){ const c2=leerCola(); const o2=c2.find(x=>x.id===op.id); if(o2){ o2.fails=(o2.fails||0)+1; o2.err=msg; if(o2.fails>=3){ try{ const pe=JSON.parse(localStorage.getItem("sg_cola_err")||"[]"); pe.push({...o2,descartado:new Date().toISOString()}); localStorage.setItem("sg_cola_err",JSON.stringify(pe.slice(-200))); }catch(_){} guardarCola(c2.filter(x=>x.id!==op.id)); if(typeof toast==="function")toast("⚠️ Un cambio no se pudo subir ("+msg.slice(0,60)+") y se apartó. Verlo en Parámetros → Papelera."); } else guardarCola(c2); } } }).finally(()=>{ if(--rest===0){colaReintentando=false;actualizarBarraPendientes();} });
+    let p;
+    try{
+      if(op.t==="set"&&op.val&&typeof op.val==="object")op.val=limpioProfundo(op.val); // limpiar lo que quedó de versiones anteriores
+      const r=ref(db,op.path);
+      p=op.t==="del"?_remove(r):_set(r,op.val);
+    }catch(e){ apartarOp(op,String(e&&(e.code||e.message)||e)); fin(); continue; } // rechazo inmediato (dato o ruta inválidos): no frena a los demás
+    p.then(()=>sacarDeCola(op.id)).catch(e=>{ const msg=String(e&&(e.code||e.message)||e); const red=/network|offline|timeout|disconnect/i.test(msg); if(!red){ const c2=leerCola(); const o2=c2.find(x=>x.id===op.id); if(o2){ o2.fails=(o2.fails||0)+1; o2.err=msg; if(o2.fails>=3)apartarOp(o2,msg); else guardarCola(c2); } } }).finally(fin);
   }
 }
 setInterval(()=>{ try{ if(navigator.onLine&&leerCola().length)reintentarCola(); }catch(e){} },30000);
@@ -4037,18 +4044,16 @@ window.imprimirCaravaneoPendiente=function(){
   for(const campo of clist){
     const filas=[];
     for(const cat of CATS){
-      // stock por lote por ciclo (movimientos), y fichas con caravana electrónica por ciclo
-      const porCiclo={}; for(const m of Object.values(state.mov)){ if(!m||m.campo!==campo||m.cat!==cat)continue; const c=m.ciclo||"(sin ciclo)"; porCiclo[c]=(porCiclo[c]||0)+(m.tipo==="ingreso"?m.cant:-m.cant); }
-      const conC={}; for(const a of Object.values(state.animales)){ if(!a||(a.estado||"activo")!=="activo"||a.campo!==campo||a.cat!==cat||limpiarEID(a.caravana).length<12)continue; const c=cicloDe(a)||"(sin ciclo)"; conC[c]=(conC[c]||0)+1; }
-      const ciclos=[...new Set([...Object.keys(porCiclo),...Object.keys(conC)])].sort();
-      for(const c of ciclos){ const st=porCiclo[c]||0, con=conC[c]||0; if(st<=0&&con<=0)continue; filas.push({cat,ciclo:c,st,con,faltan:Math.max(0,st-con)}); }
+      // stock por lote a hoy (todos los ciclos, igual que la pestaña Stock) y fichas activas con caravana electrónica
+      const st=stockSenasa(campo,cat); let con=0; for(const a of Object.values(state.animales)){ if(a&&(a.estado||"activo")==="activo"&&a.campo===campo&&a.cat===cat&&limpiarEID(a.caravana).length>=12)con++; }
+      if(st<=0&&con<=0)continue; filas.push({cat,ciclo:"",st,con,faltan:Math.max(0,st-con)});
     }
     if(!filas.length)continue;
     const totCampo=filas.reduce((x,f)=>x+f.faltan,0); totF+=totCampo;
     html+=`<section style="page-break-inside:avoid;margin-bottom:22px"><h2 style="margin:0 0 4px;border-bottom:2px solid #2d4a1e;padding-bottom:3px">${h(campo)} <span style="font-weight:400;font-size:13px;color:#555">· faltan caravanear <strong>${totCampo}</strong></span></h2>
-      <table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:8px"><tr style="background:#eef5e6"><th style="text-align:left;padding:3px 6px;border:1px solid #bbb">Categoría</th><th style="padding:3px 6px;border:1px solid #bbb">Ciclo</th><th style="padding:3px 6px;border:1px solid #bbb">Stock por lote</th><th style="padding:3px 6px;border:1px solid #bbb">Con caravana</th><th style="padding:3px 6px;border:1px solid #bbb">Faltan</th></tr>
-      ${filas.map(f=>`<tr><td style="padding:3px 6px;border:1px solid #bbb">${h(f.cat)}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${h(f.ciclo)}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.st}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.con}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center;font-weight:700">${f.faltan}</td></tr>`).join("")}</table>
-      ${filas.filter(f=>f.faltan>0).map(f=>`<div style="margin:6px 0 10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">${h(f.cat)} ${h(f.ciclo)} — tachar una casilla por animal caravaneado (${f.faltan})</div><div style="display:flex;flex-wrap:wrap;gap:3px">${Array.from({length:f.faltan},(_,i)=>`<span style="display:inline-block;width:22px;height:22px;border:1.5px solid #333;border-radius:3px;font-size:8px;color:#999;text-align:center;line-height:22px">${i+1}</span>`).join("")}</div></div>`).join("")}
+      <table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:8px"><tr style="background:#eef5e6"><th style="text-align:left;padding:3px 6px;border:1px solid #bbb">Categoría</th><th style="padding:3px 6px;border:1px solid #bbb">Stock por lote (hoy)</th><th style="padding:3px 6px;border:1px solid #bbb">Con caravana</th><th style="padding:3px 6px;border:1px solid #bbb">Faltan</th></tr>
+      ${filas.map(f=>`<tr><td style="padding:3px 6px;border:1px solid #bbb">${h(f.cat)}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.st}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center">${f.con}</td><td style="padding:3px 6px;border:1px solid #bbb;text-align:center;font-weight:700">${f.faltan}</td></tr>`).join("")}</table>
+      ${filas.filter(f=>f.faltan>0).map(f=>`<div style="margin:6px 0 10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">${h(f.cat)} — tachar una casilla por animal caravaneado (${f.faltan})</div><div style="display:flex;flex-wrap:wrap;gap:3px">${Array.from({length:f.faltan},(_,i)=>`<span style="display:inline-block;width:22px;height:22px;border:1.5px solid #333;border-radius:3px;font-size:8px;color:#999;text-align:center;line-height:22px">${i+1}</span>`).join("")}</div></div>`).join("")}
     </section>`;
   }
   if(!html)return alert("No hay stock por lote cargado para armar la planilla.");
