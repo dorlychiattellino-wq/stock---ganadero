@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-b";
+window.APP_VERSION="2026.09.14-d";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -645,7 +645,7 @@ function renderMov(){
   <div style="background:#fff;border:1px solid #f59e0b;border-radius:8px;padding:.9rem;margin-bottom:.8rem">
     <h3 style="color:#92400e">${state.editAlerta.id?"✏️ Editar":"➕ Nueva"} alerta</h3>
     <div class="fg">
-      <label>Fecha<input id="al_fecha" type="date" value="${state.editAlerta.fecha||new Date().toISOString().slice(0,10)}"/></label>
+      <label>Fecha<input id="al_fecha" type="date" value="${state.editAlerta.fecha||hoyISO()}"/></label>
       <label>Prioridad<select id="al_color">
         <option value="urgente" ${state.editAlerta.color==="urgente"?"selected":""}>🔴 Urgente</option>
         <option value="atencion" ${(!state.editAlerta.color||state.editAlerta.color==="atencion")?"selected":""}>🟡 Atención</option>
@@ -769,7 +769,7 @@ function renderAct(){
   <div style="background:#fff;border:1px solid #f59e0b;border-radius:8px;padding:.9rem;margin-bottom:.8rem">
     <h3 style="color:#92400e">${state.editAlertaAct.id?"✏️ Editar":"➕ Nueva"} alerta</h3>
     <div class="fg">
-      <label>Fecha<input id="ala_fecha" type="date" value="${state.editAlertaAct.fecha||new Date().toISOString().slice(0,10)}"/></label>
+      <label>Fecha<input id="ala_fecha" type="date" value="${state.editAlertaAct.fecha||hoyISO()}"/></label>
       <label>Prioridad<select id="ala_color">
         <option value="urgente" ${state.editAlertaAct.color==="urgente"?"selected":""}>🔴 Urgente</option>
         <option value="atencion" ${(!state.editAlertaAct.color||state.editAlertaAct.color==="atencion")?"selected":""}>🟡 Atención</option>
@@ -944,7 +944,7 @@ function renderStock(){
   }
   const rows=[];
   for(const c of Object.keys(smap))for(const cat of Object.keys(smap[c])){const d=smap[c][cat];rows.push({campo:c,cat,...d,p:d.ing>0?d.muertes/d.ing*100:0})}
-  const fechaCSV=f.hasta||new Date().toISOString().slice(0,10);
+  const fechaCSV=f.hasta||hoyISO();
   const csv=[["Fecha","Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows.map(r=>[fechaCSV,r.campo,r.cat,r.ing,r.egr,r.muertes,r.p.toFixed(1),r.stock])].map(r=>r.join(",")).join("\n");
   const campos2=Object.keys(smap);
   return `
@@ -1864,7 +1864,7 @@ const ESPECIES_EXTRA=["Ovejas","Carneros","Corderos","Corderas","Capones","Borre
 
 const REC_ICONOS=["💉","🐂","🩺","🧪","📋","⚠️","📅","🐄","🐑","🐎"];
 function recordatoriosVigentes(){
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   return Object.values(state.recordatorios).filter(r=>r.desde&&r.hasta&&r.desde<=hoy&&hoy<=r.hasta)
     .sort((a,b)=>(a.hasta||"").localeCompare(b.hasta||""));
 }
@@ -1903,7 +1903,7 @@ function stockSenasa(campo,cat,hasta){
 function renderSenasa(){
   const f=state.filtSenasa;
   const clist=campos();
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const fechaCorte=f.hasta||hoy;
   const fechaLabel=fechaCorte.split('-').reverse().join('/');
 
@@ -1946,7 +1946,7 @@ function renderSenasa(){
   </div>`:""}
   ${Object.keys(state.recordatorios).length===0&&state.editRecordatorio===undefined?`<p style="color:#8a6a30;font-size:.85rem;text-align:center;padding:.5rem">Sin recordatorios. Tocá "➕ Nuevo recordatorio" para agregar.</p>`:""}
   ${Object.values(state.recordatorios).sort((a,b)=>(a.desde||"").localeCompare(b.desde||"")).map(r=>{
-    const hoy=new Date().toISOString().slice(0,10);
+    const hoy=hoyISO();
     const vigente=r.desde&&r.hasta&&r.desde<=hoy&&hoy<=r.hasta;
     const pasado=r.hasta&&r.hasta<hoy;
     return `
@@ -2084,7 +2084,7 @@ function exportExcel(){
   wb+=`</body></html>`;
   const blob=new Blob([wb],{type:"application/vnd.ms-excel;charset=utf-8"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-  a.download="StockGanadero_"+new Date().toISOString().slice(0,10)+".xls";a.click();
+  a.download="StockGanadero_"+hoyISO()+".xls";a.click();
   toast("✅ Excel exportado");
 }
 
@@ -2126,7 +2126,7 @@ function exportBackup(){
   const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-  a.download="StockGanadero_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
+  a.download="StockGanadero_backup_"+hoyISO()+".json";a.click();
   toast("💾 Backup descargado");
 }
 
@@ -2595,7 +2595,7 @@ window.updPar=function(k,v){
   if(el)el.textContent=v+(k==="kgAnimal"?" kg":"%");
 };
 window.editMovBtn=function(id){state.editMov=state.mov[id];render();};
-window.abrirNuevaAlerta=function(){state.editAlerta={fecha:new Date().toISOString().slice(0,10),color:"atencion",titulo:"",mensaje:""};render();};
+window.abrirNuevaAlerta=function(){state.editAlerta={fecha:hoyISO(),color:"atencion",titulo:"",mensaje:""};render();};
 window.cancelarAlerta=function(){state.editAlerta=undefined;render();};
 window.editarAlerta=function(id){state.editAlerta={...state.alertas[id]};render();};
 window.eliminarAlerta=async function(id){
@@ -2615,7 +2615,7 @@ window.guardarAlerta=async function(){
   toast("✅ Alerta guardada");
 };
 // ── Alertas de Actividades ──
-window.abrirNuevaAlertaAct=function(){state.editAlertaAct={fecha:new Date().toISOString().slice(0,10),color:"atencion",titulo:"",mensaje:""};render();};
+window.abrirNuevaAlertaAct=function(){state.editAlertaAct={fecha:hoyISO(),color:"atencion",titulo:"",mensaje:""};render();};
 window.cancelarAlertaAct=function(){state.editAlertaAct=undefined;render();};
 window.editarAlertaAct=function(id){state.editAlertaAct={...state.alertasAct[id]};render();};
 window.eliminarAlertaAct=async function(id){
@@ -2733,7 +2733,7 @@ window.delSenExtra=async function(id){
 };
 window.pdfSenasa=function(){
   const f=state.filtSenasa;
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const fechaCorte=f.hasta||hoy;
   const fechaLabel=fechaCorte.split('-').reverse().join('/');
   const clist=campos();
@@ -2916,6 +2916,7 @@ function doSubmitMov(){
   if(!fecha||!campo||!cat||!cantFinal)return alert("Completa: fecha, campo, categoria y cantidad (o pegá caravanas).");
   if(refs.length&&cant&&cant!==refs.length&&!confirm("La cantidad ("+cant+") no coincide con las caravanas pegadas ("+refs.length+"). ¿Guardar igual?"))return;
   const e={fecha,campo,cat,ciclo,tipo,sub,cant:cantFinal,obs,id:state.editMov?state.editMov.id:uid()};
+  if(state.editMov){ for(const k of ["caravanas","origen","destino"]){ if(state.editMov[k]!==undefined&&e[k]===undefined)e[k]=state.editMov[k]; } }
   const og=leerOrigen(); if(og)e.origen=og;
   saveMov(e).then(async()=>{ if(og)await guardarOrigen(og); if(refs.length)await aplicarMovAGrupo(e,refs); state.editMov=null;state.movGrupoTxt="";clearFormMov();render();});
 }
@@ -2957,6 +2958,7 @@ function doSubmitAct(){
     return;
   }
   const e={fecha,campo,cat,ciclo,tipo,cant:isNaN(cant)?null:cant,kg,obs,id:state.editAct?state.editAct.id:uid()};
+  if(state.editAct){ for(const k of ["caravanas","tactoId","toros","trDestino","trPre","trCut","trSeg","trDsc","ceOrigen","ceDestino","ceCant","ceMotivo","ceNota"]){ if(state.editAct[k]!==undefined&&e[k]===undefined)e[k]=state.editAct[k]; } }
   if(tipo==="Entore"){ e.toros=(state.editAct&&state.editAct.toros)||state.formAct.toros||[]; }
   // Si es Cambio de estado, capturar los campos extra
   if(tipo==="Cambio de estado"){
@@ -3006,7 +3008,7 @@ function doDownloadCSV(){
   const rows=[];
   for(const c of Object.keys(smap))for(const cat of Object.keys(smap[c])){const d=smap[c][cat];rows.push([c,cat,d.ing,d.egr,d.muertes,d.ing>0?(d.muertes/d.ing*100).toFixed(1)+"%":"0%",d.stock])}
   const csv=[["Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows].map(r=>r.join(",")).join("\n");
-  const fechaStr=f.hasta?f.hasta:new Date().toISOString().slice(0,10);
+  const fechaStr=f.hasta?f.hasta:hoyISO();
   const fechaCSV2=fechaStr;
   const smap2={};
   for(const m of fil){
@@ -3057,7 +3059,7 @@ function horaDe(d){
 }
 function fmtF(iso){ if(!iso)return "—"; const [y,m,d]=String(iso).split("-"); return d+"/"+m+"/"+y; }
 function diasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
-function hoyISO(){ return new Date().toISOString().slice(0,10); }
+function hoyISO(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); } // fecha LOCAL (no UTC)
 function sinUndef(o){ const r={}; for(const k of Object.keys(o)){ if(o[k]!==undefined)r[k]=o[k]; } return r; }
 function limpioProfundo(o){ try{ return JSON.parse(JSON.stringify(o,(k,v)=>v===undefined?null:(typeof v==="number"&&!isFinite(v)?null:v))); }catch(e){ return o; } }
 
@@ -4352,22 +4354,22 @@ function contribMov(M,a){ // devuelve {anim: cambios ficha, lote:[contribs], txt
     const cat=M.movSub==="Cambio Categoria"?M.movCatNueva:(M.movCat||a.cat);
     lote.push({id:`${S}_i_${cat}`,col:"mov",base:{...base,campo:M.campo,cat,tipo:"ingreso",sub:M.movSub,...(o?{origen:o}:{})},n:{cant:1}});
     if(M.movSub==="Traslado entrada")lote.push({id:`${S}_e_${a.cat}`,col:"mov",base:{...base,campo:M.movCampo2,cat:a.cat,tipo:"egreso",sub:"Traslado salida"},n:{cant:1}});
-    if(M.movSub==="Cambio Categoria")lote.push({id:`${S}_e_${a.cat}`,col:"mov",base:{...base,campo:M.campo,cat:a.cat,tipo:"egreso",sub:"Cambio Categoria"},n:{cant:1}});
+    if(M.movSub==="Cambio Categoria")lote.push({id:`${S}_e_${a.cat}`,col:"mov",base:{...base,ciclo:cicloDe(a)||M.ciclo,campo:M.campo,cat:a.cat,tipo:"egreso",sub:"Cambio Categoria"},n:{cant:1}});
     Object.assign(anim,{campo:M.campo,cat,sexo:a.sexo||sexoDeCat(cat),estado:"activo",fechaBaja:""});
     if(!a.ingresoTipo||a.origen==="hook"){ anim.ingresoTipo=M.movSub; if(o){anim.origenNombre=o.nombre;anim.origenCuit=o.cuit||"";anim.origenRenspa=o.renspa||"";} else if(M.movCampo2){anim.origenNombre=M.movCampo2;anim.origenRenspa=(typeof renspaDe==="function"?renspaDe(M.movCampo2):"")||"";} }
     txt="⬇️ "+M.movSub+(cat!==a.cat?" · "+a.cat+" → "+cat:"")+(M.movCampo2?" desde "+M.movCampo2:"");
   } else {
-    const campoSal=a.campo||M.campo;
-    lote.push({id:`${S}_e_${campoSal}_${a.cat}`,col:"mov",base:{...base,campo:campoSal,cat:a.cat,tipo:"egreso",sub:M.movSub,...(o?{destino:o.nombre}:{})},n:{cant:1}});
-    if(M.movSub==="Traslado salida"){ lote.push({id:`${S}_i_${a.cat}`,col:"mov",base:{...base,campo:M.movCampo2,cat:a.cat,tipo:"ingreso",sub:"Traslado entrada"},n:{cant:1}}); anim.campo=M.movCampo2; }
-    else if(M.movSub==="Cambio Categoria"){ lote.push({id:`${S}_i_${campoSal}_${M.movCatNueva}`,col:"mov",base:{...base,campo:campoSal,cat:M.movCatNueva,tipo:"ingreso",sub:"Cambio Categoria"},n:{cant:1}}); anim.cat=M.movCatNueva; anim.sexo=a.sexo||sexoDeCat(M.movCatNueva); }
+    const campoSal=a.campo||M.campo; const cicloA=cicloDe(a)||M.ciclo; const CS=(campoSal+"_"+cicloA).replace(/[.#$\[\]\/]/g,"_");
+    lote.push({id:`${S}_e_${CS}_${a.cat}`,col:"mov",base:{...base,ciclo:cicloA,campo:campoSal,cat:a.cat,tipo:"egreso",sub:M.movSub,...(o?{destino:o.nombre}:{})},n:{cant:1}});
+    if(M.movSub==="Traslado salida"){ lote.push({id:`${S}_i_${cicloA.replace(/\//g,"_")}_${a.cat}`,col:"mov",base:{...base,ciclo:cicloA,campo:M.movCampo2,cat:a.cat,tipo:"ingreso",sub:"Traslado entrada"},n:{cant:1}}); anim.campo=M.movCampo2; }
+    else if(M.movSub==="Cambio Categoria"){ lote.push({id:`${S}_i_${CS}_${M.movCatNueva}`,col:"mov",base:{...base,ciclo:cicloA,campo:campoSal,cat:M.movCatNueva,tipo:"ingreso",sub:"Cambio Categoria"},n:{cant:1}}); anim.cat=M.movCatNueva; anim.sexo=a.sexo||sexoDeCat(M.movCatNueva); }
     else { anim.estado=M.movSub==="Venta"?"vendido":M.movSub==="Muerte"?"muerto":M.movSub==="Faena"?"faenado":"descartado"; anim.fechaBaja=M.fecha; if(o)anim.destino=o.nombre; }
     txt="⬆️ "+M.movSub+(campoSal!==M.campo?" (asentado en "+campoSal+")":"")+(M.movCampo2?" hacia "+M.movCampo2:"")+(M.movSub==="Cambio Categoria"?" · "+a.cat+" → "+M.movCatNueva:"");
   }
   return {anim,lote,txt};
 }
 function contribAct(M,a,acts){
-  const S=M.sesionId; const campoA=a.campo||M.campo; const CA=campoA.replace(/[.#$\[\]\/]/g,"_"); const base={fecha:M.fecha,campo:campoA,cat:a.cat,ciclo:M.ciclo,obs:"Manga "+fmtF(M.fecha)+(campoA!==M.campo?" (manga en "+M.campo+")":"")}; const lote=[]; const anim={}; const evs=[]; const partes=[];
+  const S=M.sesionId; const campoA=a.campo||M.campo; const cicloA=cicloDe(a)||M.ciclo; const CA=(campoA+"_"+cicloA).replace(/[.#$\[\]\/]/g,"_"); const base={fecha:M.fecha,campo:campoA,cat:a.cat,ciclo:cicloA,obs:"Manga "+fmtF(M.fecha)+(campoA!==M.campo?" (manga en "+M.campo+")":"")}; const lote=[]; const anim={}; const evs=[]; const partes=[];
   const er=M.estRepSel||a.estadoRep||""; if(M.estRepSel&&M.estRepSel!==a.estadoRep)anim.estadoRep=M.estRepSel;
   for(const t of acts.tipos){
     if(t==="Tacto"){ const r=M.tactoRes; evs.push({tipo:"Tacto",producto:r}); anim.estadoRep=r; anim.fechaTacto=M.fecha; const tb={...base,tactoId:S};
@@ -4376,7 +4378,7 @@ function contribAct(M,a,acts){
       partes.push("tacto: "+r); continue; }
     if(t==="Traslado de rodeo"){ const n={cant:1}; if(er==="preñada")n.trPre=1; else if(er==="cut"){n.trPre=1;n.trCut=1;} else if(er==="2da oportunidad")n.trSeg=1; else if(er==="descarte")n.trDsc=1; else if(er==="vacía")n.trSeg=1;
       lote.push({id:`${S}_tr_${CA}_${a.cat}`,col:"act",base:{...base,tipo:"Traslado de rodeo",trDestino:M.trDestino},n});
-      if(M.trMov){ lote.push({id:`${S}_e_${CA}_${a.cat}`,col:"mov",base:{fecha:M.fecha,ciclo:M.ciclo,campo:campoA,cat:a.cat,tipo:"egreso",sub:"Traslado salida",obs:"Manga "+fmtF(M.fecha)+" (traslado de rodeo)"},n:{cant:1}}); lote.push({id:`${S}_i_${a.cat}`,col:"mov",base:{fecha:M.fecha,ciclo:M.ciclo,campo:M.trDestino,cat:a.cat,tipo:"ingreso",sub:"Traslado entrada",obs:"Manga "+fmtF(M.fecha)+" (traslado de rodeo)"},n:{cant:1}}); }
+      if(M.trMov){ lote.push({id:`${S}_e_${CA}_${a.cat}`,col:"mov",base:{fecha:M.fecha,ciclo:cicloA,campo:campoA,cat:a.cat,tipo:"egreso",sub:"Traslado salida",obs:"Manga "+fmtF(M.fecha)+" (traslado de rodeo)"},n:{cant:1}}); lote.push({id:`${S}_i_${cicloA.replace(/\//g,"_")}_${a.cat}`,col:"mov",base:{fecha:M.fecha,ciclo:cicloA,campo:M.trDestino,cat:a.cat,tipo:"ingreso",sub:"Traslado entrada",obs:"Manga "+fmtF(M.fecha)+" (traslado de rodeo)"},n:{cant:1}}); }
       anim.campo=M.trDestino; evs.push({tipo:"Traslado de rodeo",producto:M.campo+" → "+M.trDestino+" ("+er+")"}); partes.push("→ "+M.trDestino); continue; }
     if(t==="Cambio de estado"){ const origen=estRepLote(er); const dest=M.ceDestAnim||M.ceDest; if(!origen||!dest||origen===dest)continue;
       lote.push({id:`${S}_ce_${CA}_${a.cat}_${origen}_${dest}`,col:"act",base:{...base,tipo:"Cambio de estado",ceOrigen:origen,ceDestino:dest,ceMotivo:M.ceMotivo,ceNota:M.ceNota},n:{cant:1,ceCant:1}});
@@ -4465,7 +4467,7 @@ window.reconstruirSesiones=async function(){
     const M2={...mgDefaults(),sesionId:sid,fecha,campo,ciclo:cicloActual(),modo:esMov?"mov":"act",tipos,tiposDisp:tipos,productos,prodsDisp:productos,log:[],grupo:[],loteIds:[]};
     if(esMov){ const mm=movEv.producto.match(/^(Ingreso|Egreso): (.+)$/); M2.movTipo=mm[1]==="Ingreso"?"ingreso":"egreso"; M2.movSub=mm[2]; }
     for(const k of keys){ const a=state.animales[k]; if(!a)continue; const mios=L.filter(e=>e.animal===k); const lote=[]; const partes=[];
-      const S=sid; const campoA=a.campo||campo; const CA=campoA.replace(/[.#$\[\]\/]/g,"_"); const base={fecha,campo:campoA,cat:a.cat,ciclo:M2.ciclo,obs:"Manga "+fmtF(fecha)+" (reconstruido)"};
+      const S=sid; const campoA=a.campo||campo; const cicloA=cicloDe(a)||M2.ciclo; const CA=(campoA+"_"+cicloA).replace(/[.#$\[\]\/]/g,"_"); const base={fecha,campo:campoA,cat:a.cat,ciclo:cicloA,obs:"Manga "+fmtF(fecha)+" (reconstruido)"};
       for(const e of mios){ const t=e.tipo; const pr=e.producto||"";
         if(t==="Otro"&&/^Alta: /.test(pr)){ partes.push("🆕 "+pr.slice(6)); continue; }
         if(t==="Otro"&&/^(Ingreso|Egreso): /.test(pr)){ const mm=pr.match(/^(Ingreso|Egreso): (.+)$/); const tipo=mm[1]==="Ingreso"?"ingreso":"egreso"; lote.push({id:`${S}_${tipo==="ingreso"?"i":"e"}_${CA}_${a.cat}`,col:"mov",base:{fecha,ciclo:M2.ciclo,campo:campoA,cat:a.cat,tipo,sub:mm[2],obs:"Manga "+fmtF(fecha)+" (reconstruido)"},n:{cant:1}}); partes.push(pr); continue; }
