@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-u";
+window.APP_VERSION="2026.09.14-w";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4236,7 +4236,7 @@ function resumenSesion(M){
   if(M.modo==="act"){ return base+` · <strong>ACTIVIDAD: ${h(M.tipos.join(" + ")||"(elegí)")}</strong>`+(M.productos.length?" · "+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis})):"")+(M.tipos.includes("Traslado de rodeo")&&M.trDestino?" · a "+h(M.trDestino):"")+(M.tipos.includes("Cambio de estado")&&M.ceDest?" · → "+h(M.ceDest):""); }
   return base+" · <span style='color:#c82010'>elegí Movimiento o Actividad</span>";
 }
-function renderMangaTab(){ const M=MG(); M.on=true; if(!M.sesionId)M.sesionId=uid(); return renderManga(); }
+function renderMangaTab(){ if(!_pcNormalizado&&state.loaded&&esAdmin()){ _pcNormalizado=true; normalizarPesajeControl(); } const M=MG(); M.on=true; if(!M.sesionId)M.sesionId=uid(); return renderManga(); }
 function renderManga(){
   const M=MG(); const clist=campos(); const a=M.animal?state.animales[M.animal]:null;
   const cicl=[...new Set([...ciclos(),cicloActual()])].sort();
@@ -4376,6 +4376,8 @@ function renderMangaAlta(M){
   return `<div id="mangaPanel" style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #c82010">
     <div style="font-size:1.2rem;color:#c82010;font-weight:800">❓ Animal nuevo: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
     <div class="km" style="margin:.2rem 0 .5rem">Se carga en <strong>${h(M.campo)}</strong>${M.modo==="mov"&&M.movTipo==="ingreso"?" por <strong>"+h(M.movSub)+"</strong>"+(M.movOrigen.nombre?" desde "+h(M.movOrigen.nombre):M.movCampo2?" desde "+h(M.movCampo2):""):" (no suma al stock por lote)"}.</div>
+    ${limpiarEID(M.nuevoEID).length>=12?(()=>{const sinE=Object.values(state.animales).filter(x=>x&&(x.estado||"activo")==="activo"&&x.visual&&limpiarEID(x.caravana).length<12).sort((a,b)=>a.visual.localeCompare(b.visual,"es",{numeric:true})); return sinE.length?`<div style="background:#eef3f8;border:2px solid #1e4a7a;border-radius:10px;padding:.6rem;margin-bottom:.6rem"><strong style="color:#1e4a7a">🔗 ¿Es un animal que ya está cargado por su caravana visual?</strong> <span class="km">(vacas, vaquillonas, toros con IATF/tactos) — escribí la visual y la app une las dos caravanas conservando todo el historial</span>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.4rem"><input id="mg_recar" list="mg-visuales" value="${h(M.recarVisual||"")}" oninput="MG().recarVisual=this.value" onchange="MG().recarVisual=this.value" placeholder="Ej: BT627A025" style="width:200px;padding:.6rem;font-size:1.05rem;font-family:monospace;text-transform:uppercase"/><datalist id="mg-visuales">${sinE.map(x=>`<option value="${h(x.visual)}">${h(x.cat||"")} · ${h(x.campo||"")}${x.estadoRep?" · "+h(x.estadoRep):""}</option>`).join("")}</datalist><button style="${BTN_V};flex:0 0 auto;padding:.7rem 1rem;background:#1e4a7a" onclick="mangaRecaravanear()">🔗 UNIR con esa visual</button></div></div>`:"";})():""}
     ${esTern||cats.length>1?`<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem;align-items:center">
       <button style="${altaCat==="Terneros"?BTN_V:BTN_G};font-size:1.3rem;padding:1rem;flex:1;min-width:150px" onclick="setFAnimMg('altaCatSel','Terneros')">♂ TERNERO</button>
       <button style="${altaCat==="Terneras"?BTN_V:BTN_G};font-size:1.3rem;padding:1rem;flex:1;min-width:150px" onclick="setFAnimMg('altaCatSel','Terneras')">♀ TERNERA</button>
@@ -4439,7 +4441,16 @@ function renderBotonesAnimal(M){ return `<button style="${BTN_V};font-size:1.4re
 
 // ── Acciones de configuración ──
 async function asegurarActividad(nombre){ if(actividadesAll(true).some(a=>a.toLowerCase()===nombre.toLowerCase()))return; const id=uid(); state.actividadesCustom={...(state.actividadesCustom||{}),[id]:{id,nombre,activo:true}}; await set(ref(db,"actividadesCustom/"+id),{id,nombre,activo:true}); }
-function ajustarPesajeControl(M){ const esDest=M.tipos.includes("Pesaje")||M.tipos.includes("Destete"); const PC="Pesaje de control";
+const PC_NOMBRE="Pesaje de control";
+async function normalizarPesajeControl(){ // unifica cualquier "Pesaje de Control" creada a mano con la automática: queda una sola, con el nombre estándar
+  if(!esAdmin())return; const cs=Object.values(state.actividadesCustom||{}).filter(c=>c&&normTxt(c.nombre)===normTxt(PC_NOMBRE)); if(!cs.length)return;
+  const keep=cs[0]; let cambio=false;
+  if(keep.nombre!==PC_NOMBRE){ const viejo=keep.nombre; await set(ref(db,"actividadesCustom/"+keep.id),{...keep,nombre:PC_NOMBRE,activo:true}); state.actividadesCustom[keep.id]={...keep,nombre:PC_NOMBRE,activo:true}; for(const a of Object.values(state.act)){ if(a&&a.tipo===viejo)await set(ref(db,"act/"+a.id),{...a,tipo:PC_NOMBRE}); } for(const e of Object.values(state.eventos)){ if(e&&e.tipo===viejo)await set(ref(db,"eventos/"+e.id),{...e,tipo:PC_NOMBRE}); } cambio=true; }
+  for(const c of cs.slice(1)){ await remove(ref(db,"actividadesCustom/"+c.id)); delete state.actividadesCustom[c.id]; for(const a of Object.values(state.act)){ if(a&&a.tipo===c.nombre&&c.nombre!==PC_NOMBRE)await set(ref(db,"act/"+a.id),{...a,tipo:PC_NOMBRE}); } cambio=true; }
+  if(cambio)toast("🧹 Actividad \"Pesaje de control\" unificada");
+}
+let _pcNormalizado=false;
+function ajustarPesajeControl(M){ if(!_pcNormalizado){ _pcNormalizado=true; normalizarPesajeControl(); } const esDest=M.tipos.includes("Pesaje")||M.tipos.includes("Destete"); const PC=PC_NOMBRE;
   if(M.pesar&&!esDest){ asegurarActividad(PC); if(!M.tiposDisp.includes(PC))M.tiposDisp.push(PC); if(!M.tipos.includes(PC))M.tipos.push(PC); }
   else { M.tipos=M.tipos.filter(t=>t!==PC); M.tiposDisp=M.tiposDisp.filter(t=>t!==PC); } }
 window.setFAnimMg=function(k,v){ const M=MG(); M[k]=v; if(k==="pesar")ajustarPesajeControl(M); if(k==="raza"||k==="padre"||k==="ciclo"||k==="fecha"||k==="ceNota"||k==="altaMadre"){ if(k!=="altaMadre")return; } render(); };
@@ -4467,13 +4478,31 @@ window.mangaPadreSugerir=function(){ const M=MG(); const a=M.animal?state.animal
 // ── Lectura ──
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
 function mangaLeer(a,eidOrVisual){ const M=MG(); if(M.cfg){ alert("Primero tocá ✔ LISTO, A LA MANGA."); return; }
-  M.editIdx=null; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
+  M.editIdx=null; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
   if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; toast("⚠️ "+nombreAnimal(a)+" ya pasó hoy (no se cuenta de nuevo)"); if(M.auto){ M.animal=null; M.nuevoEID=""; render(); enfocar("bl_eid"); return; } }
   if(a){ M.animal=a.key; M.nuevoEID=""; } else { M.animal=null; M.nuevoEID=eidOrVisual; }
   render(); mangaScrollArriba(); 
   if(a&&M.auto&&!M.grupo.includes(a.key)){ const necesita=M.pesar||M.tipos.includes("Tacto")||((M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado"))&&!a.estadoRep); if(!necesita){ mangaOk(); } } }
 
 // ── Alta ──
+window.mangaRecaravanear=async function(){
+  const M=MG(); const eid=limpiarEID(M.nuevoEID); const vis=String((document.getElementById("mg_recar")||{}).value||M.recarVisual||"").trim().toUpperCase(); if(!vis)return alert("Escribí la caravana visual.");
+  if(eid.length<12)return; if(state.animales[eid])return alert("Esa electrónica ya está cargada.");
+  const old=buscarAnimalRef(vis); if(!old)return alert("No encontré ningún animal con la visual "+vis+". Revisá el número, o cargalo como nuevo.");
+  if(limpiarEID(old.caravana).length>=12)return alert(nombreAnimal(old)+" ya tiene otra caravana electrónica (…"+eidCorto(old.caravana)+").");
+  if(!confirm("Unir la electrónica …"+eid.slice(-6)+" con "+nombreAnimal(old)+" ("+(old.cat||"")+" · "+(old.campo||"")+")? Conserva IATF, tactos, actividades y pesadas."))return;
+  const nuevo=sinUndef({...old,key:eid,caravana:eid,visual:old.visual||vis,modificado:hoyISO()});
+  const mp={...state.pesadas}; for(const pz of pesadasDe(old.key)){ mp[pz.id]={...pz,animal:eid}; await set(ref(db,"pesadas/"+pz.id),mp[pz.id]); } state.pesadas=mp;
+  const me={...state.eventos}; for(const e of Object.values(me)){ if(e&&e.animal===old.key){ me[e.id]={...e,animal:eid}; await set(ref(db,"eventos/"+e.id),me[e.id]); } } state.eventos=me;
+  for(const ss of Object.values(state.mangaSesiones)){ if(ss&&Array.isArray(ss.animales)&&ss.animales.includes(old.key)){ const n2={...ss,animales:ss.animales.map(k=>k===old.key?eid:k)}; state.mangaSesiones[ss.id]=n2; await set(ref(db,"mangaSesiones/"+ss.id),limpioProfundo(n2)); } }
+  delete state.animales[old.key]; await remove(ref(db,"animales/"+old.key)); state.animales[eid]=nuevo; await set(ref(db,"animales/"+eid),nuevo);
+  if(old.toroId&&state.toros[old.toroId]){ const t={...state.toros[old.toroId],caravana:eid}; state.toros[t.id]=t; await set(ref(db,"toros/"+t.id),t); }
+  const ev={id:idEvento(eid,M.fecha,mangaHora(),"Recaravaneo")+"_"+Date.now().toString(36),animal:eid,fecha:M.fecha,hora:mangaHora(),tipo:"Otro",producto:"Caravana electrónica colocada",dosis:"",enfermedad:"",obs:"Visual "+(old.visual||vis)+" → …"+eid.slice(-6),origen:"manga",sesion:M.sesionId}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev);
+  M.log.push({key:eid,nombre:nombreAnimal(nuevo),txt:"🔗 recaravaneo: "+(old.visual||vis)+" + …"+eid.slice(-6),ids:{pesadas:[],eventos:[ev.id]},lote:[],recar:{old:old}});
+  toast("🔗 "+nombreAnimal(nuevo)+" unida"); M.recarVisual=""; M.nuevoEID=""; M.animal=eid; render(); mangaScrollArriba(); guardarSesionManga();
+  const necesita=M.pesar||M.tipos.includes("Tacto")||M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado")||M.tipos.includes("IATF");
+  if(!necesita&&(M.modo==="mov"||M.tipos.length))await mangaOk();
+};
 window.mangaAltaToroNuevo=async function(nombre){ nombre=String(nombre||"").trim(); if(!nombre)return; if(Object.values(state.toros).some(t=>t&&t.nombre.toLowerCase()===nombre.toLowerCase()))return alert("Ya existe un toro con ese nombre; elegilo de la lista."); const id=uid(); const t={id,nombre,raza:MG().raza||"",cabana:"",precio:null,dosisCompradas:null,usos:null,obs:"Creado desde la manga",activo:true,caravana:"",visual:"",uso:"Toro a campo",proc:"Producción propia",campoNac:MG().campo}; state.toros[id]=t; await set(ref(db,"toros/"+id),t); MG()._toroId=id; render(); };
 window.mangaAlta=async function(cat){
   const M=MG(); const eid=M.nuevoEID; if(!eid||!cat)return; const isE=limpiarEID(eid).length>=12; const key=keyAnimal(isE?limpiarEID(eid):"",isE?"":eid); if(!key)return;
@@ -4662,6 +4691,7 @@ window.mangaDeshacer=async function(i){
   for(const id of l.ids.eventos||[]){ delete state.eventos[id]; await remove(ref(db,"eventos/"+id)); }
   for(const id of l.ids.iatf||[]){ delete state.iatf[id]; await remove(ref(db,"iatf/"+id)); }
   for(const x of l.ids.iatfTacto||[]){ const r=state.iatf[x.id]; if(r){ const n={...r,resultado:x.prev}; delete n.fechaTacto; state.iatf[x.id]=n; await set(ref(db,"iatf/"+x.id),n); } }
+  if(l.recar&&l.recar.old){ const old=l.recar.old; const cur=state.animales[l.key]; if(cur){ const back=sinUndef({...cur,key:old.key,caravana:old.caravana||"",visual:old.visual}); const mp={...state.pesadas}; for(const pz of pesadasDe(l.key)){ mp[pz.id]={...pz,animal:old.key}; await set(ref(db,"pesadas/"+pz.id),mp[pz.id]); } state.pesadas=mp; const me={...state.eventos}; for(const e of Object.values(me)){ if(e&&e.animal===l.key){ me[e.id]={...e,animal:old.key}; await set(ref(db,"eventos/"+e.id),me[e.id]); } } state.eventos=me; delete state.animales[l.key]; await remove(ref(db,"animales/"+l.key)); state.animales[old.key]=back; await set(ref(db,"animales/"+old.key),back); if(old.toroId&&state.toros[old.toroId]){ const t={...state.toros[old.toroId],caravana:old.caravana||""}; state.toros[t.id]=t; await set(ref(db,"toros/"+t.id),t); } } }
   if(l.alta){ const a=state.animales[l.alta]; if(a&&a.toroId&&state.toros[a.toroId]){ const t=state.toros[a.toroId]; const nt={...t,caravana:"",visual:""}; state.toros[t.id]=nt; await set(ref(db,"toros/"+t.id),nt); } delete state.animales[l.alta]; await remove(ref(db,"animales/"+l.alta)); }
   else if(l.prev){ const a=state.animales[l.key]; if(a){ const n=sinUndef({...a,...l.prev}); state.animales[l.key]=n; await set(ref(db,"animales/"+l.key),n); } }
   M.log.splice(i,1); if(!M.log.some(x=>x.key===l.key))M.grupo=M.grupo.filter(k=>k!==l.key);
