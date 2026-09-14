@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.14-w";
+window.APP_VERSION="2026.09.15-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -590,8 +590,8 @@ function buildApp(){
       ${state.tab===3 ? renderAct() : ""}
       ${state.tab===4 ? renderStock() : ""}
       ${state.tab===5 ? renderComercial() : ""}
-      ${state.tab===6 ? renderStockRep() : ""}
-      ${state.tab===7 ? renderProd() : ""}
+      ${state.tab===6 ? conProyeccion(renderStockRep,"Stock Reproductivo") : ""}
+      ${state.tab===7 ? conProyeccion(renderProd,"Productivo") : ""}
       ${state.tab===8 ? renderComp() : ""}
       ${state.tab===9 ? renderIatf() : ""}
       ${state.tab===10 ? renderSenasa() : ""}
@@ -936,8 +936,34 @@ function renderAct(){
 }
 
 // ── STOCK ──
+function pendRegistros(){ // act y mov de trabajos pendientes, como si estuvieran aprobados
+  const act={},mov={}; let n=0;
+  for(const ss of Object.values(state.mangaSesiones||{})){ if(!ss||!ss.pendiente||ss.aprobado||ss.rechazado||!ss.lote)continue; let u=false; for(const [id,{col,rec}] of Object.entries(ss.lote)){ if(!rec)continue; u=true; (col==="mov"?mov:act)[id]={...rec,id,_pendiente:true}; } if(u)n++; }
+  return {act,mov,n};
+}
+function conProyeccion(fn,nombre){
+  const P=pendRegistros(); if(!P.n)return fn();
+  const banner=(modo)=>`<div style="background:#fff8ee;border:1.5px solid #e0a050;border-radius:8px;padding:.5rem .8rem;margin:.2rem 0 .6rem;font-size:.9rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem"><span>⏳ Hay <strong>${P.n}</strong> trabajo(s) de manga pendientes de aprobación que afectan el ${nombre}. ${modo==="inline"?"Los números grises entre paréntesis muestran cómo quedaría cada valor si se aprueban.":modo==="full"?"<strong>Estás viendo la proyección con esos trabajos incluidos</strong> (los datos oficiales no cambian hasta aprobar).":"La vista oficial no los incluye."}</span><span><button class="bs" style="padding:.2rem .6rem;font-size:.8rem" onclick="state.proyectar=!state.proyectar;render()">${state.proyectar?"Ver datos oficiales":"👁️ Ver proyección completa"}</button>${esAdmin()?` <button class="bs" style="padding:.2rem .6rem;font-size:.8rem" onclick="irATab(1)">Ir a aprobar</button>`:""}</span></div>`;
+  const actO=state.act, movO=state.mov; const oficial=fn();
+  state.act={...actO,...P.act}; state.mov={...movO,...P.mov}; let proy=""; try{ proy=fn(); }finally{ state.act=actO; state.mov=movO; }
+  if(state.proyectar)return banner("full")+proy;
+  // comparar número a número cuando la estructura es la misma
+  const re=/(>[^<]*<)/; const a=oficial.split(re), b=proy.split(re);
+  if(a.length!==b.length)return banner("plain")+oficial;
+  const num=/(-?\d+(?:[.,]\d+)?)(%?)/g; let cambios=0;
+  const out=a.map((seg,i)=>{ if(!seg.startsWith(">")||seg===b[i])return seg; const na=seg.match(num)||[], nb=b[i].match(num)||[]; if(na.length!==nb.length||!na.length)return seg; let k=0; return seg.replace(num,(m)=>{ const v2=nb[k++]; if(v2===m)return m; cambios++; return m+`<span style="color:#888;font-size:.75em;font-weight:400" title="Si se aprueban los trabajos pendientes"> (${v2})</span>`; }); });
+  return banner(cambios?"inline":"plain")+out.join("");
+}
+function pendMovDeltas(){ // registros de movimiento de trabajos de manga pendientes de aprobación: {campo:{cat:{ing,egr,muertes}}}
+  const out={}; let n=0;
+  for(const ss of Object.values(state.mangaSesiones||{})){ if(!ss||!ss.pendiente||ss.aprobado||ss.rechazado||!ss.lote)continue; let usado=false;
+    for(const {col,rec} of Object.values(ss.lote)){ if(col!=="mov"||!rec||!rec.campo||!rec.cat)continue; usado=true; const r=(out[rec.campo]=out[rec.campo]||{}); const d=(r[rec.cat]=r[rec.cat]||{ing:0,egr:0,muertes:0}); if(rec.tipo==="ingreso")d.ing+=rec.cant||0; else { d.egr+=rec.cant||0; if(rec.sub==="Muerte")d.muertes+=rec.cant||0; } }
+    if(usado)n++; }
+  return {map:out,n};
+}
+function proj(v,delta,pct){ if(!delta)return ""; const nv=v+delta; return `<span style="color:#888;font-size:.75em;font-weight:400" title="Si se aprueban los trabajos de manga pendientes"> (${pct?nv.toFixed(1)+"%":nv})</span>`; }
 function renderStock(){
-  const f=state.filtStock; const clist=campos();
+  const f=state.filtStock; const clist=campos(); const PM=pendMovDeltas(); const pd=(campo,cat)=>(PM.map[campo]&&PM.map[campo][cat])||{ing:0,egr:0,muertes:0};
   const fil=Object.values(state.mov).filter(m=>{
     if(f.hasta&&m.fecha>f.hasta)return false;
     if(f.campo&&m.campo!==f.campo)return false;
@@ -961,6 +987,7 @@ function renderStock(){
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="margin:0">📊 Resumen de Stock</h2>${esAdmin()?`<button class="bs" onclick="imprimirCaravaneoPendiente()" title="Planilla para imprimir: cuántos faltan caravanear por campo y categoría, con casillas para ir tachando">🖨️ Planilla de caravaneo pendiente</button>`:""}</div>
   <p class="hint">Filtra por fecha para ver el stock en una fecha determinada. CSV compatible con Power Query.</p>
+  ${PM.n?`<div style="background:#fff8ee;border:1.5px solid #e0a050;border-radius:8px;padding:.5rem .8rem;margin:.4rem 0;font-size:.9rem">⏳ Hay <strong>${PM.n}</strong> trabajo(s) de manga pendientes de aprobación que mueven stock. Los números grises entre paréntesis muestran cómo quedaría cada valor si se aprueban.${esAdmin()?` <button class="bs" style="padding:.2rem .6rem;font-size:.8rem" onclick="irATab(1)">Ir a aprobar</button>`:""}</div>`:""}
   <div class="fg">
     <label>Stock al (fecha)<input type="date" value="${f.hasta}" onchange="setFS('hasta',this.value)"/></label>
     <label>Campo<select onchange="setFS('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
@@ -1004,7 +1031,7 @@ ${(()=>{
   <div class="kg" style="margin-bottom:1rem">
     <div class="kp" style="background:#eaf5e0;border-color:#3d6428">
       <div class="kl">Total Animales</div>
-      <div class="kv" style="font-size:2rem;color:#2d4a1e">${gtotS}</div>
+      <div class="kv" style="font-size:2rem;color:#2d4a1e">${gtotS}${(()=>{let di=0,de=0; for(const c of Object.keys(PM.map)){ if(f.campo&&c!==f.campo)continue; for(const [cat,x] of Object.entries(PM.map[c])){ if(f.cat&&cat!==f.cat)continue; di+=x.ing;de+=x.egr; } } return proj(gtotS,di-de);})()}</div>
       <div class="km">${campos2.length} campo(s)</div>
     </div>
     ${campoTots.map(ct=>`
@@ -1022,11 +1049,11 @@ ${(()=>{
         const p=d.ing>0?d.muertes/d.ing*100:0; const cc=conteoCaravanas("",cat,f.campo); const sc=d.stock-cc;
         return`<tr>
           <td><strong>${h(cat)}</strong></td>
-          <td class="ni">+${d.ing}</td>
-          <td class="ne">-${d.egr}</td>
-          <td>${d.muertes}</td>
+          ${(()=>{let di=0,de=0,dm=0; for(const c of Object.keys(PM.map)){ if(f.campo&&c!==f.campo)continue; const x=PM.map[c][cat]; if(x){di+=x.ing;de+=x.egr;dm+=x.muertes;} } return `<td class="ni">+${d.ing}${proj(d.ing,di)}</td>
+          <td class="ne">-${d.egr}${proj(d.egr,de)}</td>
+          <td>${d.muertes}${proj(d.muertes,dm)}</td>
           <td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td>
-          <td><strong style="font-size:1rem;color:#2d4a1e">${d.stock}</strong></td>
+          <td><strong style="font-size:1rem;color:#2d4a1e">${d.stock}</strong>${proj(d.stock,di-de)}</td>`;})()}
           <td>${cc}</td><td><span class="${sc<0?"sr":sc===0?"sg":""}">${sc<0?"⚠️ ":""}${sc}</span></td>
         </tr>`;
       }).join("")}
@@ -1052,8 +1079,8 @@ ${campos2.map(campo=>{
   return `<div class="card"><h3>🏡 ${h(campo)} ${renspaDe(campo)?`<span style="font-size:.78rem;color:#5a7a9a;font-weight:600;background:#eaf0f8;border-radius:5px;padding:.12rem .5rem">Renspa: ${h(renspaDe(campo))}</span>`:""} <span style="font-size:.85rem;color:#888;font-weight:400">${totS} animales</span></h3><div class="tw"><table>
     <thead><tr><th>Categoría</th><th>Ingresos</th><th>Egresos</th><th>Muertes</th><th>% Muertes</th><th>Stock</th><th>🐮 Con caravana</th><th>Sin caravana</th></tr></thead>
     <tbody>
-      ${Object.entries(cats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;const cc=conteoCaravanas(campo,cat);const sc=d.stock-cc;return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}</td><td class="ne">-${d.egr}</td><td>${d.muertes}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong></td><td>${cc}</td><td><span class="${sc<0?"sr":sc===0?"sg":""}">${sc<0?"⚠️ ":""}${sc}</span></td></tr>`;}).join("")}
-      <tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong></td><td class="ne"><strong>-${totE}</strong></td><td><strong>${totM}</strong></td><td>—</td><td><strong>${totS}</strong></td><td><strong>${conteoCaravanas(campo,"")}</strong></td><td><strong>${totS-conteoCaravanas(campo,"")}</strong></td></tr>
+      ${Object.entries(cats).sort((a,b)=>{const ia=CATS.indexOf(a[0]),ib=CATS.indexOf(b[0]);return (ia===-1?99:ia)-(ib===-1?99:ib);}).map(([cat,d])=>{const p=d.ing>0?d.muertes/d.ing*100:0;const cc=conteoCaravanas(campo,cat);const sc=d.stock-cc;const q=pd(campo,cat);return`<tr><td><strong>${h(cat)}</strong></td><td class="ni">+${d.ing}${proj(d.ing,q.ing)}</td><td class="ne">-${d.egr}${proj(d.egr,q.egr)}</td><td>${d.muertes}${proj(d.muertes,q.muertes)}</td><td>${p>0?`<span class="${p>3?"sr":"sg"}">${p>3?"🔴":"🟢"} ${p.toFixed(1)}%</span>`:"—"}</td><td><strong class="${d.stock<0?"sr":""}">${d.stock}</strong>${proj(d.stock,q.ing-q.egr)}</td><td>${cc}</td><td><span class="${sc<0?"sr":sc===0?"sg":""}">${sc<0?"⚠️ ":""}${sc}</span></td></tr>`;}).join("")}
+      ${(()=>{const r=PM.map[campo]||{}; let di=0,de=0,dm=0; for(const x of Object.values(r)){di+=x.ing;de+=x.egr;dm+=x.muertes;} return `<tr class="tr"><td><strong>TOTAL</strong></td><td class="ni"><strong>+${totI}</strong>${proj(totI,di)}</td><td class="ne"><strong>-${totE}</strong>${proj(totE,de)}</td><td><strong>${totM}</strong>${proj(totM,dm)}</td><td>—</td><td><strong>${totS}</strong>${proj(totS,di-de)}</td>`;})()}<td><strong>${conteoCaravanas(campo,"")}</strong></td><td><strong>${totS-conteoCaravanas(campo,"")}</strong></td></tr>
     </tbody>
   </table></div></div>`;
 }).join("")}`;
