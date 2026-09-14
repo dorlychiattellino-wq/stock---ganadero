@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-d";
+window.APP_VERSION="2026.09.15-e";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4790,7 +4790,7 @@ function renderPresu(){
     <h2 style="margin:0;color:#1e3a5a">💰 Presupuestos de insumos</h2>
     <div style="background:#fff;border:2px solid #1e4a7a;border-radius:10px;padding:.4rem .8rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
       <span>💵 <strong>Dólar BNA vendedor: ${tc.venta?fmtARS(tc.venta):"—"}</strong></span>
-      <span class="km">${tc.fecha?"actualizado "+fmtF(tc.fecha.slice(0,10))+" "+tc.fecha.slice(11,16)+" · "+h(tc.fuente||""):"sin cotización cargada"}${tcVencido()&&tc.fecha?' · <span style="color:#a06a1f">hace más de 1 h</span>':""}</span>
+      <span class="km">${tc.fecha?"actualizado "+(()=>{const d=new Date(tc.fecha);const p=n=>String(n).padStart(2,"0");return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear()+" "+p(d.getHours())+":"+p(d.getMinutes());})()+" · "+h(tc.fuente||""):"sin cotización cargada"}${tcVencido()&&tc.fecha?' · <span style="color:#a06a1f">hace más de 1 h</span>':""}</span>
       ${esAdmin()?`<button class="bs" style="padding:.25rem .6rem" onclick="actualizarTC()">🔄 Actualizar</button>
       <input id="pr_tcman" placeholder="cargar a mano" onchange="actualizarTC(this.value);this.value=''" style="width:110px;padding:.3rem"/>`:""}
     </div>
