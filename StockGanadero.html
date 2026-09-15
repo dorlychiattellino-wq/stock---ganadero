@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-h";
+window.APP_VERSION="2026.09.15-i";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4849,7 +4849,7 @@ ${esAdmin()?`<div class="card">
   <h2>📋 Listado (${regs.length})</h2>
   ${regs.length===0?`<p class="empty">Sin presupuestos.</p>`:`
   <div class="tw"><table>
-    <thead><tr><th style="white-space:nowrap">Fecha <button class="bi" title="Ordenar" onclick="setFPresu('orden')">${f.orden==="desc"?"⬇️":"⬆️"}</button></th><th>Proveedor</th><th>Insumo</th><th>Marca</th><th>Detalle</th><th>Cant.</th><th>P. unit.</th><th>IVA</th><th>Total</th><th>Comprado</th><th>Abonado</th><th>Obs.</th><th></th></tr></thead>
+    <thead><tr><th style="white-space:nowrap">Fecha <button class="bi" title="Ordenar" onclick="setFPresu('orden')">${f.orden==="desc"?"⬇️":"⬆️"}</button></th><th>Proveedor</th><th>Insumo</th><th>Marca</th><th>Detalle</th><th>Cant.</th><th>P. unit.</th><th>IVA</th><th>Total</th><th>Comprado</th><th>Abonado</th><th></th></tr></thead>
     <tbody>${regs.map(r=>{const c=calcPresu(r); const usd=r.moneda==="USD"; const sub=v=>v===null?"":`<div style="color:#888;font-size:.75rem">(${fmtUSD(v)}${usd&&c.tc?" · TC "+Number(c.tc).toLocaleString("es-AR"):""})</div>`;
       return `<tr style="${r.abonado?"opacity:.75":r.comprado?"background:#fff8ee":""}">
         <td style="white-space:nowrap">${fmtF(r.fecha)}</td><td>${h(r.proveedor||"—")}</td><td><strong>${h(r.insumo||"—")}</strong></td><td>${h(r.marca||"—")}</td><td>${h(r.variedad||"—")}</td>
@@ -4859,10 +4859,9 @@ ${esAdmin()?`<div class="card">
         <td style="text-align:right;white-space:nowrap"><strong>${fmtARS(c.arsTotal)}</strong>${usd?sub(c.usdTotal):""}</td>
         <td style="text-align:center">${r.comprado?"✅"+(r.fechaCompra?"<div class='km'>"+fmtF(r.fechaCompra)+"</div>":""):"—"}</td>
         <td style="text-align:center">${r.abonado?"💵"+(r.fechaPago?"<div class='km'>"+fmtF(r.fechaPago)+"</div>":"")+(usd&&r.tcPago?"<div class='km'>TC "+Number(r.tcPago).toLocaleString("es-AR")+"</div>":""):(esAdmin()?`<button class='bs' style='padding:.2rem .5rem;font-size:.75rem' onclick="marcarAbonado('${r.id}')">marcar pagado</button>`:"—")}</td>
-        <td class="km">${h(r.obs||"")}</td>
-        <td style="white-space:nowrap">${esAdmin()?`<button class="bi" onclick="editarPresu('${r.id}')">✏️</button><button class="bi" onclick="eliminarPresu('${r.id}')">🗑️</button>`:""}</td></tr>`;}).join("")}
+        <td style="white-space:nowrap">${esAdmin()?`<button class="bi" onclick="editarPresu('${r.id}')">✏️</button><button class="bi" onclick="eliminarPresu('${r.id}')">🗑️</button>`:""}</td></tr>${r.obs?`<tr style="${r.abonado?"opacity:.75":r.comprado?"background:#fff8ee":""}"><td colspan="12" style="padding:0 .6rem .5rem 1.2rem;font-size:.8rem;color:#5a4a2a;border-top:none;white-space:normal">📝 ${h(r.obs)}</td></tr>`:""}`;}).join("")}
     </tbody>
-    <tfoot><tr class="tr"><td colspan="8"><strong>TOTAL (${regs.length})</strong></td><td style="text-align:right"><strong>${fmtARS(tot.ars)}</strong><div style="color:#888;font-size:.75rem">(${fmtUSD(tot.usd)})</div></td><td colspan="4"></td></tr></tfoot>
+    <tfoot><tr class="tr"><td colspan="8"><strong>TOTAL (${regs.length})</strong></td><td style="text-align:right"><strong>${fmtARS(tot.ars)}</strong><div style="color:#888;font-size:.75rem">(${fmtUSD(tot.usd)})</div></td><td colspan="3"></td></tr></tfoot>
   </table></div>`}
 </div>`;
 }
