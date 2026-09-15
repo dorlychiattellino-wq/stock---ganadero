@@ -112,7 +112,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-l";
+window.APP_VERSION="2026.09.15-n";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4805,7 +4805,7 @@ function presuComparar(regs){ // devuelve {id: "min"|"max"|"mid"} cuando hay fil
   const con=regs.map(r=>({id:r.id,pu:presuPU(r)})).filter(x=>x.pu!=null); if(con.length<2)return out;
   const min=Math.min(...con.map(x=>x.pu)), max=Math.max(...con.map(x=>x.pu));
   for(const x of con)out[x.id]=x.pu===min?"min":x.pu===max?"max":"mid"; return out; }
-const CMP_BG={min:"#d4f2c8",max:"#fbd9d3",mid:"#fff3b8"};
+const CMP_BG={min:"#8fe08a",max:"#f5a09a",mid:"#ffe066"};
 function presuCerrados(){ return Object.values(state.presu||{}).filter(r=>r&&r.cerrado).sort((a,b)=>(b.cerradoEn||"").localeCompare(a.cerradoEn||"")); }
 function presuTotales(regs){ const tot={ars:0,usd:0,deudaArs:0,deudaUsd:0,presArs:0,presUsd:0,pagArs:0,pagUsd:0};
   for(const r of regs){ const c=calcPresu(r); tot.ars+=c.arsTotal||0; tot.usd+=c.usdTotal||0; if(r.comprado&&!r.abonado){tot.deudaArs+=c.arsTotal||0;tot.deudaUsd+=c.usdTotal||0;} if(!r.comprado){tot.presArs+=c.arsTotal||0;tot.presUsd+=c.usdTotal||0;} if(r.abonado){tot.pagArs+=c.arsTotal||0;tot.pagUsd+=c.usdTotal||0;} } return tot; }
@@ -4894,13 +4894,14 @@ ${esAdmin()?`<div class="card">
   </table></div>`}
 </div>
 ${(()=>{const cer=presuCerrados(); if(!cer.length)return ""; return `<div class="card" style="background:#f6f4ee">
-  <h2 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">📁 Cerrados (${cer.length}) <button class="bs" style="padding:.3rem .7rem;font-size:.85rem" onclick="state.presuCerVer=!state.presuCerVer;render()">${state.presuCerVer?"Ocultar":"Ver"}</button></h2>
+  <h2 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">📁 Cerrados (${cer.length}) <button class="bs" style="padding:.3rem .7rem;font-size:.85rem" onclick="togPresuCer()">${state.presuCerVer?"Ocultar":"Ver"}</button></h2>
   <p class="hint">No cuentan en el listado ni en los totales. Al abrir uno vuelve con todos sus datos; si estaba abonado en dólares conserva el TC del pago, si nunca se pagó vuelve a tomar el dólar del día.</p>
   ${state.presuCerVer?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Insumo</th><th>Marca</th><th>Detalle</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Estado</th><th>Cerrado</th><th></th></tr></thead><tbody>
   ${cer.map(r=>{const c=calcPresu(r); const usd=r.moneda==="USD"; return `<tr style="opacity:.8"><td style="white-space:nowrap">${fmtF(r.fecha)}</td><td>${h(r.proveedor||"—")}</td><td><strong>${h(r.insumo||"—")}</strong></td><td>${h(r.marca||"—")}</td><td>${h(r.variedad||"—")}</td><td style="text-align:right">${r.cantidad??"—"} ${h(r.unidad||"")}</td><td style="text-align:right;white-space:nowrap">${usd?fmtUSD(r.precio):fmtARS(r.precio)}</td><td style="text-align:right;white-space:nowrap"><strong>${fmtARS(c.arsTotal)}</strong>${usd?`<div style="color:#888;font-size:.75rem">(${fmtUSD(c.usdTotal)}${c.tc?" · TC "+Number(c.tc).toLocaleString("es-AR"):""})</div>`:""}</td><td style="text-align:center;font-size:.85rem">${r.abonado?"💵 abonado"+(r.fechaPago?"<div class='km'>"+fmtF(r.fechaPago)+"</div>":""):r.comprado?"✅ comprado, sin pagar":"presupuesto"}</td><td style="white-space:nowrap;font-size:.85rem">${r.cerradoEn?fmtF(r.cerradoEn.slice(0,10)):"—"}</td><td style="white-space:nowrap">${esAdmin()?`<button class="bs" style="padding:.25rem .6rem;font-size:.8rem" onclick="abrirPresu('${r.id}')">🔓 Abrir</button> <button class="bi" onclick="eliminarPresu('${r.id}')">🗑️</button>`:""}</td></tr>${r.obs?`<tr style="opacity:.8"><td colspan="11" style="padding:0 .6rem .5rem 1.2rem;font-size:.8rem;color:#5a4a2a;border-top:none;white-space:normal">📝 ${h(r.obs)}</td></tr>`:""}`;}).join("")}
   </tbody></table></div>`:""}
 </div>`;})()}`;
 }
+window.togPresuCer=function(){ state.presuCerVer=!state.presuCerVer; render(); };
 window.togFPresuVar=function(v){ const f=state.filtPresu||(state.filtPresu={q:"",proveedor:"",insumo:"",variedades:[],estado:"",desde:"",hasta:"",orden:"desc"}); f.variedades=[...(f.variedades||[])]; const i=f.variedades.findIndex(x=>normTxt(x)===normTxt(v)); if(i>=0)f.variedades.splice(i,1); else f.variedades.push(v); render(); };
 window.cerrarPresu=async function(id){ const r=state.presu[id]; if(!r)return; if(!confirm("¿Cerrar este registro ("+(r.insumo||"")+" · "+(r.proveedor||"")+")? Sale del listado y pasa a Cerrados; se puede volver a abrir cuando quieras."))return; const n={...r,cerrado:true,cerradoEn:new Date().toISOString(),tcCierre:(r.moneda==="USD"&&!(r.abonado&&r.tcPago>0))?(tcHoy()||null):null}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),sinUndef(n)); toast("📁 Registro cerrado"); render(); };
 window.abrirPresu=async function(id){ const r=state.presu[id]; if(!r)return; const n={...r,cerrado:false,cerradoEn:"",tcCierre:null}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),sinUndef(n)); toast("🔓 Registro abierto de nuevo"+(r.moneda==="USD"&&!r.abonado?" (toma el dólar de hoy)":"")); render(); };
