@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-p";
+window.APP_VERSION="2026.09.15-q";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -563,7 +563,7 @@ function buildLogin(){
 function aplicarModoLectura(){
   if(!esOperario())return;
   if(state.tab===MANGA_TAB)return; // en la manga el operario trabaja con todo habilitado
-  const permitido=/^\s*(setF|toggleF|limpiarF|cerrarPopupRec)/;
+  const permitido=/^\s*(setF|toggleF|limpiarF|cerrarPopupRec|togFPresuVar|togPresuCer|if\(this\.value\)\{togFPresuVar)/;
   const main=document.querySelector("main"); if(!main)return;
   main.querySelectorAll("[onclick]").forEach(el=>{
     if(!permitido.test(el.getAttribute("onclick")||""))el.style.display="none";
