@@ -59,7 +59,7 @@ table{width:100%;border-collapse:collapse;font-size:.81rem}
 th{background:#2d4a1e;color:#e8dfc8;padding:.45rem .65rem;text-align:left;font-weight:600;white-space:nowrap}
 td{padding:.4rem .65rem;border-bottom:1px solid #e8e0d0;vertical-align:middle}
 tr:hover td{background:#f5f0e8}
-.cmp-min td{background:#6fd35f!important;border-left:5px solid #2d8a1e}.cmp-max td{background:#f27f78!important;border-left:5px solid #b01c10}.cmp-mid td{background:#ffd633!important;border-left:5px solid #b08800}
+.cmp-min td{background:#8fe08a!important}.cmp-max td{background:#f5a09a!important}.cmp-mid td{background:#ffe066!important}
 .ri td{border-left:3px solid #4a8c28}
 .re td{border-left:3px solid #c84a28}
 .tr td{background:#f0ebe0;font-weight:700;border-top:2px solid #b8a888}
@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-o";
+window.APP_VERSION="2026.09.15-p";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4806,7 +4806,7 @@ function presuComparar(regs){ // devuelve {id: "min"|"max"|"mid"} cuando hay fil
   const con=regs.map(r=>({id:r.id,pu:presuPU(r)})).filter(x=>x.pu!=null); if(con.length<2)return out;
   const min=Math.min(...con.map(x=>x.pu)), max=Math.max(...con.map(x=>x.pu));
   for(const x of con)out[x.id]=x.pu===min?"min":x.pu===max?"max":"mid"; return out; }
-const CMP_BG={min:"#6fd35f",max:"#f27f78",mid:"#ffd633"};
+const CMP_BG={min:"#8fe08a",max:"#f5a09a",mid:"#ffe066"};
 function presuCerrados(){ return Object.values(state.presu||{}).filter(r=>r&&r.cerrado).sort((a,b)=>(b.cerradoEn||"").localeCompare(a.cerradoEn||"")); }
 function presuTotales(regs){ const tot={ars:0,usd:0,deudaArs:0,deudaUsd:0,presArs:0,presUsd:0,pagArs:0,pagUsd:0};
   for(const r of regs){ const c=calcPresu(r); tot.ars+=c.arsTotal||0; tot.usd+=c.usdTotal||0; if(r.comprado&&!r.abonado){tot.deudaArs+=c.arsTotal||0;tot.deudaUsd+=c.usdTotal||0;} if(!r.comprado){tot.presArs+=c.arsTotal||0;tot.presUsd+=c.usdTotal||0;} if(r.abonado){tot.pagArs+=c.arsTotal||0;tot.pagUsd+=c.usdTotal||0;} } return tot; }
