@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.15-q";
+window.APP_VERSION="2026.09.15-r";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -1368,14 +1368,14 @@ function renderProd(){
     const abortos=gMotivo("Aborto");
     const mParto=gMotivo("Muerte al parto");
     const mPost=gMotivo("Muerte post-parto");
-    // Bases: Preñez=preñadas/entoradas | Nac,Dest,Kg=/preñadas | Cut=/preñadas | Dsc,2da=/entoradas
+    // Bases: Preñez=preñadas/entoradas | Nac,Dest,Kg=/entoradas (entore+IATF) | Cut=/preñadas | Dsc,2da=/entoradas
     return{campo,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,huboTraslado,
       entBase,preBase,abortos,mParto,mPost,
       pPreTacto:pct(preBase,entBase),
       pPre:pct(pre,ent),
-      pNac:pct(nac,pre),
-      pDest:pct(dest,pre),
-      kgA:pre>0&&kgt>0?kgt/pre:null,
+      pNac:pct(nac,ent),
+      pDest:pct(dest,ent),
+      kgA:ent>0&&kgt>0?kgt/ent:null,
       pCut:pct(cut,pre),
       pDsc:pct(dsc,ent),
       pSeg:pct(seg,ent),
@@ -1391,8 +1391,8 @@ function renderProd(){
     const ent=s("ent"),pre=s("pre"),nac=s("nac"),nacT=s("nacT"),nacH=s("nacH"),dest=s("dest"),kgt=s("kgt"),cut=s("cut"),dsc=s("dsc"),seg=s("seg"),abortos=s("abortos"),mParto=s("mParto"),mPost=s("mPost"),entBase=s("entBase"),preBase=s("preBase");
     totRow={campo:"Total General — todos los campos",esTotal:true,ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,abortos,mParto,mPost,entBase,preBase,
       huboTraslado:false,
-      pPreTacto:pct(preBase,entBase),pPre:pct(pre,ent),pNac:pct(nac,pre),pDest:pct(dest,pre),
-      kgA:pre>0&&kgt>0?kgt/pre:null,pCut:pct(cut,pre),pDsc:pct(dsc,ent),pSeg:pct(seg,ent),
+      pPreTacto:pct(preBase,entBase),pPre:pct(pre,ent),pNac:pct(nac,ent),pDest:pct(dest,ent),
+      kgA:ent>0&&kgt>0?kgt/ent:null,pCut:pct(cut,pre),pDsc:pct(dsc,ent),pSeg:pct(seg,ent),
       pAborto:pct(abortos,pre),pMParto:pct(mParto,pre),pMPost:pct(mPost,pre)};
   }
   const rowsRender=totRow?[totRow,...rows]:rows;
@@ -1411,9 +1411,9 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
   <div class="kg">
     <div class="kp"><div class="kl">Entoradas/IATF</div><div class="kv">${r.ent}</div><div class="km">vacas+vaquillonas</div></div>
     <div class="kp"><div class="kl">Preñadas</div><div class="kv">${r.pre}</div><div class="ks">${sem(r.pPre,p.prenez)}</div><div class="km">meta: ${p.prenez}% / entoradas</div>${r.huboTraslado&&r.pPreTacto!==null?`<div class="km" style="margin-top:.3rem;color:#1e4a6a;border-top:1px dashed #b8c8d8;padding-top:.25rem">📌 Tacto original: ${r.pPreTacto.toFixed(1)}% (${r.preBase}/${r.entBase})</div>`:""}</div>
-    <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}% / preñadas</div></div>
-    <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}% / preñadas</div></div>
-    <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / preñadas</div></div>
+    <div class="kp"><div class="kl">Nacimientos</div><div class="kv">${r.nac} <small style="font-size:.75rem;color:#666">(${r.nacT}♂ ${r.nacH}♀)</small></div><div class="ks">${sem(r.pNac,p.nacimiento)}</div><div class="km">meta: ${p.nacimiento}% / entoradas</div></div>
+    <div class="kp"><div class="kl">Destetados</div><div class="kv">${r.dest}</div><div class="ks">${sem(r.pDest,p.destete)}</div><div class="km">meta: ${p.destete}% / entoradas</div></div>
+    <div class="kp"><div class="kl">Kg/animal</div><div class="kv">${r.kgA?r.kgA.toFixed(1):"—"} kg</div><div class="ks">${sem(r.kgA,p.kgAnimal," kg")}</div><div class="km">meta: ${p.kgAnimal}kg / entoradas</div></div>
     <div class="kp"><div class="kl">Kg totales</div><div class="kv">${r.kgt>0?r.kgt.toLocaleString():"—"} kg</div></div>
     <div class="kp"><div class="kl">Cut</div><div class="kv">${r.cut}</div><div class="ks">${semMax(r.pCut,p.cut)}</div><div class="km">max: ${p.cut}% / preñadas</div></div>
     <div class="kp"><div class="kl">Descarte</div><div class="kv">${r.dsc}</div><div class="ks">${semMax(r.pDsc,p.descarte)}</div><div class="km">max: ${p.descarte}% / entoradas</div></div>
@@ -1426,9 +1426,9 @@ ${rows.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:rows
     <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
     <tbody>
       <tr><td>% Preñez (s/entoradas)</td><td>${fv(r.pPre)}</td><td>${p.prenez}%</td><td>${sem(r.pPre,p.prenez)}</td></tr>
-      <tr><td>% Nacimientos (s/preñadas)</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
-      <tr><td>% Destete (s/preñadas)</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
-      <tr><td>Kg/animal (s/preñadas)</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
+      <tr><td>% Nacimientos (s/entoradas)</td><td>${fv(r.pNac)}</td><td>${p.nacimiento}%</td><td>${sem(r.pNac,p.nacimiento)}</td></tr>
+      <tr><td>% Destete (s/entoradas)</td><td>${fv(r.pDest)}</td><td>${p.destete}%</td><td>${sem(r.pDest,p.destete)}</td></tr>
+      <tr><td>Kg/animal (s/entoradas)</td><td>${r.kgA?r.kgA.toFixed(1)+" kg":"—"}</td><td>${p.kgAnimal}kg</td><td>${sem(r.kgA,p.kgAnimal," kg")}</td></tr>
       <tr><td>% Cut (s/preñadas)</td><td>${fv(r.pCut)}</td><td>max ${p.cut}%</td><td>${semMax(r.pCut,p.cut)}</td></tr>
       <tr><td>% Descarte (s/entoradas)</td><td>${fv(r.pDsc)}</td><td>max ${p.descarte}%</td><td>${semMax(r.pDsc,p.descarte)}</td></tr>
       <tr><td>% 2da Oportunidad (s/entoradas)</td><td>${fv(r.pSeg)}</td><td>max ${p.seg}%</td><td>${semMax(r.pSeg,p.seg)}</td></tr>
@@ -1470,8 +1470,8 @@ function calcKPIsCampoCiclo(campo, ciclo){
   const kgt=gkg();
   return{
     ent,pre,nac,nacT,nacH,dest,kgt,cut,dsc,seg,
-    pPre:pct(pre,ent), pNac:pct(nac,pre), pDest:pct(dest,pre),
-    kgA:pre>0&&kgt>0?kgt/pre:null,
+    pPre:pct(pre,ent), pNac:pct(nac,ent), pDest:pct(dest,ent),
+    kgA:ent>0&&kgt>0?kgt/ent:null,
     pCut:pct(cut,pre), pDsc:pct(dsc,ent), pSeg:pct(seg,ent)
   };
 }
@@ -1481,9 +1481,9 @@ function renderComp(){
   // Indicadores configurados
   const indicadores=[
     {key:"pPre",   label:"% Preñez",         meta:p.prenez,     suffix:"%",   tipo:"min",  base:"entoradas"},
-    {key:"pNac",   label:"% Nacimientos",    meta:p.nacimiento, suffix:"%",   tipo:"min",  base:"preñadas"},
-    {key:"pDest",  label:"% Destete",        meta:p.destete,    suffix:"%",   tipo:"min",  base:"preñadas"},
-    {key:"kgA",    label:"Kg/animal",        meta:p.kgAnimal,   suffix:" kg", tipo:"min",  base:"preñadas"},
+    {key:"pNac",   label:"% Nacimientos",    meta:p.nacimiento, suffix:"%",   tipo:"min",  base:"entoradas"},
+    {key:"pDest",  label:"% Destete",        meta:p.destete,    suffix:"%",   tipo:"min",  base:"entoradas"},
+    {key:"kgA",    label:"Kg/animal",        meta:p.kgAnimal,   suffix:" kg", tipo:"min",  base:"entoradas"},
     {key:"pCut",   label:"% Cut",            meta:p.cut,        suffix:"%",   tipo:"max",  base:"preñadas"},
     {key:"pDsc",   label:"% Descarte",       meta:p.descarte,   suffix:"%",   tipo:"max",  base:"entoradas"},
     {key:"pSeg",   label:"% 2da Oportunidad",meta:p.seg,        suffix:"%",   tipo:"max",  base:"entoradas"}
@@ -2068,9 +2068,9 @@ function renderParBase(){
   <p class="hint">🔴 aparece cuando un indicador esta por debajo del minimo, o por encima del maximo (Cut/Descarte/2da). Los cambios se sincronizan para todo el equipo.</p>
   <div class="fg">
     ${sl("prenez",0,100,1,"% Preñez — sobre entoradas",false)}
-    ${sl("nacimiento",0,100,1,"% Nacimientos — sobre preñadas",false)}
-    ${sl("destete",0,100,1,"% Destete — sobre preñadas",false)}
-    ${sl("kgAnimal",50,400,5,"Kg carne/animal — sobre preñadas",false)}
+    ${sl("nacimiento",0,100,1,"% Nacimientos — sobre entoradas (entore + IATF)",false)}
+    ${sl("destete",0,100,1,"% Destete — sobre entoradas (entore + IATF)",false)}
+    ${sl("kgAnimal",50,400,5,"Kg carne/animal — sobre entoradas (entore + IATF)",false)}
     ${sl("cut",0,50,1,"% Cut — sobre preñadas",true)}
     ${sl("descarte",0,50,1,"% Descarte — sobre entoradas",true)}
     ${sl("seg",0,50,1,"% 2da Oportunidad — sobre entoradas",true)}
@@ -2084,9 +2084,9 @@ function renderParBase(){
     <thead><tr><th>Indicador</th><th>Umbral</th><th>Semaforo rojo si...</th></tr></thead>
     <tbody>
       <tr><td>% Preñez (s/entoradas)</td><td>min ${p.prenez}%</td><td>menor al umbral</td></tr>
-      <tr><td>% Nacimientos (s/preñadas)</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
-      <tr><td>% Destete (s/preñadas)</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
-      <tr><td>Kg/animal (s/preñadas)</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
+      <tr><td>% Nacimientos (s/entoradas)</td><td>min ${p.nacimiento}%</td><td>menor al umbral</td></tr>
+      <tr><td>% Destete (s/entoradas)</td><td>min ${p.destete}%</td><td>menor al umbral</td></tr>
+      <tr><td>Kg/animal (s/entoradas)</td><td>min ${p.kgAnimal}kg</td><td>menor al umbral</td></tr>
       <tr><td>% Cut (s/preñadas)</td><td>max ${p.cut}%</td><td>supera el umbral</td></tr>
       <tr><td>% Descarte (s/entoradas)</td><td>max ${p.descarte}%</td><td>supera el umbral</td></tr>
       <tr><td>% 2da Oportunidad (s/entoradas)</td><td>max ${p.seg}%</td><td>supera el umbral</td></tr>
