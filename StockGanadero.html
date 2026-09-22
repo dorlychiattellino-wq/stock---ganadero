@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.21-b";
+window.APP_VERSION="2026.09.22-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4893,7 +4893,7 @@ ${esAdmin()?`<div class="card">
         <td style="text-align:right;white-space:nowrap">${usd?fmtUSD(r.precio):fmtARS(r.precio)}${usd&&c.tc?`<div style="color:#888;font-size:.75rem">(${fmtARS((parseFloat(r.precio)||0)*c.tc)})</div>`:""}</td>
         <td style="text-align:center;font-size:.8rem">${r.ivaModo==="mas"?"+ "+h(r.ivaAlic||"21")+"%":"incl."}</td>
         <td style="text-align:right;white-space:nowrap"><strong>${fmtARS(c.arsTotal)}</strong>${usd?sub(c.usdTotal):""}</td>
-        <td style="text-align:center">${r.comprado?"✅"+(r.fechaCompra?"<div class='km'>"+fmtF(r.fechaCompra)+"</div>":""):"—"}</td>
+        <td style="text-align:center">${r.comprado?"✅"+(r.fechaCompra?"<div class='km'>"+fmtF(r.fechaCompra)+"</div>":""):(esAdmin()?`<button class='bs' style='padding:.2rem .5rem;font-size:.75rem' onclick="marcarComprado('${r.id}')">marcar comprado</button>`:"—")}</td>
         <td style="text-align:center">${r.abonado?"💵"+(r.fechaPago?"<div class='km'>"+fmtF(r.fechaPago)+"</div>":"")+(usd&&r.tcPago?"<div class='km'>TC "+Number(r.tcPago).toLocaleString("es-AR")+"</div>":""):(esAdmin()?`<button class='bs' style='padding:.2rem .5rem;font-size:.75rem' onclick="marcarAbonado('${r.id}')">marcar pagado</button>`:"—")}</td>
         <td style="white-space:nowrap">${esAdmin()?`<button class="bi" onclick="editarPresu('${r.id}')">✏️</button><button class="bi" title="Cerrar: sale del listado y pasa a Cerrados" onclick="cerrarPresu('${r.id}')">📁</button><button class="bi" onclick="eliminarPresu('${r.id}')">🗑️</button>`:""}</td></tr>${r.obs?`<tr${cls} style="${bg}"><td colspan="12" style="padding:0 .6rem .5rem 1.2rem;font-size:.8rem;color:#5a4a2a;border-top:none;white-space:normal">📝 ${h(r.obs)}</td></tr>`:""}`;}).join("");})()}
     </tbody>
@@ -4951,6 +4951,7 @@ function cargarPresuForm(r){ const v=(id,val)=>{ const el=document.getElementByI
   const a=document.getElementById("pr_ivaa"); if(a)a.style.display=(r.ivaModo==="mas")?"":"none"; }
 window.editarPresu=function(id){ const r=state.presu[id]; if(!r)return; state.editPresu={...r}; render(); cargarPresuForm(r); setTimeout(()=>cargarPresuForm(r),50); const el=document.getElementById("pr_fecha"); if(el)el.scrollIntoView({behavior:"smooth",block:"center"}); };
 window.eliminarPresu=async function(id){ const r=state.presu[id]; if(!r||!confirm("¿Eliminar este presupuesto ("+(r.insumo||"")+" · "+(r.proveedor||"")+")?"))return; delete state.presu[id]; await remove(ref(db,"presupuestos/"+id)); render(); };
+window.marcarComprado=async function(id){ const r=state.presu[id]; if(!r)return; if(!confirm("¿Marcar como comprado hoy ("+(r.insumo||"")+" · "+(r.proveedor||"")+")? Queda pendiente de pago."))return; const n={...r,comprado:true,fechaCompra:hoyISO()}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),sinUndef(n)); toast("✅ Marcado como comprado"); render(); };
 window.marcarAbonado=async function(id){ const r=state.presu[id]; if(!r)return; if(r.moneda==="USD"&&!tcHoy())return alert("Actualizá el dólar antes de marcar el pago, así queda congelado el tipo de cambio del día."); if(!confirm("¿Marcar como abonado hoy"+(r.moneda==="USD"?" al TC "+fmtARS(tcHoy()):"")+"?"))return; const n={...r,abonado:true,fechaPago:hoyISO(),comprado:true,fechaCompra:r.fechaCompra||hoyISO(),tcPago:r.moneda==="USD"?tcHoy():(r.tcPago||null)}; state.presu[id]=n; await set(ref(db,"presupuestos/"+id),n); toast("💵 Marcado como abonado"); render(); };
 window.exportarPresuCSV=function(){ const rows=[["Fecha","Proveedor","Insumo","Marca","Detalle","Cantidad","Unidad","Precio unit.","Moneda","IVA","Alicuota","Total ARS","Total USD","TC","Comprado","Fecha compra","Abonado","Fecha pago","Obs"]]; for(const r of Object.values(state.presu||{}).filter(Boolean)){ const c=calcPresu(r); rows.push([r.fecha,r.proveedor,r.insumo,r.marca,r.variedad,r.cantidad,r.unidad,r.precio,r.moneda,r.ivaModo==="mas"?"+IVA":"incl",r.ivaModo==="mas"?r.ivaAlic:"",c.arsTotal!=null?c.arsTotal.toFixed(2):"",c.usdTotal!=null?c.usdTotal.toFixed(2):"",c.tc||"",r.comprado?"Si":"No",r.fechaCompra,r.abonado?"Si":"No",r.fechaPago,r.obs].map(v=>`"${String(v??"").replace(/"/g,'""')}"`)); } const blob=new Blob(["\ufeff"+rows.map(r=>r.join(";")).join("\n")],{type:"text/csv;charset=utf-8"}); const el=document.createElement("a"); el.href=URL.createObjectURL(blob); el.download="Presupuestos_"+hoyISO()+".csv"; el.click(); };
 
