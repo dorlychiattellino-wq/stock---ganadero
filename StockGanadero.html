@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.22-a";
+window.APP_VERSION="2026.09.29-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -1067,6 +1067,7 @@ ${(()=>{
         <td><strong>${gtotM}</strong></td>
         <td>—</td>
         <td><strong style="font-size:1.1rem;color:#2d4a1e">${gtotS}</strong></td>
+        ${(()=>{const gcc=Object.keys(allCats).reduce((a,cat)=>a+conteoCaravanas("",cat,f.campo),0); const gsc=gtotS-gcc; return `<td><strong>${gcc}</strong></td><td><strong><span class="${gsc<0?"sr":gsc===0?"sg":""}">${gsc<0?"⚠️ ":""}${gsc}</span></strong></td>`;})()}
       </tr>
     </tbody>
   </table></div>
