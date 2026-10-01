@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.01-i";
+window.APP_VERSION="2026.10.01-j";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4477,7 +4477,7 @@ function renderMangaAnimal(M,a){
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
       <div style="flex:1;min-width:210px">
         ${BAL.estado==="ok"?`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.85rem"><span style="color:#1e4a7a">📡 Balanza en vivo: <strong id="balVivo" style="font-family:monospace;font-size:1.1rem">${BAL.ultimo!=null?BAL.ultimo:"—"}</strong> kg <span id="balEst">${BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'}</span></span><span style="display:flex;gap:.3rem;flex-wrap:wrap"><button class="bs" style="padding:.4rem .7rem" onclick="balanzaTomar()">⬇ Tomar peso</button><button class="bs" style="padding:.4rem .7rem;${BAL.autoTomar?"background:#1e4a7a;color:#fff":""}" onclick="balanzaAuto()" title="Cuando el peso se estabiliza, se carga solo">${BAL.autoTomar?"✔ Auto":"Auto"}</button><button class="bs" style="padding:.4rem .7rem;${BAL.diag?"background:#e08a20;color:#fff":""}" onclick="balanzaDiag()">🔧 Diagnóstico</button></span></div>`:""}
-        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div><div style="font-family:sans-serif;font-size:.85rem;margin:.3rem 0;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">Hold: <strong>${BAL.holdVisto?"se detecta (H)":"no detectado todavía"}</strong> · Factor: <strong>×${BAL.factor}</strong> (dato crudo ${BAL.crudo!=null?BAL.crudo:"—"} → ${BAL.ultimo!=null?BAL.ultimo:"—"} kg) <button class="bs" style="padding:.3rem .6rem;font-size:.85rem" onclick="balanzaCalibrar()">🎯 Calibrar con el peso de la balanza</button></div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div><div id="balDiagLog">${BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}</div><div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap"><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCompartirLog()">📤 Compartir (WhatsApp)</button></div></div>`:""}
+        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div><div style="font-family:sans-serif;font-size:.85rem;margin:.3rem 0;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">Formato: <strong>${BAL.estandar?"estándar Bluetooth Weight Scale (2A9D)":"genérico"}</strong> · Hold: <strong>${BAL.holdVisto?"se detecta (H)":"no viene en los datos (solo en pantalla)"}</strong> · Factor: <strong>×${BAL.factor}</strong> (dato crudo ${BAL.crudo!=null?BAL.crudo:"—"} → ${BAL.ultimo!=null?BAL.ultimo:"—"} kg) <button class="bs" style="padding:.3rem .6rem;font-size:.85rem" onclick="balanzaCalibrar()">🎯 Calibrar con el peso de la balanza</button></div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div><div id="balDiagLog">${BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}</div><div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap"><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCompartirLog()">📤 Compartir (WhatsApp)</button></div></div>`:""}
         <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.6rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.6rem;padding:.9rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}</div>
       </div>
@@ -4580,8 +4580,8 @@ window.mangaPadreSugerir=function(){ const M=MG(); const a=M.animal?state.animal
 // Hook no publica el protocolo: se suscribe a TODAS las características que notifican y se intenta
 // decodificar el peso como texto ("  245.5 kg", "ST,GS,+00245.5kg", etc.) o como número binario.
 // El panel 🔧 muestra los datos crudos para ajustar la decodificación si hace falta.
-const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null,crudo:null,factor:(()=>{ try{ const v=parseFloat(localStorage.getItem("sg_balanza_factor")); return v>0?v:5; }catch(e){ return 5; } })()};
-window.balanzaFactor=function(v){ v=parseFloat(String(v).replace(",",".")); if(!(v>0))return toast("Factor inválido"); BAL.factor=v; try{ localStorage.setItem("sg_balanza_factor",String(v)); }catch(e){} toast("⚖️ Factor de la balanza: ×"+v); render(); };
+const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null,crudo:null,factor:(()=>{ try{ const v=parseFloat(localStorage.getItem("sg_balanza_factor")); return v>0?v:1; }catch(e){ return 1; } })()};
+window.balanzaFactor=function(v){ v=parseFloat(String(v).replace(",",".")); if(!(v>0))return toast("Factor inválido"); BAL.factor=v; BAL.factorManual=true; try{ localStorage.setItem("sg_balanza_factor",String(v)); }catch(e){} toast("⚖️ Factor de la balanza: ×"+v); render(); };
 window.balanzaCalibrar=function(){ if(BAL.crudo==null||!(BAL.crudo>0))return alert("Primero subí algo a la balanza para que lleguen datos."); const r=prompt("¿Cuánto marca la balanza ST ONE ahora mismo (kg)?"); const real=parseFloat(String(r||"").replace(",",".")); if(!(real>0))return; balanzaFactor(Math.round(real/BAL.crudo*1000)/1000); };
 function balanzaSoportada(){ return typeof navigator!=="undefined"&&!!navigator.bluetooth; }
 window.balanzaBoton=async function(){
@@ -4619,9 +4619,17 @@ function balanzaDato(dv,uuid){
   const hex=bytes.map(b=>b.toString(16).padStart(2,"0")).join(" ");
   BAL.log.push(uuid.slice(0,8)+" | "+hex+" | "+txt); if(BAL.log.length>60)BAL.log.splice(0,BAL.log.length-60);
   let peso=null, estableFlag=null, hold=false;
+  // Servicio estándar Bluetooth "Weight Scale" (característica 2A9D, la que usa la Hook ST ONE):
+  // byte 0 = banderas (bit0: 1=libras, 0=kg) · bytes 1-2 = peso uint16 little-endian × 0,005 kg (o × 0,01 lb)
+  if(/^0000(2a9d)/i.test(uuid)&&bytes.length>=3){
+    const flags=bytes[0]; const raw=dv.getUint16(1,true); let kg=(flags&1)?raw*0.01*0.45359237:raw*0.005;
+    if(raw===0xffff)return; // "sin medida" según el estándar
+    peso=kg<1?0:Math.round(kg*10)/10; BAL.estandar=true; // menos de 1 kg = balanza vacía
+  }
   // 1) texto: puede llegar partido en varios paquetes → se acumula hasta un fin de línea
   const esTexto=bytes.every(b=>(b>=32&&b<127)||b===10||b===13);
-  if(esTexto&&bytes.length){
+  if(peso!==null){ /* ya decodificado por el estándar */ }
+  else if(esTexto&&bytes.length){
     _balBuf+=String.fromCharCode(...bytes); if(_balBuf.length>200)_balBuf=_balBuf.slice(-200);
     const lineas=_balBuf.split(/[\r\n]+/); const completa=/[\r\n]$/.test(_balBuf); const cand=completa?lineas.filter(Boolean).slice(-1)[0]:(lineas.length>1?lineas[lineas.length-2]:null);
     if(cand){ const m=cand.replace(/(\d),(\d)/g,"$1.$2").match(/[-+]?\d+(?:\.\d+)?/); if(m){ peso=parseFloat(m[0]); hold=/\bH\b|HOLD|^H/i.test(cand.replace(/[-+]?\d+(?:\.\d+)?/,"")); if(hold||/ST|STABLE|EST/i.test(cand))estableFlag=true; else if(/US|UNST|MOV/i.test(cand))estableFlag=false; } }
@@ -4639,7 +4647,7 @@ function balanzaDato(dv,uuid){
     if(BAL._cfg&&Number.isInteger(BAL._cfg.holdByte)&&bytes.length>BAL._cfg.holdByte){ hold=(bytes[BAL._cfg.holdByte]&(BAL._cfg.holdMask||0xff))!==0; }
   }
   if(peso===null||!(peso>=0&&peso<3000))return;
-  BAL.crudo=peso; peso=Math.round(peso*BAL.factor*10)/10;
+  BAL.crudo=peso; peso=Math.round(peso*(BAL.estandar&&!BAL.factorManual?1:BAL.factor)*10)/10;
   BAL.ultimo=peso; BAL._hist.push({t:Date.now(),p:peso}); BAL._hist=BAL._hist.filter(x=>Date.now()-x.t<1500);
   const ps=BAL._hist.map(x=>x.p); const estable=hold||(estableFlag!==null?estableFlag:(ps.length>=3&&Math.max(...ps)-Math.min(...ps)<=1));
   BAL.estable=estable; BAL.hold=hold; BAL.holdVisto=BAL.holdVisto||hold;
@@ -4661,11 +4669,12 @@ window.balanzaCopiarLog=function(){ const t=balanzaTextoLog(); if(navigator.clip
 
 // ── Lectura ──
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
+function balanzaTomarSiEstable(){ const M=MG(); if(BAL.estado!=="ok"||!M.pesar||!BAL.autoTomar)return; if(BAL.estable&&BAL.ultimo>=20&&(M.animal||M.nuevoEID)&&!M.peso){ M.peso=String(BAL.ultimo); BAL._tomado=BAL.ultimo; toast("⚖️ "+BAL.ultimo+" kg"); } }
 function mangaLeer(a,eidOrVisual){ const M=MG(); if(M.cfg){ alert("Primero tocá ✔ LISTO, A LA MANGA."); return; }
   M.editIdx=null; M.dupAviso=false; M.dupOk=false; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
   if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; M.animal=a.key; M.nuevoEID=""; M.dupAviso=true; render(); mangaScrollArriba(); return; }
   if(a){ M.animal=a.key; M.nuevoEID=""; } else { M.animal=null; M.nuevoEID=eidOrVisual; }
-  render(); mangaScrollArriba(); 
+  balanzaTomarSiEstable(); render(); mangaScrollArriba(); 
   if(a&&M.auto&&!M.grupo.includes(a.key)){ const necesita=M.pesar||M.tipos.includes("Tacto")||((M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado"))&&!a.estadoRep); if(!necesita){ mangaOk(); } } }
 
 // ── Alta ──
@@ -4886,7 +4895,7 @@ window.mangaDeshacer=async function(i){
 window.mangaEditar=async function(i){
   const M=MG(); const l=M.log[i]; if(!l)return; M.dupAviso=false; M.dupOk=false;
   if(l.alta){ const a=state.animales[l.alta]; const eid=a?(a.caravana||a.visual):l.alta; const raza=a?a.raza:""; const madre=a?a.madre:""; M._silencio=true; await mangaDeshacer(i); M._silencio=false; M.animal=null; M.nuevoEID=eid; if(raza)M.raza=raza; M.altaMadre=madre||""; toast("✏️ Corregí y volvé a dar de alta"); render(); return; }
-  M.editIdx=i; M.animal=l.key; M.nuevoEID=""; M.peso=l.peso||""; M.tactoRes=l.tacto||""; M.estRepSel=l.estRepSel||""; M.ceDestAnim=l.ceDestAnim||""; M.over=l.over||null; M.extra=false; M.panel=""; M.bajaOpen=false;
+  M.editIdx=i; M.animal=l.key; M.nuevoEID=""; M.peso=""; balanzaTomarSiEstable(); if(!M.peso)M.peso=l.peso||""; M.tactoRes=l.tacto||""; M.estRepSel=l.estRepSel||""; M.ceDestAnim=l.ceDestAnim||""; M.over=l.over||null; M.extra=false; M.panel=""; M.bajaOpen=false;
   toast("✏️ Corregí y tocá REGISTRAR (o Saltar para dejarlo como estaba)"); render(); mangaScrollArriba();
 };
 async function guardarSesionManga(){
