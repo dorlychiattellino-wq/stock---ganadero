@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.09.29-a";
+window.APP_VERSION="2026.10.01-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4288,6 +4288,7 @@ function renderManga(){
     <div style="display:flex;gap:.4rem;flex-wrap:wrap">
       ${!M.cfg?`<button style="${M.auto?"background:#e08a20;color:#fff;border:none;":"background:#fff;color:#7a4010;border:2px solid #e08a20;"}${BIG};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaAuto()">⚡ Automático: ${M.auto?"SÍ":"NO"}</button>`:""}
       ${!M.cfg?`<button style="${M.faltOpen?BTN_V:BTN_G};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaFalt()">🔍 ¿Quién falta?</button>`:""}
+      ${!M.cfg&&M.pesar?`<button style="${BAL.estado==="ok"?BTN_V:BTN_G};flex:0 0 auto;padding:.6rem 1rem;${BAL.estado==="ok"?"background:#1e4a7a;border-color:#1e4a7a":""}" onclick="balanzaBoton()">⚖️ ${BAL.estado==="ok"?"Balanza: "+(BAL.nombre||"conectada"):BAL.estado==="conectando"?"Conectando…":"Conectar balanza"}</button>`:""}
       ${M.cfg?`<button style="${listo?BTN_V:BTN_G};flex:0 0 auto;padding:.7rem 1.1rem" onclick="mangaCfg(false)">✔ LISTO, A LA MANGA</button>`:`<button style="${BTN_G};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaCfg(true)">⚙️ Cambiar el trabajo</button>`}
       <button class="bs" onclick="mangaNuevaSesion()" title="Cerrar este trabajo y empezar otro">🆕 Nuevo trabajo</button>
     </div>
@@ -4460,6 +4461,8 @@ function renderMangaAnimal(M,a){
     ${M.pesar?`
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
       <div style="flex:1;min-width:210px">
+        ${BAL.estado==="ok"?`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.85rem"><span style="color:#1e4a7a">📡 Balanza en vivo: <strong style="font-family:monospace;font-size:1.1rem">${BAL.ultimo!=null?BAL.ultimo:"—"}</strong> kg ${BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'}</span><span style="display:flex;gap:.3rem"><button class="bs" style="padding:.3rem .6rem" onclick="balanzaTomar()">⬇ Tomar peso</button><button class="bs" style="padding:.3rem .6rem;${BAL.autoTomar?"background:#1e4a7a;color:#fff":""}" onclick="BAL.autoTomar=!BAL.autoTomar;render()" title="Cuando el peso se estabiliza, se carga solo">${BAL.autoTomar?"✔ Auto":"Auto"}</button><button class="bs" style="padding:.3rem .6rem" onclick="BAL.diag=!BAL.diag;render()">🔧</button></span></div>`:""}
+        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div>${BAL.log.slice(-12).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}<div style="margin-top:.3rem"><button class="bs" style="padding:.2rem .5rem;font-size:.75rem" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button></div></div>`:""}
         <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.6rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.6rem;padding:.9rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}</div>
       </div>
@@ -4531,6 +4534,76 @@ window.mangaSexoRapido=async function(cat){ const M=MG(); const a=M.animal?state
 window.mangaRazaRapida=async function(r){ const M=MG(); r=String(r||"").trim(); if(!r)return; M.raza=r; M.panel=""; const a=M.animal?state.animales[M.animal]:null; if(a&&a.raza!==r){ const n={...a,raza:r,modificado:hoyISO()}; state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); toast("✔ "+nombreAnimal(n)+" · "+r); } render(); };
 window.mangaPadreRapido=async function(n){ const M=MG(); n=String(n||"").trim(); M.padre=n; M.panel=""; const a=M.animal?state.animales[M.animal]:null; if(a&&(a.padre||"")!==n){ const x={...a,padre:n,modificado:hoyISO()}; state.animales[a.key]=x; await set(ref(db,"animales/"+a.key),x); toast("✔ "+nombreAnimal(x)+(n?" · padre "+n:" · sin padre")); } render(); };
 window.mangaPadreSugerir=function(){ const M=MG(); const a=M.animal?state.animales[M.animal]:null; if(!a)return; const s=sugerirPadre({...a,fechaNac:a.fechaNac||M.fecha}); if(s.txt)mangaPadreRapido(s.txt); else alert(s.motivo); };
+
+// ══════════════════ BALANZA HOOK ST ONE por Bluetooth (Web Bluetooth / BLE) ══════════════════
+// Hook no publica el protocolo: se suscribe a TODAS las características que notifican y se intenta
+// decodificar el peso como texto ("  245.5 kg", "ST,GS,+00245.5kg", etc.) o como número binario.
+// El panel 🔧 muestra los datos crudos para ajustar la decodificación si hace falta.
+const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null};
+function balanzaSoportada(){ return typeof navigator!=="undefined"&&!!navigator.bluetooth; }
+window.balanzaBoton=async function(){
+  if(BAL.estado==="ok"){ if(confirm("¿Desconectar la balanza?")){ try{ BAL.dev&&BAL.dev.gatt&&BAL.dev.gatt.disconnect(); }catch(e){} balanzaReset(); render(); } return; }
+  if(!balanzaSoportada())return alert("Este navegador no tiene Bluetooth web. Usá Chrome en Android (en iPhone/iPad no está disponible).");
+  BAL.estado="conectando"; render();
+  try{
+    const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:balanzaServiciosCandidatos()});
+    BAL.dev=dev; BAL.nombre=dev.name||dev.id; dev.addEventListener("gattserverdisconnected",()=>{ toast("⚖️ Balanza desconectada"); balanzaReset(); render(); });
+    const server=await dev.gatt.connect();
+    const servicios=await server.getPrimaryServices();
+    BAL.chars=[]; let suscriptas=0;
+    for(const sv of servicios){
+      let cs=[]; try{ cs=await sv.getCharacteristics(); }catch(e){ continue; }
+      for(const ch of cs){
+        const props=Object.entries(ch.properties).filter(([k,v])=>v).map(([k])=>k).join(",");
+        BAL.chars.push(sv.uuid.slice(0,8)+"… / "+ch.uuid.slice(0,8)+"… ["+props+"]");
+        if(ch.properties.notify||ch.properties.indicate){
+          try{ await ch.startNotifications(); ch.addEventListener("characteristicvaluechanged",ev=>balanzaDato(ev.target.value,ch.uuid)); suscriptas++; }catch(e){ BAL.log.push("no se pudo suscribir "+ch.uuid.slice(0,8)+": "+(e.message||e)); }
+        }
+      }
+    }
+    if(!suscriptas){ alert("La balanza se conectó pero no expone datos por notificación. Abrí 🔧 y mandame el diagnóstico."); }
+    BAL.estado="ok"; toast("⚖️ Balanza conectada: "+BAL.nombre+" ("+suscriptas+" canal(es))"); render();
+    try{ localStorage.setItem("sg_balanza_nombre",BAL.nombre); }catch(e){}
+  }catch(e){ balanzaReset(); if(e&&e.name!=="NotFoundError")alert("No se pudo conectar: "+(e.message||e)); render(); }
+};
+function balanzaServiciosCandidatos(){ // UUIDs habituales de módulos BLE serie + rangos genéricos
+  return ["0000ffe0-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb","0000ffb0-0000-1000-8000-00805f9b34fb","6e400001-b5a3-f393-e0a9-e50e24dcca9e","49535343-fe7d-4ae5-8fa9-9fafd205e455","0000181d-0000-1000-8000-00805f9b34fb","0000180f-0000-1000-8000-00805f9b34fb","0000180a-0000-1000-8000-00805f9b34fb","0000ae00-0000-1000-8000-00805f9b34fb","0000a000-0000-1000-8000-00805f9b34fb"]; }
+function balanzaReset(){ BAL.estado="off"; BAL.dev=null; BAL.ultimo=null; BAL.estable=false; BAL._hist=[]; }
+let _balBuf="";
+function balanzaDato(dv,uuid){
+  const bytes=[]; for(let i=0;i<dv.byteLength;i++)bytes.push(dv.getUint8(i));
+  const txt=bytes.map(b=>b>=32&&b<127?String.fromCharCode(b):(b===10?"\\n":b===13?"\\r":".")).join("");
+  const hex=bytes.map(b=>b.toString(16).padStart(2,"0")).join(" ");
+  BAL.log.push(uuid.slice(0,8)+" | "+hex+" | "+txt); if(BAL.log.length>60)BAL.log.splice(0,BAL.log.length-60);
+  let peso=null, estableFlag=null;
+  // 1) texto: puede llegar partido en varios paquetes → se acumula hasta un fin de línea
+  const esTexto=bytes.every(b=>(b>=32&&b<127)||b===10||b===13);
+  if(esTexto&&bytes.length){
+    _balBuf+=String.fromCharCode(...bytes); if(_balBuf.length>200)_balBuf=_balBuf.slice(-200);
+    const lineas=_balBuf.split(/[\r\n]+/); const completa=/[\r\n]$/.test(_balBuf); const cand=completa?lineas.filter(Boolean).slice(-1)[0]:(lineas.length>1?lineas[lineas.length-2]:null);
+    if(cand){ const m=cand.replace(/(\d),(\d)/g,"$1.$2").match(/[-+]?\d+(?:\.\d+)?/); if(m){ peso=parseFloat(m[0]); if(/ST|STABLE|EST/i.test(cand))estableFlag=true; else if(/US|UNST|MOV/i.test(cand))estableFlag=false; } }
+    if(completa)_balBuf="";
+  } else if(bytes.length>=2){
+    // 2) binario: probar int16/int32 little y big endian con escalas típicas; se queda con el que dé un peso razonable
+    const cands=[];
+    if(bytes.length>=4){ cands.push(dv.getInt32(0,true),dv.getInt32(0,false)); }
+    if(bytes.length>=2){ cands.push(dv.getInt16(0,true),dv.getInt16(0,false)); }
+    if(bytes.length>=4){ try{ cands.push(dv.getFloat32(0,true)); }catch(e){} }
+    // preferir la escala que dé un peso de hacienda razonable (hasta 1500 kg); se ajusta cuando se vea el diagnóstico real
+    const esc=BAL._cfg&&BAL._cfg.escala; const escalas=esc?[esc]:[10,1,100];
+    outer: for(const e of escalas){ for(const c of cands){ const v=c/e; if(Number.isFinite(v)&&v>=0&&v<1500){ peso=Math.round(v*10)/10; break outer; } } }
+  }
+  if(peso===null||!(peso>=0&&peso<3000))return;
+  BAL.ultimo=peso; BAL._hist.push({t:Date.now(),p:peso}); BAL._hist=BAL._hist.filter(x=>Date.now()-x.t<1500);
+  const ps=BAL._hist.map(x=>x.p); const estable=estableFlag!==null?estableFlag:(ps.length>=3&&Math.max(...ps)-Math.min(...ps)<=1);
+  BAL.estable=estable;
+  const M=MG();
+  if(estable&&BAL.autoTomar&&peso>=20&&M.pesar&&(M.animal||M.nuevoEID)&&BAL._tomado!==peso&&(!M.peso||parseFloat(M.peso)!==peso)){ BAL._tomado=peso; M.peso=String(peso); toast("⚖️ "+peso+" kg"); }
+  if(peso<5)BAL._tomado=null; // bajó el animal: el próximo se toma de nuevo
+  const el=document.getElementById("balVivo"); render();
+}
+window.balanzaTomar=function(){ const M=MG(); if(BAL.ultimo==null)return toast("Todavía no llegó ningún peso"); M.peso=String(BAL.ultimo); render(); };
+window.balanzaCopiarLog=function(){ const t="Balanza: "+BAL.nombre+"\nCaracterísticas:\n"+BAL.chars.join("\n")+"\nDatos:\n"+BAL.log.join("\n"); if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast("📋 Copiado: pegalo en el chat"),()=>alert(t)); else alert(t); };
 
 // ── Lectura ──
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
