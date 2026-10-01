@@ -113,12 +113,16 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.01-b";
+window.APP_VERSION="2026.10.01-f";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
   location.reload(true);
 };
+// Evitar recargas por error en el campo: el gesto "tirar hacia abajo" de Chrome no recarga,
+// y al intentar cerrar/recargar con un trabajo de manga abierto se pide confirmación.
+try{ const st=document.createElement("style"); st.textContent="html,body{overscroll-behavior-y:none}"; document.head.appendChild(st); }catch(e){}
+window.addEventListener("beforeunload",e=>{ try{ const M=window.state&&window.state.manga; if(M&&M.v2&&!M.cfg&&(M.grupo||[]).length){ e.preventDefault(); e.returnValue="Hay un trabajo de manga abierto. Si no hay señal, la app puede no volver a abrir."; return e.returnValue; } }catch(x){} });
 if("serviceWorker" in navigator){
   window.addEventListener("load",async()=>{
     try{
@@ -306,6 +310,7 @@ let state = {
   campoSelModal: null,
   editandoCampo: null
 };
+window.state=state;
 
 // ── FIREBASE LISTENERS (tiempo real) ──
 onValue(ref(db,"mov"), snap => {
@@ -3412,7 +3417,7 @@ function renderNuevoAnimal(clist,razasList){
 window.setFAnim=function(k,v,soloEstado){ state.filtAnim[k]=v; if(!soloEstado)render(); };
 window.setFAnimSel=function(key){ state.animSel=key||null; state.sugPadre=null; if(key)state.animNuevo=false; render(); if(key)setTimeout(()=>{const el=document.getElementById("fichaAnimal");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},50); };
 window.setFAnimImportUpd=function(v){ if(state.importAnim)state.importAnim.actualizar=!!v; };
-window.setFAnimBaston=function(txt){ procesarLecturaBaston(txt); };
+window.setFAnimBaston=function(txt){ BAL.bastonUlt=Date.now(); procesarLecturaBaston(txt); };
 window.nuevoAnimal=function(){ state.animNuevo=true; state.nuevoEID=""; state.animSel=null; render(); };
 window.cancelarNuevoAnimal=function(){ state.animNuevo=false; state.nuevoEID=""; render(); };
 
@@ -4297,6 +4302,8 @@ function renderManga(){
   ${M.cfg?renderMangaCfg(M,clist,cicl):""}
   ${!M.cfg&&M.faltOpen?renderFaltantes(M):""}
   ${!M.cfg?renderMangaSel(M):""}
+  ${!M.cfg?renderEstadoDisp(M):""}
+  ${!M.cfg&&M.pesar?renderPanelBalanza(M):""}
   ${!M.cfg?`<div style="display:flex;gap:.5rem;margin-bottom:.7rem;align-items:stretch"><input id="bl_eid" inputmode="none" autocomplete="off" placeholder="👉 Pasá el bastón" onblur="this.setAttribute('inputmode','none')" onchange="setFAnimBaston(this.value)" oninput="if(this.value.replace(/\\D/g,'').length>=15){setFAnimBaston(this.value);this.value='';}" style="flex:1;box-sizing:border-box;border:3px solid #e08a20;border-radius:12px;padding:1rem;font-size:1.4rem;font-family:monospace;background:#fff"/><button onclick="mangaEscribir()" title="Escribir la caravana a mano" style="${BTN_G};flex:0 0 auto;padding:.6rem 1rem;font-size:1.1rem">⌨️ Escribir</button></div>`:""}
   ${!M.cfg?(M.nuevoEID?renderMangaAlta(M):a?renderMangaAnimal(M,a):`<div style="background:#fff;border-radius:12px;padding:1.2rem;border:2px dashed #e0c090;text-align:center;color:#8a6030;font-size:1.15rem">Esperando que pase el próximo animal…${M.auto?"<br><span style='font-size:.9rem'>⚡ Modo automático: cada caravana conocida se registra sola. Solo frena en animales nuevos"+(M.pesar||M.tipos.includes("Tacto")?" y cuando hay que cargar peso o resultado":"")+".</span>":""}</div>`):""}
   ${M.log.length?`<div style="margin-top:.8rem"><div style="display:flex;justify-content:space-between;align-items:center"><strong style="color:#7a4010">Registrados hoy (${M.log.length})</strong><button class="bs" style="padding:.3rem .6rem" onclick="MG().logTodos=!MG().logTodos;render()">${M.logTodos?"Ver solo los últimos":"Ver todos"}</button></div><div class="tw"><table><thead><tr><th>Animal</th><th>Qué se registró</th><th></th></tr></thead><tbody>
@@ -4469,8 +4476,8 @@ function renderMangaAnimal(M,a){
     ${M.pesar?`
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
       <div style="flex:1;min-width:210px">
-        ${BAL.estado==="ok"?`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.85rem"><span style="color:#1e4a7a">📡 Balanza en vivo: <strong style="font-family:monospace;font-size:1.1rem">${BAL.ultimo!=null?BAL.ultimo:"—"}</strong> kg ${BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'}</span><span style="display:flex;gap:.3rem"><button class="bs" style="padding:.3rem .6rem" onclick="balanzaTomar()">⬇ Tomar peso</button><button class="bs" style="padding:.3rem .6rem;${BAL.autoTomar?"background:#1e4a7a;color:#fff":""}" onclick="BAL.autoTomar=!BAL.autoTomar;render()" title="Cuando el peso se estabiliza, se carga solo">${BAL.autoTomar?"✔ Auto":"Auto"}</button><button class="bs" style="padding:.3rem .6rem" onclick="BAL.diag=!BAL.diag;render()">🔧</button></span></div>`:""}
-        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div>${BAL.log.slice(-12).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}<div style="margin-top:.3rem"><button class="bs" style="padding:.2rem .5rem;font-size:.75rem" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button></div></div>`:""}
+        ${BAL.estado==="ok"?`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.85rem"><span style="color:#1e4a7a">📡 Balanza en vivo: <strong id="balVivo" style="font-family:monospace;font-size:1.1rem">${BAL.ultimo!=null?BAL.ultimo:"—"}</strong> kg <span id="balEst">${BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'}</span></span><span style="display:flex;gap:.3rem;flex-wrap:wrap"><button class="bs" style="padding:.4rem .7rem" onclick="balanzaTomar()">⬇ Tomar peso</button><button class="bs" style="padding:.4rem .7rem;${BAL.autoTomar?"background:#1e4a7a;color:#fff":""}" onclick="balanzaAuto()" title="Cuando el peso se estabiliza, se carga solo">${BAL.autoTomar?"✔ Auto":"Auto"}</button><button class="bs" style="padding:.4rem .7rem;${BAL.diag?"background:#e08a20;color:#fff":""}" onclick="balanzaDiag()">🔧 Diagnóstico</button></span></div>`:""}
+        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div><div id="balDiagLog">${BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}</div><div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap"><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCompartirLog()">📤 Compartir (WhatsApp)</button></div></div>`:""}
         <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.6rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.6rem;padding:.9rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}</div>
       </div>
@@ -4515,6 +4522,32 @@ window.mangaSelCat=function(c){ const M=MG(); if(!c)return; mangaSetCatActual(M,
 window.mangaSelCampo=function(c){ const M=MG(); M.campo=c; render(); };
 window.mangaTogCampo=function(c){ const M=MG(); M.campos=[...(M.campos||[])]; const i=M.campos.indexOf(c); if(i>=0){ M.campos.splice(i,1); if(M.campo===c)M.campo=M.campos[0]||""; } else { M.campos.push(c); M.campo=c; } render(); };
 window.mangaTogCat=function(c){ const M=MG(); M.cats=[...(M.cats||[])]; const i=M.cats.indexOf(c); if(i>=0){ M.cats.splice(i,1); if(mangaCatActual(M)===c)mangaSetCatActual(M,M.cats[0]||(M.modo==="mov"&&M.movTipo==="ingreso"?"":"Terneros")); } else { M.cats.push(c); mangaSetCatActual(M,c); } render(); };
+function renderEstadoDisp(M){
+  const bOn=BAL.estado==="ok"; const bt=BAL.bastonUlt||0; const seg=bt?Math.round((Date.now()-bt)/1000):null;
+  const bastonTxt=seg===null?"sin lecturas todavía":seg<60?"leyó hace "+seg+" s":seg<3600?"leyó hace "+Math.round(seg/60)+" min":"hace más de 1 h";
+  const bastonOn=seg!==null&&seg<600;
+  const pill=(ok,icono,nombre,det,onclick)=>`<button onclick="${onclick||""}" style="display:flex;align-items:center;gap:.5rem;background:#fff;border:2px solid ${ok?"#2d4a1e":"#c8c0b0"};border-radius:22px;padding:.35rem .8rem;font-size:.9rem;color:${ok?"#2d4a1e":"#8a8070"};cursor:pointer"><span style="width:12px;height:12px;border-radius:50%;background:${ok?"#2fbf4a":"#c0b8a8"};box-shadow:${ok?"0 0 6px #2fbf4a":"none"}"></span>${icono} <strong>${h(nombre)}</strong> <span style="font-size:.8rem;font-weight:400">${h(det)}</span></button>`;
+  return `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem">
+    ${pill(bastonOn,"🪄","Bastón",bastonTxt,"enfocar('bl_eid')")}
+    ${M.pesar?pill(bOn,"⚖️","Balanza",bOn?(BAL.nombre||"conectada"):BAL.estado==="conectando"?"conectando…":"sin conectar · tocá para conectar","balanzaBoton()"):""}
+  </div>`;
+}
+function statsPesaje(M){ const ps=M.log.map(l=>parseFloat(l.peso)).filter(v=>v>0); const n=ps.length; const tot=ps.reduce((a,b)=>a+b,0); return {n,tot,prom:n?tot/n:0,min:n?Math.min(...ps):0,max:n?Math.max(...ps):0}; }
+function renderPanelBalanza(M){
+  const st=statsPesaje(M); const on=BAL.estado==="ok";
+  const caja=(t,v,u)=>`<div style="flex:1;min-width:90px;text-align:center;background:#fff;border-radius:10px;padding:.4rem .3rem;border:1.5px solid #e0c090"><div style="font-size:.7rem;color:#8a6030;text-transform:uppercase;letter-spacing:.3px">${t}</div><div style="font-size:1.5rem;font-weight:800;color:#2d4a1e;font-family:monospace">${v}</div>${u?`<div style="font-size:.7rem;color:#8a6030">${u}</div>`:""}</div>`;
+  return `<div style="background:#fff8ee;border:2px solid #e0a050;border-radius:12px;padding:.6rem .8rem;margin-bottom:.7rem">
+    <div style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+      <div style="flex:1 1 220px;text-align:center;background:${on?"#eef5e6":"#f6f4ee"};border:2px solid ${on?"#2d4a1e":"#c8c0b0"};border-radius:12px;padding:.4rem .6rem">
+        <div style="font-size:.75rem;color:#5a4020">${on?"⚖️ "+h(BAL.nombre||"Balanza"):"⚖️ Balanza sin conectar"}</div>
+        <div style="font-size:3.6rem;line-height:1;font-weight:900;font-family:monospace;color:${on?"#2d4a1e":"#aaa"}"><span id="balVivoBig">${on&&BAL.ultimo!=null?BAL.ultimo:"—"}</span><span style="font-size:1.1rem;font-weight:600"> kg</span></div>
+        <div id="balEstBig" style="font-size:.85rem;min-height:1.1rem">${on?(BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'):""}</div>
+      </div>
+      <div style="flex:2 1 300px;display:flex;gap:.5rem;flex-wrap:wrap">
+        ${caja("Animales",st.n,"pesados hoy")}${caja("Promedio",st.n?st.prom.toFixed(1):"—","kg")}${caja("Total",st.n?Math.round(st.tot).toLocaleString("es-AR"):"—","kg")}${caja("Mín / Máx",st.n?st.min+" / "+st.max:"—","kg")}
+      </div>
+    </div></div>`;
+}
 function renderMangaSel(M){
   const cs=M.campos||[], ks=M.cats||[]; if(cs.length<2&&ks.length<2)return "";
   const cur=mangaCatActual(M); const mov=M.modo==="mov"&&M.movTipo==="ingreso";
@@ -4608,10 +4641,17 @@ function balanzaDato(dv,uuid){
   const M=MG();
   if(estable&&BAL.autoTomar&&peso>=20&&M.pesar&&(M.animal||M.nuevoEID)&&BAL._tomado!==peso&&(!M.peso||parseFloat(M.peso)!==peso)){ BAL._tomado=peso; M.peso=String(peso); toast("⚖️ "+peso+" kg"); }
   if(peso<5)BAL._tomado=null; // bajó el animal: el próximo se toma de nuevo
-  const el=document.getElementById("balVivo"); render();
+  const tomo=M.peso===String(peso)&&BAL._tomado===peso&&!BAL._renderizado; if(tomo){ BAL._renderizado=true; render(); return; }
+  if(BAL._tomado!==peso)BAL._renderizado=false;
+  const v=document.getElementById("balVivo"); if(v)v.textContent=BAL.ultimo; const vb=document.getElementById("balVivoBig"); if(vb)vb.textContent=BAL.ultimo; const eb=document.getElementById("balEstBig"); if(eb)eb.innerHTML=estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'; const e2=document.getElementById("balEst"); if(e2)e2.innerHTML=estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>';
+  const d=document.getElementById("balDiagLog"); if(d)d.innerHTML=BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("");
 }
+window.balanzaDiag=function(){ BAL.diag=!BAL.diag; render(); };
+window.balanzaAuto=function(){ BAL.autoTomar=!BAL.autoTomar; render(); };
+function balanzaTextoLog(){ return "Balanza: "+BAL.nombre+"\nCaracterísticas:\n"+BAL.chars.join("\n")+"\nDatos:\n"+BAL.log.join("\n"); }
+window.balanzaCompartirLog=async function(){ const t=balanzaTextoLog(); if(navigator.share){ try{ await navigator.share({title:"Diagnóstico balanza",text:t}); return; }catch(e){} } balanzaCopiarLog(); };
 window.balanzaTomar=function(){ const M=MG(); if(BAL.ultimo==null)return toast("Todavía no llegó ningún peso"); M.peso=String(BAL.ultimo); render(); };
-window.balanzaCopiarLog=function(){ const t="Balanza: "+BAL.nombre+"\nCaracterísticas:\n"+BAL.chars.join("\n")+"\nDatos:\n"+BAL.log.join("\n"); if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast("📋 Copiado: pegalo en el chat"),()=>alert(t)); else alert(t); };
+window.balanzaCopiarLog=function(){ const t=balanzaTextoLog(); if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast("📋 Copiado: pegalo en el chat"),()=>alert(t)); else alert(t); };
 
 // ── Lectura ──
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
