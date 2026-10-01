@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.01-a";
+window.APP_VERSION="2026.10.01-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -4243,7 +4243,7 @@ window.mangaOk=async function(){
   const M=MG(); const a=M.animal?state.animales[M.animal]:null; if(!a)return;
   const acts=mangaActsDe(M); const peso=parseFloat(M.peso);
   const editando=Number.isInteger(M.editIdx)&&M.log[M.editIdx]&&M.log[M.editIdx].key===a.key;
-  if(!editando&&M.grupo.includes(a.key)&&!confirm(nombreAnimal(a)+" ya pasó hoy. ¿Registrarlo otra vez? (se contaría dos veces en el lote)"))return;
+  if(!editando&&M.grupo.includes(a.key)&&!M.dupOk){ toast("⚠️ Elegí qué hacer con el animal repetido"); return; }
   if(acts.tipos.includes("Tacto")&&!M.tactoRes)return alert("Marcá el resultado del tacto.");
   if(acts.tipos.includes("IATF")&&!(M.toroIatfSel&&state.toros[M.toroIatfSel]))return alert("Elegí el semen (toro) para esta vaca."); if(((M.modo==="act"&&acts.tipos.includes("Traslado de rodeo"))||acts.tipos.includes("Cambio de estado"))&&!(M.estRepSel||a.estadoRep))return alert("Indicá el estado actual de la vaca.");
   if(M.pesar&&!(peso>0)&&!confirm("No cargaste peso. ¿Registrar igual sin peso?"))return;
@@ -4251,7 +4251,7 @@ window.mangaOk=async function(){
   const txt=await registrarAnimal(M,a,{peso:M.peso,tactoRes:M.tactoRes,estRepSel:M.estRepSel,ceDestAnim:M.ceDestAnim,over:M.over});
   { const u=mangaActsDe(M); const igual=JSON.stringify([...u.tipos].sort())===JSON.stringify([...M.tipos].sort())&&JSON.stringify([...u.productos].sort())===JSON.stringify([...M.productos].sort())&&JSON.stringify(u.prodDosis||{})===JSON.stringify(M.prodDosis||{}); M.ult=igual?null:{tipos:[...u.tipos],productos:[...u.productos],prodDosis:{...(u.prodDosis||{})}}; }
   await sincronizarLote(M); toast("✔ "+nombreAnimal(a)+": "+txt);
-  M.animal=null; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
+  M.animal=null; M.dupAviso=false; M.dupOk=false; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
 };
 
 
@@ -4438,7 +4438,7 @@ function renderMangaAnimal(M,a){
   const ult=pesadasDe(a.key).slice(-1)[0]; const acts=mangaActsDe(M);
   const conTacto=acts.tipos.includes("Tacto"); const conTr=M.modo==="act"&&acts.tipos.includes("Traslado de rodeo"); const conCe=acts.tipos.includes("Cambio de estado");
   const er=a.estadoRep||""; const necesitaEstado=(conTr||conCe)&&!er&&!M.estRepSel;
-  const editando=Number.isInteger(M.editIdx)&&M.log[M.editIdx]&&M.log[M.editIdx].key===a.key; const yaPaso=!editando&&M.grupo.includes(a.key);
+  const editando=Number.isInteger(M.editIdx)&&M.log[M.editIdx]&&M.log[M.editIdx].key===a.key; const yaPaso=!editando&&M.grupo.includes(a.key)&&!M.dupOk;
   let seRegistra="";
   if(M.modo==="mov")seRegistra=`📋 ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · <strong>${h(M.movSub)}</strong>${M.movSub==="Cambio Categoria"?" "+h(a.cat)+" → "+h(M.movCatNueva):M.movTipo==="ingreso"&&M.movCat&&M.movCat!==a.cat?" (pasa de "+h(a.cat)+" a "+h(M.movCat)+")":""}${M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(M.movCampo2):""}`+(acts.tipos.length?` · 🩺 <strong>${h(acts.tipos.join(" + "))}</strong>${acts.productos.length?" · "+h(prodTexto(acts)):""}`:"");
   else seRegistra=`🩺 <strong>${h(acts.tipos.join(" + ")||"nada")}</strong>${acts.productos.length?" · "+h(prodTexto(acts)):""}`;
@@ -4449,6 +4449,14 @@ function renderMangaAnimal(M,a){
     </div>
     <div class="km" style="margin:.2rem 0 .4rem">${ult?"Último peso <strong>"+ult.peso+" kg</strong> el "+fmtF(ult.fecha)+" ("+diasEntre(ult.fecha,M.fecha)+" días)":"Sin pesadas previas"}${yaPaso?' · <span style="color:#c82010;font-weight:700">⚠️ YA PASÓ HOY</span>':""}</div>
     ${editando?`<div style="background:#fff8ee;border:2px solid #e0a050;border-radius:8px;padding:.4rem .8rem;margin-bottom:.5rem">✏️ <strong>Editando el registro de hoy</strong> de este animal. REGISTRAR lo reemplaza; "Saltar sin guardar" lo deja como estaba.</div>`:""}
+    ${yaPaso?(()=>{const li=M.log.map((l,i)=>l.key===a.key?i:-1).filter(i=>i>=0).slice(-1)[0]; const l=li>=0?M.log[li]:null; return `<div style="background:#fdf0ee;border:3px solid #c82010;border-radius:10px;padding:.7rem .9rem;margin-bottom:.6rem">
+      <div style="font-size:1.15rem;font-weight:800;color:#c82010">⚠️ Este animal YA PASÓ en este trabajo</div>
+      ${l?`<div style="margin:.2rem 0 .5rem">Se registró: <strong>${h(l.txt)}</strong>${l.peso?" · "+h(l.peso)+" kg":""}</div>`:""}
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button style="${BTN_G};flex:1 1 auto;padding:.8rem;font-size:1.05rem;border-color:#c82010;color:#c82010" onclick="mangaCancelar()">✖ No cargar de nuevo</button>
+        ${l?`<button style="${BTN_V};flex:1 1 auto;padding:.8rem;font-size:1.05rem;background:#e08a20;border-color:#e08a20" onclick="mangaEditar(${li})">🔁 Reemplazar lo anterior</button>`:""}
+        <button style="${BTN_G};flex:1 1 auto;padding:.8rem;font-size:1.05rem" onclick="MG().dupAviso=false;MG().dupOk=true;render()">➕ Cargar además (dos veces)</button>
+      </div></div>`;})():""}
     ${panelRazaPadre(M,a,"K")}
     <div style="background:#eef5e6;border-radius:10px;padding:.6rem .8rem;margin-bottom:.6rem;font-size:1rem">
       ${M.modo==="mov"?`<div style="margin-bottom:.3rem">${seRegistra.split(" · 🩺")[0]}</div>`:""}
@@ -4524,7 +4532,7 @@ window.mangaEscribir=function(){ const el=document.getElementById("bl_eid"); if(
 window.mangaAuto=function(){ const M=MG(); M.auto=!M.auto; if(M.auto&&(M.pesar||M.tipos.includes("Tacto")))toast("⚡ Automático: se frena en cada animal para cargar peso/tacto, pero el resto se registra solo"); render(); enfocar("bl_eid"); };
 window.mangaPanel=function(p){ const M=MG(); M.panel=M.panel===p?"":p; render(); };
 window.mangaKey=function(k){ const M=MG(); if(k==="⌫")M.peso=M.peso.slice(0,-1); else if(k==="."){ if(!M.peso.includes("."))M.peso=(M.peso||"0")+"."; } else if(M.peso.replace(".","").length<5)M.peso+=k; render(); };
-window.mangaCancelar=function(){ const M=MG(); M.editIdx=null; M.animal=null; M.nuevoEID=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=null; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; render(); enfocar("bl_eid"); };
+window.mangaCancelar=function(){ const M=MG(); M.dupAviso=false; M.dupOk=false; M.editIdx=null; M.animal=null; M.nuevoEID=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=null; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; render(); enfocar("bl_eid"); };
 window.mangaExtra=function(v){ const M=MG(); M.extra=v!==false; M.bajaOpen=false; render(); };
 window.mangaOverReset=function(){ const M=MG(); M.over=null; M.ult=null; render(); };
 window.mangaTacto=function(v){ MG().tactoRes=v; render(); };
@@ -4608,8 +4616,8 @@ window.balanzaCopiarLog=function(){ const t="Balanza: "+BAL.nombre+"\nCaracterí
 // ── Lectura ──
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
 function mangaLeer(a,eidOrVisual){ const M=MG(); if(M.cfg){ alert("Primero tocá ✔ LISTO, A LA MANGA."); return; }
-  M.editIdx=null; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
-  if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; toast("⚠️ "+nombreAnimal(a)+" ya pasó hoy (no se cuenta de nuevo)"); if(M.auto){ M.animal=null; M.nuevoEID=""; render(); enfocar("bl_eid"); return; } }
+  M.editIdx=null; M.dupAviso=false; M.dupOk=false; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
+  if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; M.animal=a.key; M.nuevoEID=""; M.dupAviso=true; render(); mangaScrollArriba(); return; }
   if(a){ M.animal=a.key; M.nuevoEID=""; } else { M.animal=null; M.nuevoEID=eidOrVisual; }
   render(); mangaScrollArriba(); 
   if(a&&M.auto&&!M.grupo.includes(a.key)){ const necesita=M.pesar||M.tipos.includes("Tacto")||((M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado"))&&!a.estadoRep); if(!necesita){ mangaOk(); } } }
@@ -4830,7 +4838,7 @@ window.mangaDeshacer=async function(i){
   if(!M._silencio){ toast("↩️ Deshecho"); render(); enfocar("bl_eid"); }
 };
 window.mangaEditar=async function(i){
-  const M=MG(); const l=M.log[i]; if(!l)return;
+  const M=MG(); const l=M.log[i]; if(!l)return; M.dupAviso=false; M.dupOk=false;
   if(l.alta){ const a=state.animales[l.alta]; const eid=a?(a.caravana||a.visual):l.alta; const raza=a?a.raza:""; const madre=a?a.madre:""; M._silencio=true; await mangaDeshacer(i); M._silencio=false; M.animal=null; M.nuevoEID=eid; if(raza)M.raza=raza; M.altaMadre=madre||""; toast("✏️ Corregí y volvé a dar de alta"); render(); return; }
   M.editIdx=i; M.animal=l.key; M.nuevoEID=""; M.peso=l.peso||""; M.tactoRes=l.tacto||""; M.estRepSel=l.estRepSel||""; M.ceDestAnim=l.ceDestAnim||""; M.over=l.over||null; M.extra=false; M.panel=""; M.bajaOpen=false;
   toast("✏️ Corregí y tocá REGISTRAR (o Saltar para dejarlo como estaba)"); render(); mangaScrollArriba();
