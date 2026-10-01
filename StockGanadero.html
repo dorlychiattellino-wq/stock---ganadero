@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.01-f";
+window.APP_VERSION="2026.10.01-i";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -206,8 +206,8 @@ function actualizarBarraPendientes(){ if(typeof render==="function"&&state&&stat
 // Aviso si la app nunca se abrio con internet en este dispositivo
 setTimeout(()=>{
   const r=document.getElementById("root");
-  if(r&&/Conectando/.test(r.textContent||"")&&leerColaCacheVacia()){
-    r.innerHTML='<div style="max-width:420px;margin:15vh auto;background:#fdfbf6;border-radius:12px;padding:1.5rem;text-align:center;font-family:sans-serif;color:#4a3820"><h2>📡 Sin señal</h2><p style="margin-top:.6rem;font-size:.95rem">Este dispositivo todavía no tiene los datos guardados. Abrí la app una vez con internet y después va a funcionar sin señal.</p></div>';
+  if(r&&/Conectando/.test(r.textContent||"")){
+    r.innerHTML='<div style="max-width:420px;margin:15vh auto;background:#fdfbf6;border-radius:12px;padding:1.5rem;text-align:center;font-family:sans-serif;color:#4a3820"><h2>📡 Sin señal</h2><p style="margin-top:.6rem;font-size:.95rem">Este dispositivo todavía no tiene guardados los datos para arrancar sin internet.<br><br><strong>Qué hacer:</strong> conectá la tablet a internet un momento (WiFi o compartir datos del celular), tocá Reintentar y esperá a que aparezca "Conectado". Desde ahí la app va a abrir sin señal.</p><button onclick="location.reload()" style="margin-top:1rem;padding:.8rem 1.4rem;font-size:1.05rem;border-radius:10px;border:none;background:#2d4a1e;color:#fff;font-weight:700">🔄 Reintentar</button><p style="margin-top:.8rem;font-size:.8rem;color:#8a7a60">Si ya tenés señal y sigue acá, esperá unos segundos más: puede estar bajando los datos.</p></div>';
   }
 },8000);
 function leerColaCacheVacia(){ try{ return localStorage.getItem("sgcache_mov")===null; }catch(e){ return true; } }
@@ -4477,7 +4477,7 @@ function renderMangaAnimal(M,a){
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:stretch">
       <div style="flex:1;min-width:210px">
         ${BAL.estado==="ok"?`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.85rem"><span style="color:#1e4a7a">📡 Balanza en vivo: <strong id="balVivo" style="font-family:monospace;font-size:1.1rem">${BAL.ultimo!=null?BAL.ultimo:"—"}</strong> kg <span id="balEst">${BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'}</span></span><span style="display:flex;gap:.3rem;flex-wrap:wrap"><button class="bs" style="padding:.4rem .7rem" onclick="balanzaTomar()">⬇ Tomar peso</button><button class="bs" style="padding:.4rem .7rem;${BAL.autoTomar?"background:#1e4a7a;color:#fff":""}" onclick="balanzaAuto()" title="Cuando el peso se estabiliza, se carga solo">${BAL.autoTomar?"✔ Auto":"Auto"}</button><button class="bs" style="padding:.4rem .7rem;${BAL.diag?"background:#e08a20;color:#fff":""}" onclick="balanzaDiag()">🔧 Diagnóstico</button></span></div>`:""}
-        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div><div id="balDiagLog">${BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}</div><div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap"><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCompartirLog()">📤 Compartir (WhatsApp)</button></div></div>`:""}
+        ${BAL.diag?`<div style="background:#fff8ee;border:1px dashed #e0a050;border-radius:8px;padding:.4rem .6rem;margin-bottom:.4rem;font-size:.75rem;font-family:monospace;max-height:160px;overflow:auto"><div style="font-family:inherit;color:#7a4010;font-weight:700">Diagnóstico Bluetooth · ${h(BAL.nombre||"")} · ${BAL.chars.length} característica(s)</div><div style="font-family:sans-serif;font-size:.85rem;margin:.3rem 0;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">Hold: <strong>${BAL.holdVisto?"se detecta (H)":"no detectado todavía"}</strong> · Factor: <strong>×${BAL.factor}</strong> (dato crudo ${BAL.crudo!=null?BAL.crudo:"—"} → ${BAL.ultimo!=null?BAL.ultimo:"—"} kg) <button class="bs" style="padding:.3rem .6rem;font-size:.85rem" onclick="balanzaCalibrar()">🎯 Calibrar con el peso de la balanza</button></div>${BAL.chars.map(c=>`<div>${h(c)}</div>`).join("")}<div style="margin-top:.3rem;color:#7a4010;font-weight:700">Últimos datos recibidos:</div><div id="balDiagLog">${BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("")||"<div>(nada todavía: subí algo a la balanza)</div>"}</div><div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap"><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCopiarLog()">📋 Copiar diagnóstico</button><button class="bs" style="padding:.5rem .8rem;font-size:.9rem;font-family:sans-serif" onclick="balanzaCompartirLog()">📤 Compartir (WhatsApp)</button></div></div>`:""}
         <div style="background:#eef5e6;border:2px solid #2d4a1e;border-radius:10px;padding:.6rem 1rem;font-size:2.6rem;font-weight:800;text-align:right;color:#2d4a1e;min-height:3.2rem;font-family:monospace">${h(M.peso)||'<span style="color:#aaa">0</span>'} <span style="font-size:1rem">kg</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem">${["7","8","9","4","5","6","1","2","3",".","0","⌫"].map(k=>`<button onclick="mangaKey('${k}')" style="font-size:1.6rem;padding:.9rem;border-radius:10px;border:1.5px solid #c8c0b0;background:${k==="⌫"?"#fdf0ee":"#fff"};font-weight:700">${k}</button>`).join("")}</div>
       </div>
@@ -4541,7 +4541,7 @@ function renderPanelBalanza(M){
       <div style="flex:1 1 220px;text-align:center;background:${on?"#eef5e6":"#f6f4ee"};border:2px solid ${on?"#2d4a1e":"#c8c0b0"};border-radius:12px;padding:.4rem .6rem">
         <div style="font-size:.75rem;color:#5a4020">${on?"⚖️ "+h(BAL.nombre||"Balanza"):"⚖️ Balanza sin conectar"}</div>
         <div style="font-size:3.6rem;line-height:1;font-weight:900;font-family:monospace;color:${on?"#2d4a1e":"#aaa"}"><span id="balVivoBig">${on&&BAL.ultimo!=null?BAL.ultimo:"—"}</span><span style="font-size:1.1rem;font-weight:600"> kg</span></div>
-        <div id="balEstBig" style="font-size:.85rem;min-height:1.1rem">${on?(BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'):""}</div>
+        <div id="balEstBig" style="font-size:.85rem;min-height:1.1rem">${on?(BAL.hold?'<span style="color:#1e4a7a;font-weight:800">H · peso retenido</span>':BAL.estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'):""}</div>
       </div>
       <div style="flex:2 1 300px;display:flex;gap:.5rem;flex-wrap:wrap">
         ${caja("Animales",st.n,"pesados hoy")}${caja("Promedio",st.n?st.prom.toFixed(1):"—","kg")}${caja("Total",st.n?Math.round(st.tot).toLocaleString("es-AR"):"—","kg")}${caja("Mín / Máx",st.n?st.min+" / "+st.max:"—","kg")}
@@ -4580,7 +4580,9 @@ window.mangaPadreSugerir=function(){ const M=MG(); const a=M.animal?state.animal
 // Hook no publica el protocolo: se suscribe a TODAS las características que notifican y se intenta
 // decodificar el peso como texto ("  245.5 kg", "ST,GS,+00245.5kg", etc.) o como número binario.
 // El panel 🔧 muestra los datos crudos para ajustar la decodificación si hace falta.
-const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null};
+const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null,crudo:null,factor:(()=>{ try{ const v=parseFloat(localStorage.getItem("sg_balanza_factor")); return v>0?v:5; }catch(e){ return 5; } })()};
+window.balanzaFactor=function(v){ v=parseFloat(String(v).replace(",",".")); if(!(v>0))return toast("Factor inválido"); BAL.factor=v; try{ localStorage.setItem("sg_balanza_factor",String(v)); }catch(e){} toast("⚖️ Factor de la balanza: ×"+v); render(); };
+window.balanzaCalibrar=function(){ if(BAL.crudo==null||!(BAL.crudo>0))return alert("Primero subí algo a la balanza para que lleguen datos."); const r=prompt("¿Cuánto marca la balanza ST ONE ahora mismo (kg)?"); const real=parseFloat(String(r||"").replace(",",".")); if(!(real>0))return; balanzaFactor(Math.round(real/BAL.crudo*1000)/1000); };
 function balanzaSoportada(){ return typeof navigator!=="undefined"&&!!navigator.bluetooth; }
 window.balanzaBoton=async function(){
   if(BAL.estado==="ok"){ if(confirm("¿Desconectar la balanza?")){ try{ BAL.dev&&BAL.dev.gatt&&BAL.dev.gatt.disconnect(); }catch(e){} balanzaReset(); render(); } return; }
@@ -4616,13 +4618,13 @@ function balanzaDato(dv,uuid){
   const txt=bytes.map(b=>b>=32&&b<127?String.fromCharCode(b):(b===10?"\\n":b===13?"\\r":".")).join("");
   const hex=bytes.map(b=>b.toString(16).padStart(2,"0")).join(" ");
   BAL.log.push(uuid.slice(0,8)+" | "+hex+" | "+txt); if(BAL.log.length>60)BAL.log.splice(0,BAL.log.length-60);
-  let peso=null, estableFlag=null;
+  let peso=null, estableFlag=null, hold=false;
   // 1) texto: puede llegar partido en varios paquetes → se acumula hasta un fin de línea
   const esTexto=bytes.every(b=>(b>=32&&b<127)||b===10||b===13);
   if(esTexto&&bytes.length){
     _balBuf+=String.fromCharCode(...bytes); if(_balBuf.length>200)_balBuf=_balBuf.slice(-200);
     const lineas=_balBuf.split(/[\r\n]+/); const completa=/[\r\n]$/.test(_balBuf); const cand=completa?lineas.filter(Boolean).slice(-1)[0]:(lineas.length>1?lineas[lineas.length-2]:null);
-    if(cand){ const m=cand.replace(/(\d),(\d)/g,"$1.$2").match(/[-+]?\d+(?:\.\d+)?/); if(m){ peso=parseFloat(m[0]); if(/ST|STABLE|EST/i.test(cand))estableFlag=true; else if(/US|UNST|MOV/i.test(cand))estableFlag=false; } }
+    if(cand){ const m=cand.replace(/(\d),(\d)/g,"$1.$2").match(/[-+]?\d+(?:\.\d+)?/); if(m){ peso=parseFloat(m[0]); hold=/\bH\b|HOLD|^H/i.test(cand.replace(/[-+]?\d+(?:\.\d+)?/,"")); if(hold||/ST|STABLE|EST/i.test(cand))estableFlag=true; else if(/US|UNST|MOV/i.test(cand))estableFlag=false; } }
     if(completa)_balBuf="";
   } else if(bytes.length>=2){
     // 2) binario: probar int16/int32 little y big endian con escalas típicas; se queda con el que dé un peso razonable
@@ -4633,17 +4635,21 @@ function balanzaDato(dv,uuid){
     // preferir la escala que dé un peso de hacienda razonable (hasta 1500 kg); se ajusta cuando se vea el diagnóstico real
     const esc=BAL._cfg&&BAL._cfg.escala; const escalas=esc?[esc]:[10,1,100];
     outer: for(const e of escalas){ for(const c of cands){ const v=c/e; if(Number.isFinite(v)&&v>=0&&v<1500){ peso=Math.round(v*10)/10; break outer; } } }
+    if(bytes.includes(0x48))hold=true; // 'H' en el paquete
+    if(BAL._cfg&&Number.isInteger(BAL._cfg.holdByte)&&bytes.length>BAL._cfg.holdByte){ hold=(bytes[BAL._cfg.holdByte]&(BAL._cfg.holdMask||0xff))!==0; }
   }
   if(peso===null||!(peso>=0&&peso<3000))return;
+  BAL.crudo=peso; peso=Math.round(peso*BAL.factor*10)/10;
   BAL.ultimo=peso; BAL._hist.push({t:Date.now(),p:peso}); BAL._hist=BAL._hist.filter(x=>Date.now()-x.t<1500);
-  const ps=BAL._hist.map(x=>x.p); const estable=estableFlag!==null?estableFlag:(ps.length>=3&&Math.max(...ps)-Math.min(...ps)<=1);
-  BAL.estable=estable;
+  const ps=BAL._hist.map(x=>x.p); const estable=hold||(estableFlag!==null?estableFlag:(ps.length>=3&&Math.max(...ps)-Math.min(...ps)<=1));
+  BAL.estable=estable; BAL.hold=hold; BAL.holdVisto=BAL.holdVisto||hold;
   const M=MG();
-  if(estable&&BAL.autoTomar&&peso>=20&&M.pesar&&(M.animal||M.nuevoEID)&&BAL._tomado!==peso&&(!M.peso||parseFloat(M.peso)!==peso)){ BAL._tomado=peso; M.peso=String(peso); toast("⚖️ "+peso+" kg"); }
+  const listoParaTomar=BAL.holdVisto?hold:estable;
+  if(listoParaTomar&&BAL.autoTomar&&peso>=20&&M.pesar&&(M.animal||M.nuevoEID)&&BAL._tomado!==peso&&(!M.peso||parseFloat(M.peso)!==peso)){ BAL._tomado=peso; M.peso=String(peso); toast("⚖️ "+peso+" kg"); }
   if(peso<5)BAL._tomado=null; // bajó el animal: el próximo se toma de nuevo
   const tomo=M.peso===String(peso)&&BAL._tomado===peso&&!BAL._renderizado; if(tomo){ BAL._renderizado=true; render(); return; }
   if(BAL._tomado!==peso)BAL._renderizado=false;
-  const v=document.getElementById("balVivo"); if(v)v.textContent=BAL.ultimo; const vb=document.getElementById("balVivoBig"); if(vb)vb.textContent=BAL.ultimo; const eb=document.getElementById("balEstBig"); if(eb)eb.innerHTML=estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'; const e2=document.getElementById("balEst"); if(e2)e2.innerHTML=estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>';
+  const v=document.getElementById("balVivo"); if(v)v.textContent=BAL.ultimo; const vb=document.getElementById("balVivoBig"); if(vb)vb.textContent=BAL.ultimo; const eb=document.getElementById("balEstBig"); if(eb)eb.innerHTML=hold?'<span style="color:#1e4a7a;font-weight:800">H · peso retenido</span>':estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>'; const e2=document.getElementById("balEst"); if(e2)e2.innerHTML=hold?'<span style="color:#1e4a7a;font-weight:800">H retenido</span>':estable?'<span style="color:#2d4a1e">● estable</span>':'<span style="color:#a06a1f">○ moviéndose</span>';
   const d=document.getElementById("balDiagLog"); if(d)d.innerHTML=BAL.log.slice(-15).map(l=>`<div>${h(l)}</div>`).join("");
 }
 window.balanzaDiag=function(){ BAL.diag=!BAL.diag; render(); };
