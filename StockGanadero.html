@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.01-k";
+window.APP_VERSION="2026.10.15-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -251,7 +251,7 @@ let state = {
   loaded: false,
   editMov: null,
   editAct: null,
-  filtMov: {campo:"",cat:"",ciclo:"",desde:"",hasta:""},
+  filtMov: {campo:"",cat:"",ciclo:"",tipo:"",sub:"",desde:"",hasta:""},
   filtAct: {campo:"",ciclo:"",cat:"",tipo:"",buscar:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtCom: (()=>{try{const s=localStorage.getItem("sg_filtCom");return s?{hasta:"",campo:"",...JSON.parse(s)}:{hasta:"",campo:"",cats:[]};}catch(e){return {hasta:"",campo:"",cats:[]};}})(),
@@ -649,6 +649,8 @@ function renderMov(){
     if(f.campo&&m.campo!==f.campo)return false;
     if(f.cat&&m.cat!==f.cat)return false;
     if(f.ciclo&&m.ciclo!==f.ciclo)return false;
+    if(f.tipo&&m.tipo!==f.tipo)return false;
+    if(f.sub&&m.sub!==f.sub)return false;
     if(f.desde&&m.fecha<f.desde)return false;
     if(f.hasta&&m.fecha>f.hasta)return false;
     return true;
@@ -738,6 +740,8 @@ function renderMov(){
     <label>Campo<select onchange="setFM('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoria<select onchange="setFM('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
     <label>Ciclo<select onchange="setFM('ciclo',this.value)">${opts(ciclos(),f.ciclo,"Todos")}</select></label>
+    <label>Tipo<select onchange="setFM('tipo',this.value)"><option value="">Todos</option><option value="ingreso"${f.tipo==="ingreso"?" selected":""}>Ingreso</option><option value="egreso"${f.tipo==="egreso"?" selected":""}>Egreso</option></select></label>
+    <label>Subtipo<select onchange="setFM('sub',this.value)">${opts([...new Set([...(f.tipo==="egreso"?[]:ING),...(f.tipo==="ingreso"?[]:EGR),...Object.values(state.mov).filter(m=>m&&m.sub&&(!f.tipo||m.tipo===f.tipo)).map(m=>m.sub)])].sort((a,b)=>a.localeCompare(b,"es")),f.sub,"Todos")}</select></label>
     <label>Desde<input type="date" value="${f.desde}" onchange="setFM('desde',this.value)"/></label>
     <label>Hasta<input type="date" value="${f.hasta}" onchange="setFM('hasta',this.value)"/></label>
   </div>
@@ -2364,7 +2368,7 @@ window.updActKg=function(){
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
 };
-window.setFM=function(k,v){saveFormMov();state.filtMov[k]=v;render();};
+window.setFM=function(k,v){saveFormMov();state.filtMov[k]=v;if(k==="tipo"&&v&&state.filtMov.sub){const ok=(v==="ingreso"?ING:EGR).includes(state.filtMov.sub)||Object.values(state.mov).some(m=>m&&m.tipo===v&&m.sub===state.filtMov.sub);if(!ok)state.filtMov.sub="";}render();};
 window.setFA=function(k,v){saveFormAct();state.filtAct[k]=v;render();};
 window.setFABuscar=function(v){
   saveFormAct();
