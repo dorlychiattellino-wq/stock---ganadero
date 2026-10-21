@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.15-a";
+window.APP_VERSION="2026.10.21-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -234,7 +234,7 @@ const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunac
 const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
 const ACT_CALC = [...ACT_PROTEGIDAS,"Preñez","Vacias","Cut","Descarte","2da oportunidad","Destete","Entore","Desentore","Pesaje","IATF","Otro"]; // nombres usados en cálculos: no se renombran
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
-const PADRE_ESTADO = {"Cut":"Preñez"};
+const PADRE_ESTADO = {"Cut":"Preñez","2da oportunidad":"Vacias","Descarte":"Vacias"};
 const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
 const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
@@ -483,7 +483,7 @@ async function savePar(data){
   toast("✅ Parametros guardados");
 }
 async function aPapelera(col,rec){ if(!rec)return; const id=col+"_"+rec.id; const item={id,col,rec,borrado:new Date().toISOString(),usuario:(state.sesion&&state.sesion.nombre)||""}; state.papelera[id]=item; await set(ref(db,"papelera/"+id),item); }
-async function delMov(id){ if(confirm("Eliminar movimiento? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",state.mov[id]); await remove(ref(db,`mov/${id}`)); toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
+async function delMov(id){ const m=state.mov[id]; const esp=m&&m.espejo&&state.mov[m.espejo]?state.mov[m.espejo]:null; if(confirm("Eliminar movimiento?"+(esp?" También se elimina el registro espejo del traslado en "+esp.campo+"." :"")+" (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",m); await remove(ref(db,`mov/${id}`)); if(esp){ await aPapelera("mov",esp); await remove(ref(db,`mov/${esp.id}`)); } toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
 async function delAct(id){ if(confirm("Eliminar actividad? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("act",state.act[id]); await remove(ref(db,`act/${id}`)); toast("Actividad eliminada (recuperable en Parámetros → Papelera)"); } }
 function renderPar(){ return renderParBase()+renderPapelera(); }
 window.restaurarPapelera=async function(id){ const it=state.papelera[id]; if(!it)return; if(state[it.col][it.rec.id]&&!confirm("Ya existe un registro con ese id. ¿Sobrescribir?"))return; await set(ref(db,it.col+"/"+it.rec.id),it.rec); delete state.papelera[id]; await remove(ref(db,"papelera/"+id)); toast("♻️ Registro recuperado en "+(it.col==="mov"?"Movimientos":"Actividades")); render(); };
@@ -506,7 +506,7 @@ function render(){
   const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave",
     ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"],input[id^="mo_"],textarea[id^="cp_"],input[id^="cp_"],select[id^="cp_"],input[id^="pr_"],select[id^="pr_"]')).map(e=>e.id)];
   const saved={}; let focusId=null;
-  for(const id of preserveIds){const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
+  for(const id of preserveIds){ if(state._noPreservar&&/^(tr_(pre|cut|seg|dsc|dest)|ce_)/.test(id))continue; const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
   // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
   if(adminsActivos().length===0 && Object.values(state.usuarios).filter(u=>u&&u.rol==="admin").length===0){
     root.innerHTML=buildSetup();
@@ -713,8 +713,12 @@ function renderMov(){
     <label>Categoria<select id="mcat">${opts(CATS,ef?ef.cat:state.formMov.cat,"-- Seleccionar --")}</select></label>
     <label class="s2">Ciclo/ID<input id="mci" list="ciclos-list-m" value="${ef?h(ef.ciclo||""):h(state.formMov.ciclo)}" placeholder="Ej: 2026/2027"/><datalist id="ciclos-list-m">${ciclos().map(c=>`<option value="${h(c)}"/>`).join("")}</datalist></label>
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===(ef?ef.tipo:(state.formMov.tipo||"ingreso"))?" selected":""}>${v}</option>`).join("")}</select></label>
-    <label>Subtipo<select id="msu">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
+    <label>Subtipo<select id="msu" onchange="updMovTr()">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
+    <label id="mtrLbl" class="s2" style="grid-column:1/-1;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem;${/^Traslado/.test(ef?ef.sub:(state.formMov.sub||""))?"":"display:none"}">🔀 Traslado: ${"${"}(ef?ef.sub:state.formMov.sub)==="Traslado salida"?"van al campo":"vienen del campo"}
+      <select id="mtr2">${"${"}opts(clist.filter(c=>c!==(ef?ef.campo:state.formMov.campo)),ef?(ef.trOtro||""):(state.formMov.trOtro||""),"-- Elegir el otro campo --")}</select>
+      <span class="km">${"${"}ef?"Al editar se actualiza solo este registro; el espejo del otro campo se edita aparte.":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
+    </label>
     <label class="s2" style="grid-column:1/-1">📍 Origen del ingreso (nombre / CUIT / RENSPA) — para nacimientos, compras y traslados de entrada
       <div style="display:flex;gap:.4rem;flex-wrap:wrap">
         <input id="mo_nom" list="origenes-list" placeholder="Nombre del origen (ej: El Rincón, o el vendedor)" value="${h(ef&&ef.origen?ef.origen.nombre:"")}" onchange="autoOrigen(this.value)" style="flex:2;min-width:180px"/><datalist id="origenes-list">${origenesLista().map(o=>`<option value="${h(o.nombre)}">${h(o.cuit||"")} ${h(o.renspa||"")}</option>`).join("")}</datalist>
@@ -755,7 +759,7 @@ function renderMov(){
         <td>${m.fecha?m.fecha.split('-').reverse().join('/'):''}</td><td>${h(m.campo)}</td><td>${h(m.cat)}</td><td>${h(m.ciclo||"—")}</td>
         <td><span class="${m.tipo==="ingreso"?"bi2":"be2"}">${m.tipo}</span></td>
         <td>${h(m.sub)}</td><td>${m.cant}</td><td class="obs">${h(m.obs||"—")}${caravanasHtml(m)}</td>
-        <td><button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
+        <td style="white-space:nowrap">${m.espejo?`<span title="Traslado con registro espejo en ${h(m.trOtro||"")}" style="font-size:.8rem">🔀</span>`:""}<button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
       </tr>`).join("")}
     </tbody>
   </table></div>
@@ -1233,6 +1237,7 @@ function renderStockRep(){
         else if(estado==="Cut") mueve=t.trCut||0;
         else if(estado==="2da oportunidad") mueve=t.trSeg||0;
         else if(estado==="Descarte") mueve=t.trDsc||0;
+        else if(estado==="Vacias") mueve=(t.trSeg||0)+(t.trDsc||0); // 2da y Descarte están dentro de Vacías
         if(mueve>0){
           if(t.campo===campo) total-=mueve;
           if(t.trDestino===campo) total+=mueve;
@@ -2355,6 +2360,12 @@ window.updMovSub=function(){
   const t=document.getElementById("mti").value;
   const s=document.getElementById("msu");
   if(s)s.innerHTML=opts(t==="ingreso"?ING:EGR,"");
+  updMovTr();
+};
+window.updMovTr=function(){
+  const su=document.getElementById("msu"), l=document.getElementById("mtrLbl"); if(!su||!l)return;
+  const es=/^Traslado/.test(su.value); l.style.display=es?"":"none";
+  if(es){ const txt=l.childNodes[0]; if(txt&&txt.nodeType===3)txt.textContent="🔀 Traslado: "+(su.value==="Traslado salida"?"van al campo":"vienen del campo")+" "; }
 };
 window.updActKg=function(){
   const tp=document.getElementById("trasladoPanel");
@@ -2955,7 +2966,7 @@ window.toggleCampo=async function(id){
   toast(c.activo?"Campo desactivado":"Campo reactivado");
   state.campoSelModal=null;
 };
-window.editActBtn=function(id){state.editAct=state.act[id];render();};
+window.editActBtn=function(id){state.editAct=state.act[id];state._noPreservar=true;render();state._noPreservar=false;};
 window.delMov=delMov;
 window.delAct=delAct;
 window.delTacto=async function(tactoId){
@@ -2982,9 +2993,23 @@ function doSubmitMov(){
   if(!fecha||!campo||!cat||!cantFinal)return alert("Completa: fecha, campo, categoria y cantidad (o pegá caravanas).");
   if(refs.length&&cant&&cant!==refs.length&&!confirm("La cantidad ("+cant+") no coincide con las caravanas pegadas ("+refs.length+"). ¿Guardar igual?"))return;
   const e={fecha,campo,cat,ciclo,tipo,sub,cant:cantFinal,obs,id:state.editMov?state.editMov.id:uid()};
-  if(state.editMov){ for(const k of ["caravanas","origen","destino"]){ if(state.editMov[k]!==undefined&&e[k]===undefined)e[k]=state.editMov[k]; } }
+  if(state.editMov){ for(const k of ["caravanas","origen","destino","trOtro","espejo"]){ if(state.editMov[k]!==undefined&&e[k]===undefined)e[k]=state.editMov[k]; } }
   const og=leerOrigen(); if(og)e.origen=og;
-  saveMov(e).then(async()=>{ if(og)await guardarOrigen(og); if(refs.length)await aplicarMovAGrupo(e,refs); state.editMov=null;state.movGrupoTxt="";clearFormMov();render();});
+  // Traslado entre campos propios: se guardan los dos registros (egreso en origen + ingreso en destino)
+  const esTr=/^Traslado/.test(sub); const otro=esTr?(document.getElementById("mtr2")||{}).value||"":"";
+  if(esTr&&!otro)return alert("Elegí el otro campo del traslado.");
+  if(esTr){ e.trOtro=otro; if(sub==="Traslado salida")e.destino=otro; else e.origen=e.origen||{nombre:otro,cuit:"",renspa:renspaDe(otro)||""}; }
+  let espejo=null;
+  if(esTr&&!state.editMov){
+    const origenCampo=sub==="Traslado salida"?campo:otro, destinoCampo=sub==="Traslado salida"?otro:campo;
+    espejo={fecha,cat,ciclo,cant:cantFinal,obs,id:uid(),trOtro:campo,espejo:e.id,
+      campo:otro, tipo:sub==="Traslado salida"?"ingreso":"egreso", sub:sub==="Traslado salida"?"Traslado entrada":"Traslado salida"};
+    if(espejo.tipo==="ingreso")espejo.origen={nombre:origenCampo,cuit:"",renspa:renspaDe(origenCampo)||""}; else espejo.destino=destinoCampo;
+    e.espejo=espejo.id;
+  }
+  saveMov(e).then(async()=>{ if(espejo)await saveMov(espejo); if(og)await guardarOrigen(og);
+    if(refs.length){ const ing=e.tipo==="ingreso"?e:espejo; if(ing)await aplicarMovAGrupo(ing,refs); else await aplicarMovAGrupo(e,refs); }
+    state.editMov=null;state.movGrupoTxt="";clearFormMov();render(); if(espejo)toast("🔀 Traslado guardado: egreso en "+(e.tipo==="egreso"?e.campo:espejo.campo)+" + ingreso en "+(e.tipo==="ingreso"?e.campo:espejo.campo)); });
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
