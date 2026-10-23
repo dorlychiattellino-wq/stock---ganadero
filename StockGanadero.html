@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.23-d";
+window.APP_VERSION="2026.10.23-e";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -236,7 +236,17 @@ const ACT_CALC = [...ACT_PROTEGIDAS,"Preñez","Vacias","Cut","Descarte","2da opo
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
 const PADRE_ESTADO = {"Cut":"Preñez","2da oportunidad":"Vacias","Descarte":"Vacias"}; // Cut ⊂ Preñez · 2da y Descarte ⊂ Vacías
 const SALIDAS_ESTADO = ["Baja","Selección a IATF"];
-const VACIAS_TR_DESDE = "2026-10-01"; // desde esta fecha, el traslado de rodeo también mueve Vacías (antes se cargaba el ajuste a mano) // salidas: se descuentan del sub-estado; del padre solo si se carga aparte (como siempre)
+const VACIAS_TR_DESDE = "2026-10-01";
+function saldoEstado(campo,cat,ciclo,estado,excluirId){
+  const A=Object.values(state.act).filter(a=>a&&a.cat===cat&&(!ciclo||a.ciclo===ciclo)&&a.id!==excluirId);
+  let total=A.filter(a=>a.tipo===estado&&a.campo===campo).reduce((s,a)=>s+(a.cant||0),0);
+  if(estado!=="Selección a IATF"){ for(const t of A.filter(a=>a.tipo==="Traslado de rodeo")){ let m=0;
+    if(estado==="Preñez")m=t.trPre||0; else if(estado==="Cut")m=t.trCut||0; else if(estado==="2da oportunidad")m=t.trSeg||0; else if(estado==="Descarte")m=t.trDsc||0; else if(estado==="Vacias"&&(t.fecha||"")>=VACIAS_TR_DESDE)m=(t.trSeg||0)+(t.trDsc||0);
+    if(m>0){ if(t.campo===campo)total-=m; if(t.trDestino===campo)total+=m; } } }
+  for(const c of A.filter(a=>a.tipo==="Cambio de estado"&&a.campo===campo)){ const n=c.ceCant||0,o=c.ceOrigen,d=c.ceDestino; const po=PADRE_ESTADO[o],pd=PADRE_ESTADO[d];
+    if(o===estado&&o!==pd)total-=n; if(d===estado&&d!==po)total+=n; if(po===estado&&po!==d&&po!==pd&&!SALIDAS_ESTADO.includes(d))total-=n; if(pd===estado&&pd!==o&&pd!==po)total+=n; }
+  return total;
+} // desde esta fecha, el traslado de rodeo también mueve Vacías (antes se cargaba el ajuste a mano) // salidas: se descuentan del sub-estado; del padre solo si se carga aparte (como siempre)
 const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
 const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
@@ -3069,6 +3079,7 @@ function doSubmitAct(){
     if(!origen||!destino)return alert("Seleccioná estado origen y destino.");
     if(origen===destino)return alert("El estado origen y destino deben ser distintos.");
     if(ceCant<=0)return alert("Indicá una cantidad mayor a 0.");
+    if(ciclo){ const hay=saldoEstado(campo,cat,ciclo,origen,state.editAct?state.editAct.id:null); if(hay<ceCant&&!confirm("⚠️ En "+campo+" ("+cat+", "+ciclo+") hay "+hay+" en \""+origen+"\" y estás pasando "+ceCant+".\n\nSi guardás, \""+origen+"\" queda en "+(hay-ceCant)+" (negativo). ¿Es correcto el campo y el estado de origen?\n\nAceptar = guardar igual · Cancelar = revisar"))return; }
     if(!ciclo)return alert("Completá el Ciclo.");
     e.ceOrigen=origen; e.ceDestino=destino; e.ceCant=ceCant; e.ceMotivo=ceMotivo; e.ceNota=ceNota;
     e.cant=ceCant; // informativo
