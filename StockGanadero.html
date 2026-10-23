@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.23-e";
+window.APP_VERSION="2026.10.23-f";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -735,7 +735,7 @@ function renderMov(){
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
     <label id="mtrLbl" class="s2" style="grid-column:1/-1;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem;${/^Traslado/.test(ef?ef.sub:(state.formMov.sub||""))?"":"display:none"}">🔀 Traslado: ${(ef?ef.sub:state.formMov.sub)==="Traslado salida"?"van al campo":"vienen del campo"}
       <select id="mtr2">${opts(clist.filter(c=>c!==(ef?ef.campo:state.formMov.campo)),ef?(ef.trOtro||""):(state.formMov.trOtro||""),"-- Elegir el otro campo --")}</select>
-      <span class="km">${ef?"Al editar se actualiza solo este registro; el espejo del otro campo se edita aparte.":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
+      <span class="km">${ef&&ef.espejo?"Al guardar se actualizan los dos registros del traslado (fecha, categoría, ciclo, cantidad y observaciones).":ef?"Este traslado no tiene registro espejo (se cargó por separado).":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
     </label>
     <label class="s2" style="grid-column:1/-1">📍 Origen del ingreso (nombre / CUIT / RENSPA) — para nacimientos, compras y traslados de entrada
       <div style="display:flex;gap:.4rem;flex-wrap:wrap">
@@ -3025,7 +3025,10 @@ function doSubmitMov(){
     if(espejo.tipo==="ingreso")espejo.origen={nombre:origenCampo,cuit:"",renspa:renspaDe(origenCampo)||""}; else espejo.destino=destinoCampo;
     e.espejo=espejo.id;
   }
-  saveMov(e).then(async()=>{ if(espejo)await saveMov(espejo); if(og)await guardarOrigen(og);
+  // Si se edita un traslado con espejo, el otro registro recibe los mismos datos comunes (fecha, categoría, ciclo, cantidad, obs)
+  let espejoEd=null;
+  if(state.editMov&&e.espejo&&state.mov[e.espejo]){ const m2=state.mov[e.espejo]; espejoEd={...m2,fecha,cat,ciclo,cant:cantFinal,obs}; if(esTr&&otro){ espejoEd.campo=otro; espejoEd.trOtro=campo; if(espejoEd.tipo==="ingreso")espejoEd.origen={nombre:campo,cuit:"",renspa:renspaDe(campo)||""}; else espejoEd.destino=campo; } }
+  saveMov(e).then(async()=>{ if(espejo)await saveMov(espejo); if(espejoEd){ await saveMov(espejoEd); toast("🔀 Se actualizó también el registro espejo en "+espejoEd.campo); } if(og)await guardarOrigen(og);
     if(refs.length){ const ing=e.tipo==="ingreso"?e:espejo; if(ing)await aplicarMovAGrupo(ing,refs); else await aplicarMovAGrupo(e,refs); }
     state.editMov=null;state.movGrupoTxt="";clearFormMov();render(); if(espejo)toast("🔀 Traslado guardado: egreso en "+(e.tipo==="egreso"?e.campo:espejo.campo)+" + ingreso en "+(e.tipo==="ingreso"?e.campo:espejo.campo)); });
 }
