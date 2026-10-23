@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.21-d";
+window.APP_VERSION="2026.10.23-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -234,7 +234,8 @@ const ACT  = ["Tacto","Entore","Desentore","Preñez","Pesaje","Destete","Vacunac
 const ACT_PROTEGIDAS = ["Tacto","Traslado de rodeo","Cambio de estado"]; // flujos del sistema: no se pueden desactivar
 const ACT_CALC = [...ACT_PROTEGIDAS,"Preñez","Vacias","Cut","Descarte","2da oportunidad","Destete","Entore","Desentore","Pesaje","IATF","Otro"]; // nombres usados en cálculos: no se renombran
 // Jerarquia del stock reproductivo: SOLO Cut esta dentro de Preñez (Vacias, 2da op y Descarte se manejan como columnas independientes)
-const PADRE_ESTADO = {"Cut":"Preñez"}; // para cambios de estado (lógica original). En traslados de rodeo, 2da y Descarte también mueven Vacías.
+const PADRE_ESTADO = {"Cut":"Preñez","2da oportunidad":"Vacias","Descarte":"Vacias"}; // Cut ⊂ Preñez · 2da y Descarte ⊂ Vacías
+const SALIDAS_ESTADO = ["Baja","Selección a IATF"]; // salidas: se descuentan del sub-estado; del padre solo si se carga aparte (como siempre)
 const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
 const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
@@ -402,6 +403,12 @@ function campos(){
   const fromList = Object.values(state.camposList).filter(c=>c.activo).map(c=>c.nombre).sort();
   if(fromList.length>0) return fromList;
   return [...new Set([...Object.values(state.mov).map(m=>m.campo),...Object.values(state.act).map(a=>a.campo)].filter(Boolean))].sort();
+}
+function campoActivo(nombre){ const c=Object.values(state.camposList||{}).find(x=>x&&x.nombre===nombre); return c?c.activo!==false:true; }
+// Orden para los listados por campo: activos con stock → activos sin stock → inactivos. Dentro de cada grupo, alfabético.
+function ordenarCampos(lista,stockDe){
+  const peso=c=>{ const act=campoActivo(c); const st=stockDe?(stockDe(c)||0):1; return (act?0:2)+(st>0?0:1); };
+  return [...lista].sort((a,b)=>peso(a)-peso(b)||a.localeCompare(b,"es"));
 }
 function ciclos(){
   const re=/^\d{4}\/\d{4}$/;
@@ -715,9 +722,9 @@ function renderMov(){
     <label>Tipo<select id="mti" onchange="updMovSub()">${["ingreso","egreso"].map(v=>`<option${v===(ef?ef.tipo:(state.formMov.tipo||"ingreso"))?" selected":""}>${v}</option>`).join("")}</select></label>
     <label>Subtipo<select id="msu" onchange="updMovTr()">${opts(tipo==="ingreso"?ING:EGR,ef?ef.sub:state.formMov.sub)}</select></label>
     <label>Cantidad<input id="mca" type="number" value="${ef?ef.cant:h(state.formMov.cant)}" min="1"/></label>
-    <label id="mtrLbl" class="s2" style="grid-column:1/-1;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem;${/^Traslado/.test(ef?ef.sub:(state.formMov.sub||""))?"":"display:none"}">🔀 Traslado: ${"${"}(ef?ef.sub:state.formMov.sub)==="Traslado salida"?"van al campo":"vienen del campo"}
-      <select id="mtr2">${"${"}opts(clist.filter(c=>c!==(ef?ef.campo:state.formMov.campo)),ef?(ef.trOtro||""):(state.formMov.trOtro||""),"-- Elegir el otro campo --")}</select>
-      <span class="km">${"${"}ef?"Al editar se actualiza solo este registro; el espejo del otro campo se edita aparte.":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
+    <label id="mtrLbl" class="s2" style="grid-column:1/-1;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem;${/^Traslado/.test(ef?ef.sub:(state.formMov.sub||""))?"":"display:none"}">🔀 Traslado: ${(ef?ef.sub:state.formMov.sub)==="Traslado salida"?"van al campo":"vienen del campo"}
+      <select id="mtr2">${opts(clist.filter(c=>c!==(ef?ef.campo:state.formMov.campo)),ef?(ef.trOtro||""):(state.formMov.trOtro||""),"-- Elegir el otro campo --")}</select>
+      <span class="km">${ef?"Al editar se actualiza solo este registro; el espejo del otro campo se edita aparte.":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
     </label>
     <label class="s2" style="grid-column:1/-1">📍 Origen del ingreso (nombre / CUIT / RENSPA) — para nacimientos, compras y traslados de entrada
       <div style="display:flex;gap:.4rem;flex-wrap:wrap">
@@ -998,7 +1005,7 @@ function renderStock(){
   for(const c of Object.keys(smap))for(const cat of Object.keys(smap[c])){const d=smap[c][cat];rows.push({campo:c,cat,...d,p:d.ing>0?d.muertes/d.ing*100:0})}
   const fechaCSV=f.hasta||hoyISO();
   const csv=[["Fecha","Campo","Categoria","Ingresos","Egresos","Muertes","% Muertes","Stock"],...rows.map(r=>[fechaCSV,r.campo,r.cat,r.ing,r.egr,r.muertes,r.p.toFixed(1),r.stock])].map(r=>r.join(",")).join("\n");
-  const campos2=Object.keys(smap);
+  const campos2=ordenarCampos(Object.keys(smap),c=>Object.values(smap[c]||{}).reduce((a,x)=>a+(x.stock||0),0));
   return `
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h2 style="margin:0">📊 Resumen de Stock</h2>${esAdmin()?`<button class="bs" onclick="imprimirCaravaneoPendiente()" title="Planilla para imprimir: cuántos faltan caravanear por campo y categoría, con casillas para ir tachando">🖨️ Planilla de caravaneo pendiente</button>`:""}</div>
@@ -1122,7 +1129,7 @@ function renderComercial(){
     if(!smap[m.campo][m.cat])smap[m.campo][m.cat]=0;
     smap[m.campo][m.cat]+=m.tipo==="ingreso"?(m.cant||0):-(m.cant||0);
   }
-  const campos2=Object.keys(smap).sort();
+  const campos2=ordenarCampos(Object.keys(smap),c=>Object.values(smap[c]||{}).reduce((a,x)=>a+(typeof x==="number"?x:(x.stock||0)),0));
   const planDe=(campo,cat)=>{const x=Object.values(state.ventasPlan||{}).find(v=>v&&v.campo===campo&&v.cat===cat);return x?(x.cant||0):0;};
   const ordCat=(a,b)=>{const ia=CATS.indexOf(a),ib=CATS.indexOf(b);return (ia===-1?99:ia)-(ib===-1?99:ib);};
   // Totales por categoria (todos los campos) y generales
@@ -1258,18 +1265,18 @@ function renderStockRep(){
       if(o===estado && o!==pd) total-=n;
       // Entra al destino (salvo que el destino sea el padre del origen: ya estaba contado ahi, ej Cut→Preñez)
       if(d===estado && d!==po) total+=n;
-      // Sale tambien del padre del origen si deja esa familia (ej Cut→Vacias o Cut→Baja resta de Preñez)
-      if(po===estado && po!==d && po!==pd) total-=n;
+      // Sale tambien del padre del origen si pasa a otra familia (ej Cut→Vacias resta de Preñez). Las salidas (Baja, Selección a IATF) NO tocan al padre: se cargan aparte si corresponde
+      if(po===estado && po!==d && po!==pd && !SALIDAS_ESTADO.includes(d)) total-=n;
       // Entra tambien al padre del destino si viene de otra familia (ej Preñez→Descarte suma a Vacias)
       if(pd===estado && pd!==o && pd!==po) total+=n;
     }
     return total;
   }
 
-  const camposShow = f.campo ? [f.campo] : [...new Set([
+  const camposShow = f.campo ? [f.campo] : ordenarCampos([...new Set([
     ...Object.values(state.act).filter(a=>enCiclo(a.ciclo)).map(a=>a.campo),
     ...Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&enCiclo(a.ciclo)).map(a=>a.trDestino)
-  ].filter(Boolean))];
+  ].filter(Boolean))]);
 
   const catsShow = f.cat ? [f.cat] : CATS_REP;
   const estadosShow = estadosSel;
@@ -1337,10 +1344,10 @@ ${camposShow.map(campo=>{
 // ── PRODUCTIVO ──
 function renderProd(){
   const f=state.filtProd; const clist=campos(); const cilist=ciclos(); const p=state.par;
-  const camposE=f.campo?[f.campo]:[...new Set([
+  const camposE=f.campo?[f.campo]:ordenarCampos([...new Set([
     ...Object.values(state.act).filter(a=>!f.ciclo||a.ciclo===f.ciclo).map(a=>a.campo),
     ...Object.values(state.act).filter(a=>a.tipo==="Traslado de rodeo"&&(!f.ciclo||a.ciclo===f.ciclo)).map(a=>a.trDestino)
-  ].filter(Boolean))];
+  ].filter(Boolean))]);
   const gac=(campo,ciclo,tipo,cats)=>Object.values(state.act).filter(a=>a.tipo===tipo&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&cats.includes(a.cat)).reduce((s,a)=>s+(a.cant||0),0);
   const gkg=(campo,ciclo)=>Object.values(state.act).filter(a=>a.tipo==="Pesaje"&&(!campo||a.campo===campo)&&(!ciclo||a.ciclo===ciclo)&&["Terneros","Terneras"].includes(a.cat)).reduce((s,a)=>s+(a.kg||0),0);
   const rows=camposE.map(campo=>{
