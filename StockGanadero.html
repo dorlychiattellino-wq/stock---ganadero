@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.23-f";
+window.APP_VERSION="2026.10.24-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -147,17 +147,21 @@ import { getDatabase, ref, set as _set, get, remove as _remove, onValue as _onVa
 function pathOf(r){
   try{ return decodeURIComponent(new URL(r.toString()).pathname.slice(1)); }catch(e){ return ""; }
 }
+// ── Cache de datos en IndexedDB (localStorage se queda sin lugar con los animales/eventos y la app no abría sin señal) ──
+const _idb=(()=>{ let p=null; return ()=>{ if(p)return p; p=new Promise((res,rej)=>{ try{ const q=indexedDB.open("sg_cache",1); q.onupgradeneeded=()=>{ q.result.createObjectStore("kv"); }; q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }catch(e){ rej(e); } }); return p; }; })();
+function cacheGet(k){ return _idb().then(db=>new Promise((res)=>{ try{ const t=db.transaction("kv","readonly").objectStore("kv").get(k); t.onsuccess=()=>res(t.result===undefined?null:t.result); t.onerror=()=>res(null); }catch(e){ res(null); } })).catch(()=>{ try{ const c=localStorage.getItem("sgcache_"+k); return c===null?null:JSON.parse(c); }catch(e){ return null; } }); }
+function cacheSet(k,v){ return _idb().then(db=>new Promise((res)=>{ try{ const t=db.transaction("kv","readwrite"); t.objectStore("kv").put(v,k); t.oncomplete=()=>res(true); t.onerror=()=>res(false); }catch(e){ res(false); } })).catch(()=>{ try{ localStorage.setItem("sgcache_"+k,JSON.stringify(v)); return true; }catch(e){ return false; } }); }
+let _cacheHits=0, _cacheMiss=0; window._cacheListo=null;
 function onValue(r,cb){
   const path=pathOf(r);
   const cacheable=path&&!path.startsWith(".info");
+  let llegoRed=false;
   if(cacheable){
-    try{
-      const c=localStorage.getItem("sgcache_"+path);
-      if(c!==null) cb({ val:()=>JSON.parse(c) });   // hidratar al instante desde el dispositivo
-    }catch(e){}
+    cacheGet(path).then(v=>{ if(v===null){ _cacheMiss++; return; } _cacheHits++; if(!llegoRed) cb({ val:()=>v }); }); // hidratar desde el dispositivo si la red todavía no respondió
   }
   return _onValue(r,snap=>{
-    if(cacheable){ try{ localStorage.setItem("sgcache_"+path,JSON.stringify(snap.val())); }catch(e){} }
+    llegoRed=true;
+    if(cacheable){ cacheSet(path,snap.val()); }
     cb(snap);
   });
 }
@@ -206,11 +210,12 @@ function actualizarBarraPendientes(){ if(typeof render==="function"&&state&&stat
 // Aviso si la app nunca se abrio con internet en este dispositivo
 setTimeout(()=>{
   const r=document.getElementById("root");
+  if(r&&/Conectando/.test(r.textContent||"")&&_cacheHits>0&&typeof render==="function"){ state.loaded=true; state.usuariosLoaded=true; render(); return; } // había cache parcial: abrir igual
   if(r&&/Conectando/.test(r.textContent||"")){
     r.innerHTML='<div style="max-width:420px;margin:15vh auto;background:#fdfbf6;border-radius:12px;padding:1.5rem;text-align:center;font-family:sans-serif;color:#4a3820"><h2>📡 Sin señal</h2><p style="margin-top:.6rem;font-size:.95rem">Este dispositivo todavía no tiene guardados los datos para arrancar sin internet.<br><br><strong>Qué hacer:</strong> conectá la tablet a internet un momento (WiFi o compartir datos del celular), tocá Reintentar y esperá a que aparezca "Conectado". Desde ahí la app va a abrir sin señal.</p><button onclick="location.reload()" style="margin-top:1rem;padding:.8rem 1.4rem;font-size:1.05rem;border-radius:10px;border:none;background:#2d4a1e;color:#fff;font-weight:700">🔄 Reintentar</button><p style="margin-top:.8rem;font-size:.8rem;color:#8a7a60">Si ya tenés señal y sigue acá, esperá unos segundos más: puede estar bajando los datos.</p></div>';
   }
 },8000);
-function leerColaCacheVacia(){ try{ return localStorage.getItem("sgcache_mov")===null; }catch(e){ return true; } }
+function leerColaCacheVacia(){ return _cacheHits===0; }
 
 const firebaseConfig = {
   apiKey: "AIzaSyBRHHCKsQ1Sz8o_hJ3Q0oKFiqaSWCyr5Wg",
@@ -4631,7 +4636,7 @@ window.mangaPadreSugerir=function(){ const M=MG(); const a=M.animal?state.animal
 // Hook no publica el protocolo: se suscribe a TODAS las características que notifican y se intenta
 // decodificar el peso como texto ("  245.5 kg", "ST,GS,+00245.5kg", etc.) o como número binario.
 // El panel 🔧 muestra los datos crudos para ajustar la decodificación si hace falta.
-const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null,crudo:null,factor:(()=>{ try{ const v=parseFloat(localStorage.getItem("sg_balanza_factor")); return v>0?v:1; }catch(e){ return 1; } })()};
+const BAL={estado:"off",dev:null,nombre:"",chars:[],log:[],ultimo:null,estable:false,autoTomar:true,diag:false,_hist:[],_tomado:null,_cfg:null,crudo:null,factor:(()=>{ try{ if(localStorage.getItem("sg_balanza_fix")!=="2026.10.24"){ localStorage.removeItem("sg_balanza_factor"); localStorage.setItem("sg_balanza_fix","2026.10.24"); } const v=parseFloat(localStorage.getItem("sg_balanza_factor")); return v>0?v:1; }catch(e){ return 1; } })()};
 window.balanzaFactor=function(v){ v=parseFloat(String(v).replace(",",".")); if(!(v>0))return toast("Factor inválido"); BAL.factor=v; BAL.factorManual=true; try{ localStorage.setItem("sg_balanza_factor",String(v)); }catch(e){} toast("⚖️ Factor de la balanza: ×"+v); render(); };
 window.balanzaCalibrar=function(){ if(BAL.crudo==null||!(BAL.crudo>0))return alert("Primero subí algo a la balanza para que lleguen datos."); const r=prompt("¿Cuánto marca la balanza ST ONE ahora mismo (kg)?"); const real=parseFloat(String(r||"").replace(",",".")); if(!(real>0))return; balanzaFactor(Math.round(real/BAL.crudo*1000)/1000); };
 function balanzaSoportada(){ return typeof navigator!=="undefined"&&!!navigator.bluetooth; }
@@ -4681,7 +4686,7 @@ function balanzaDato(dv,uuid){
   // Servicio estándar Bluetooth "Weight Scale" (característica 2A9D, la que usa la Hook ST ONE):
   // byte 0 = banderas (bit0: 1=libras, 0=kg) · bytes 1-2 = peso uint16 little-endian × 0,005 kg (o × 0,01 lb)
   if(/^0000(2a9d)/i.test(uuid)&&bytes.length>=3){
-    const flags=bytes[0]; const raw=dv.getUint16(1,true); let kg=(flags&1)?raw*0.01*0.45359237:raw*0.005;
+    const flags=bytes[0]; const raw=dv.getUint16(1,true); let kg=(flags&1)?raw*0.01*0.45359237:raw*0.5; // Hook ST ONE: unidades de 0,5 kg (verificado: 121 kg, 112 kg, 63 kg)
     if(raw===0xffff)return; // "sin medida" según el estándar
     peso=kg<1?0:Math.round(kg*10)/10; BAL.estandar=true; // menos de 1 kg = balanza vacía
   }

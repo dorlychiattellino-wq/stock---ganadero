@@ -1,7 +1,7 @@
 /* Service Worker de Stock Ganadero
    Guarda la app y sus scripts en el dispositivo para que se pueda ABRIR sin señal.
    Los datos en tiempo real de Firebase (firebaseio.com) pasan directo, sin cachear. */
-const CACHE = "stock-ganadero-v2";
+const CACHE = "stock-ganadero-v3";
 const BASE = self.registration.scope; // carpeta de la app en GitHub Pages
 // Lo que hace falta para arrancar: se guarda en la instalación, sin esperar a que se pida
 const PRECACHE = [
@@ -17,9 +17,13 @@ const PRECACHE = [
 
 self.addEventListener("install", e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => Promise.all(
-      PRECACHE.map(u => fetch(u, {cache: "no-store"}).then(r => { if (r && r.ok) return c.put(u, r); }).catch(() => {}))
-    )).then(() => self.skipWaiting())
+    caches.open(CACHE).then(async c => {
+      // La página principal y Firebase son obligatorios: si no se pueden bajar (sin señal), la instalación falla
+      // y queda funcionando la versión anterior ya guardada. El resto es opcional.
+      const obligatorios = PRECACHE.filter(u => /StockGanadero\.html|firebase-|xlsx/.test(u));
+      for (const u of obligatorios) { const r = await fetch(u, {cache: "no-store"}); if (!r || !r.ok) throw new Error("no se pudo guardar " + u); await c.put(u, r); }
+      await Promise.all(PRECACHE.filter(u => !obligatorios.includes(u)).map(u => fetch(u, {cache: "no-store"}).then(r => { if (r && r.ok) return c.put(u, r); }).catch(() => {})));
+    }).then(() => self.skipWaiting())
   );
 });
 
