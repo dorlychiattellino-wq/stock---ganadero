@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.24-b";
+window.APP_VERSION="2026.10.27-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -269,6 +269,7 @@ let state = {
   editMov: null,
   editAct: null,
   filtMov: {campo:"",cat:"",ciclo:"",tipo:"",sub:"",desde:"",hasta:""},
+  guiaAct: null, guiaEdit: null,
   filtAct: {campo:"",ciclo:"",cat:"",tipo:"",buscar:""},
   filtStock: {hasta:"",campo:"",cat:""},
   filtCom: (()=>{try{const s=localStorage.getItem("sg_filtCom");return s?{hasta:"",campo:"",...JSON.parse(s)}:{hasta:"",campo:"",cats:[]};}catch(e){return {hasta:"",campo:"",cats:[]};}})(),
@@ -339,6 +340,12 @@ onValue(ref(db,"act"), snap => {
   state.act = snap.val() || {};
   render();
 });
+const GUIA_ACT_DEF=[
+  {id:"tacto",color:"#6a9a3a",bg:"#eef5e8",tc:"#2d4a1e",titulo:"🐄 Tacto",texto:"Usala en mayo para cargar el resultado del tacto de una sola vez. Indicás Preñadas (de las cuales Cut) y Vacías (de ellas: 2da oportunidad y Descarte). Crea automáticamente los registros de Preñez, Cut, Vacías, 2da op y Descarte. Alimenta el Productivo y el Stock Reproductivo."},
+  {id:"traslado",color:"#5a8fc0",bg:"#eaf0f8",tc:"#1e4a6a",titulo:"🔀 Traslado de rodeo",texto:"Usala cuando movés vacas preñadas/vacías de un campo a otro después del tacto. Se carga según el estado que tenían AL TACTO. Mueve la cadena productiva completa entre campos: ajusta el Productivo y el Stock Reproductivo de origen y destino. NO toca el stock físico (el traslado de cantidad se carga aparte en Movimientos)."},
+  {id:"cambio",color:"#9a5ac0",bg:"#f5eef8",tc:"#5a1e6a",titulo:"🔄 Cambio de estado",texto:"Usala cuando un animal cambia de estado reproductivo después del tacto, en el campo donde está en ese momento (aborto, muerte al parto o post-parto eligiendo el Motivo; vender Cut con destino Baja). Cut está dentro de Preñez; 2da oportunidad y Descarte están dentro de Vacías: pasar entre ellos no cambia el total. SOLO actualiza el Stock Reproductivo."}
+];
+onValue(ref(db,"guiaAct"), snap => { const v=snap.val(); state.guiaAct=Array.isArray(v)&&v.length?v:(v&&typeof v==="object"?Object.values(v):null); render(); });
 onValue(ref(db,"par"), snap => {
   if(snap.val()) state.par = {...DP, ...snap.val()};
   render();
@@ -853,20 +860,7 @@ function renderAct(){
   }).join("")}
 </div>
 
-<div class="card" style="background:#f0f5f9;border:1.5px solid #8ab0d0">
-  <h2 style="color:#1e4a6a;font-size:1rem">📖 Guía rápida de actividades especiales</h2>
-  <div style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem;font-size:.84rem">
-    <div style="background:#eef5e8;border-left:4px solid #6a9a3a;border-radius:6px;padding:.6rem .8rem">
-      <strong style="color:#2d4a1e">🐄 Tacto</strong> — Usala en mayo para cargar el resultado del tacto de una sola vez. Indicás Preñadas (de las cuales Cut) y Vacías (de ellas: 2da oportunidad y Descarte). <strong>Crea automáticamente</strong> los registros de Preñez, Cut, Vacías, 2da op y Descarte. Alimenta el Productivo y el Stock Reproductivo.
-    </div>
-    <div style="background:#eaf0f8;border-left:4px solid #5a8fc0;border-radius:6px;padding:.6rem .8rem">
-      <strong style="color:#1e4a6a">🔀 Traslado de rodeo</strong> — Usala cuando movés vacas preñadas/vacías de un campo a otro después del tacto. Mueve la cadena productiva completa entre campos. <strong>Ajusta los % del Productivo y el Stock Reproductivo</strong> de origen y destino. NO toca el stock físico (el traslado de cantidad se carga aparte en Movimientos).
-    </div>
-    <div style="background:#f5eef8;border-left:4px solid #9a5ac0;border-radius:6px;padding:.6rem .8rem">
-      <strong style="color:#5a1e6a">🔄 Cambio de estado</strong> — Usala cuando un animal cambia de estado reproductivo después del tacto (ej: una vaca vacía que quedó preñada; muertes reproductivas como aborto, muerte al parto o post-parto eligiendo el Motivo; o vender vacas Cut con destino "Baja"). <strong>SOLO actualiza el Stock Reproductivo</strong> — no toca el Productivo histórico ni el stock físico.
-    </div>
-  </div>
-</div>
+${renderGuiaAct()}
 
 <div class="card">
   <h2>${ef?"✏️ Editar":"➕ Nueva"} Actividad</h2>
@@ -4604,6 +4598,23 @@ function renderPanelBalanza(M){
       </div>
     </div></div>`;
 }
+function renderGuiaAct(){
+  const items=state.guiaAct||GUIA_ACT_DEF; const ed=state.guiaEdit;
+  return `<div class="card" style="background:#f0f5f9;border:1.5px solid #8ab0d0">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem"><h2 style="color:#1e4a6a;font-size:1rem;margin:0">📖 Guía rápida de actividades especiales</h2>${esAdmin()&&!ed?`<span style="display:flex;gap:.3rem"><button class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="guiaAgregar()">➕ Nota</button>${state.guiaAct?`<button class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="guiaRestaurar()">↺ Texto original</button>`:""}</span>`:""}</div>
+  <div style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem;font-size:.84rem">
+    ${items.map((g,i)=>ed&&ed.i===i?`<div style="background:${h(g.bg||"#fff")};border-left:4px solid ${h(g.color||"#888")};border-radius:6px;padding:.6rem .8rem">
+      <input id="ga_tit" value="${h(ed.titulo)}" style="font-weight:700;margin-bottom:.3rem"/>
+      <textarea id="ga_txt" rows="4" style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-size:.84rem;font-family:inherit">${h(ed.texto)}</textarea>
+      <div class="br" style="margin-top:.4rem"><button class="bp" onclick="guiaGuardar()">💾 Guardar</button><button class="bs" onclick="state.guiaEdit=null;render()">Cancelar</button><button class="bs" style="color:#c82010;margin-left:auto" onclick="guiaBorrar(${i})">🗑️ Quitar nota</button></div></div>`
+    :`<div style="background:${h(g.bg||"#fff")};border-left:4px solid ${h(g.color||"#888")};border-radius:6px;padding:.6rem .8rem;display:flex;gap:.5rem;align-items:flex-start"><div style="flex:1"><strong style="color:${h(g.tc||"#333")}">${h(g.titulo)}</strong> — ${h(g.texto)}</div>${esAdmin()?`<button class="bi" title="Editar" onclick="guiaEditar(${i})">✏️</button>`:""}</div>`).join("")}
+  </div></div>`;
+}
+window.guiaEditar=function(i){ const items=state.guiaAct||GUIA_ACT_DEF; const g=items[i]; if(!g)return; state.guiaEdit={i,titulo:g.titulo,texto:g.texto}; render(); setTimeout(()=>{const el=document.getElementById("ga_txt");if(el)el.focus();},50); };
+window.guiaGuardar=async function(){ const ed=state.guiaEdit; if(!ed)return; const items=JSON.parse(JSON.stringify(state.guiaAct||GUIA_ACT_DEF)); const g=items[ed.i]; if(!g)return; g.titulo=(document.getElementById("ga_tit")||{}).value||g.titulo; g.texto=(document.getElementById("ga_txt")||{}).value||""; state.guiaAct=items; state.guiaEdit=null; await set(ref(db,"guiaAct"),items); toast("💾 Nota guardada"); render(); };
+window.guiaAgregar=function(){ const items=JSON.parse(JSON.stringify(state.guiaAct||GUIA_ACT_DEF)); items.push({id:"n"+Date.now().toString(36),color:"#a07020",bg:"#fff8ee",tc:"#7a4010",titulo:"📝 Nueva nota",texto:""}); state.guiaAct=items; state.guiaEdit={i:items.length-1,titulo:"📝 Nueva nota",texto:""}; render(); setTimeout(()=>{const el=document.getElementById("ga_tit");if(el){el.focus();el.select();}},50); };
+window.guiaBorrar=async function(i){ const items=JSON.parse(JSON.stringify(state.guiaAct||GUIA_ACT_DEF)); if(!items[i])return; if(!confirm("¿Quitar la nota \""+items[i].titulo+"\"?"))return; items.splice(i,1); state.guiaAct=items; state.guiaEdit=null; await set(ref(db,"guiaAct"),items); render(); };
+window.guiaRestaurar=async function(){ if(!confirm("¿Volver al texto original de las 3 notas? Se pierden los cambios y las notas agregadas."))return; state.guiaAct=null; state.guiaEdit=null; await remove(ref(db,"guiaAct")); render(); };
 function renderMangaSel(M){
   const cs=M.campos||[], ks=M.cats||[]; if(cs.length<2&&ks.length<2)return "";
   const cur=mangaCatActual(M); const mov=M.modo==="mov"&&M.movTipo==="ingreso";
