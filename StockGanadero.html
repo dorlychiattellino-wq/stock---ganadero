@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.10.27-a";
+window.APP_VERSION="2026.11.02-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -1937,6 +1937,15 @@ function renderIatf(){
 }
 
 // ── SENASA ──
+// Orden de las especies en la declaración SENASA: bovinos, equinos, ovinos, caprinos, porcinos, otros
+const ESPECIE_ORDEN={bovinos:0,equinos:1,ovinos:2,caprinos:3,porcinos:4,otros:9};
+function especieDe(cat){ const c=String(cat||"").toLowerCase();
+  if(/^(vacas|vaquillonas|novillos|novillitos|terneros|terneras|toros|toritos)$/.test(c))return "bovinos";
+  if(/cerd|porcino|lechon|lechón/.test(c))return "porcinos";
+  if(/caballo|yegua|padrillo|potranca|potrillo|mula|burro/.test(c))return "equinos";
+  if(/oveja|carnero|cordero|cordera|capon|borrega|borrego/.test(c))return "ovinos";
+  if(/cabra|chivo|cabrito/.test(c))return "caprinos";
+  return "otros"; }
 const ESPECIES_EXTRA=["Ovejas","Carneros","Corderos","Corderas","Capones","Borregas","Borregos","Caballos","Yeguas","Padrillos","Potrancas","Potrillos","Mulas","Burros","Cabras","Chivos","Cabritos","Cerdas","Padrillos porcinos","Capones porcinos","Lechones"];
 
 const REC_ICONOS=["💉","🐂","🩺","🧪","📋","⚠️","📅","🐄","🐑","🐎"];
@@ -2845,6 +2854,9 @@ window.pdfSenasa=function(){
     const extras=Object.values(state.senasaExtra).filter(e=>e.campo===campo&&(e.cant>0||e.obs)).sort((a,b)=>a.cat.localeCompare(b.cat));
     for(const e of extras)filas.push([e.cat,e.cant,e.obs||""]);
     if(filas.length===0)continue;
+    // agrupar por especie: bovinos (en el orden de CATS), luego equinos, ovinos, caprinos, porcinos
+    const posBov=c=>{const i=CATS.indexOf(c);return i===-1?99:i;};
+    filas.sort((a,b)=>(ESPECIE_ORDEN[especieDe(a[0])]-ESPECIE_ORDEN[especieDe(b[0])])||(posBov(a[0])-posBov(b[0]))||a[0].localeCompare(b[0],"es"));
     const total=filas.reduce((s,x)=>s+x[1],0);
     cuerpo+=`
     <div class="campo">
