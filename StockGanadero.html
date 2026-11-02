@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.02-a";
+window.APP_VERSION="2026.11.02-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -2073,7 +2073,7 @@ ${clist.map(campo=>{
       }).join("")}
       <tr style="background:#f5f0e8"><td colspan="4" style="font-weight:700;color:#6a4a1e;font-size:.8rem">🐑🐎 OTRAS ESPECIES (manual, se guardan)</td></tr>
       ${extras.length===0?`<tr><td colspan="4" style="color:#aaa;font-size:.82rem">Sin otras especies cargadas en este campo.</td></tr>`:
-        extras.sort((a,b)=>a[1].cat.localeCompare(b[1].cat)).map(([id,e])=>`
+        extras.sort((a,b)=>(ESPECIE_ORDEN[especieDe(a[1].cat)]-ESPECIE_ORDEN[especieDe(b[1].cat)])||a[1].cat.localeCompare(b[1].cat,"es")).map(([id,e],i,arr)=>`${i===0||especieDe(arr[i-1][1].cat)!==especieDe(e.cat)?`<tr><td colspan="4" style="font-size:.72rem;color:#8a7a60;text-transform:uppercase;letter-spacing:.4px;padding:.45rem .6rem .1rem;border-bottom:none">${especieDe(e.cat)}</td></tr>`:""}
         <tr>
           <td><strong>${h(e.cat)}</strong></td>
           <td><input type="number" value="${e.cant}" onchange="editSenExtra('${id}',this.value)" style="width:100px;border:1.5px solid #c8c0b0;border-radius:5px;padding:.3rem .5rem;font-size:.88rem"/></td>
