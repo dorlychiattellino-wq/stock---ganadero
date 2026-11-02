@@ -113,7 +113,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.02-b";
+window.APP_VERSION="2026.11.02-c";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -406,8 +406,17 @@ onValue(ref(db,"senasaObs"), snap => {
 });
 onValue(ref(db,"recordatorios"), snap => {
   state.recordatorios = snap.val() || {};
+  renovarRecordatoriosVencidos();
   render();
 });
+// Los recordatorios son anuales: si el rango ya venció y nadie lo marcó cumplido, se corre un año (tantas veces como haga falta) hasta quedar vigente o futuro
+let _recRenovando=false;
+async function renovarRecordatoriosVencidos(){
+  if(_recRenovando||!navigator.onLine)return; const hoy=hoyISO(); const addY=iso=>{const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y+1,m-1,d); return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");};
+  const cambios=[]; for(const r of Object.values(state.recordatorios)){ if(!r||!r.desde||!r.hasta||!/^\d{4}-\d{2}-\d{2}$/.test(r.hasta))continue; let d=r.desde,h=r.hasta,n=0; while(h<hoy&&n<20){ d=addY(d); h=addY(h); n++; } if(n>0)cambios.push({...r,desde:d,hasta:h}); }
+  if(!cambios.length)return; _recRenovando=true;
+  try{ for(const r of cambios){ state.recordatorios[r.id]=r; await set(ref(db,"recordatorios/"+r.id),r); } if(typeof toast==="function")toast("🔔 "+cambios.length+" recordatorio(s) reprogramado(s) para el año siguiente"); }finally{ _recRenovando=false; }
+}
 
 // Detectar conexión online/offline (al volver la señal, sube lo pendiente)
 onValue(ref(db,".info/connected"), snap => {
