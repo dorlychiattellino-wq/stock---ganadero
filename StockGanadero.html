@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-i";
+window.APP_VERSION="2026.11.21-j";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -3438,7 +3438,7 @@ ${state.animNuevo?renderNuevoAnimal(clist,razasList):""}
     </div>
   </div>
   <div class="fg" style="margin-top:.8rem">
-    <label class="s2">🔍 Buscar (caravana, visual, madre, padre, corral)<input value="${h(f.buscar)}" oninput="setFAnim('buscar',this.value,true)" onchange="setFAnim('buscar',this.value)" placeholder="Ej: 296175 o BT627A180"/></label>
+    <label class="s2">🔍 Buscar (caravana, visual, madre, padre, corral)<input id="an_buscar" value="${h(f.buscar)}" oninput="buscarAnimVivo(this.value)" onchange="setFAnim('buscar',this.value)" placeholder="Ej: 31, 296175 o BT627A180"/></label>
     <label>Campo<select onchange="setFAnim('campo',this.value)">${opts(clist,f.campo,"Todos")}</select></label>
     <label>Categoría<select onchange="setFAnim('cat',this.value)">${opts(CATS,f.cat,"Todas")}</select></label>
     <label>Ciclo<select onchange="setFAnim('ciclo',this.value)">${opts([...new Set([...ciclos(),...all.map(cicloDe).filter(Boolean)])].sort(),f.ciclo,"Todos")}</select></label>
@@ -3571,6 +3571,9 @@ function renderNuevoAnimal(clist,razasList){
 
 // ── ACCIONES ──
 window.setFAnim=function(k,v,soloEstado){ state.filtAnim[k]=v; if(!soloEstado)render(); };
+// Buscador del listado: filtra mientras se escribe (sin esperar Enter) y deja el cursor donde estaba
+let _buscAnimT=null;
+window.buscarAnimVivo=function(v){ state.filtAnim.buscar=v; clearTimeout(_buscAnimT); _buscAnimT=setTimeout(()=>{ const el0=document.getElementById("an_buscar"); const foco=el0&&document.activeElement===el0; const pos=el0?el0.selectionStart:null; render(); if(foco){ const el=document.getElementById("an_buscar"); if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(e){} } } },350); };
 window.setFAnimSel=function(key){ state.animSel=key||null; state.sugPadre=null; if(key)state.animNuevo=false; render(); if(key)setTimeout(()=>{const el=document.getElementById("fichaAnimal");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},50); };
 window.setFAnimImportUpd=function(v){ if(state.importAnim)state.importAnim.actualizar=!!v; };
 window.setFAnimBaston=function(txt){ BAL.bastonUlt=Date.now(); procesarLecturaBaston(txt); };
@@ -5048,13 +5051,15 @@ window.sesionDet=function(id){ state.sesDet=state.sesDet===id?null:id; render();
 window.sesionCambiarCat=async function(id,refsTxt,catNueva){
   const ss=state.mangaSesiones[id]; if(!ss)return; if(!ss.log||!ss.cfg)return alert("Este trabajo es anterior a la versión que guarda el detalle; no se puede corregir desde acá.");
   if((ss.modo||ss.cfg.modo)!=="act")return alert("Esta corrección es para trabajos de ACTIVIDAD. En un trabajo de MOVIMIENTO usá ➖ quitar y ➕ agregar.");
-  if(refsTxt===undefined)refsTxt=prompt("Caravana(s) a corregir (visual, últimos dígitos o completa). Varias: separadas por espacio o coma:")||"";
+  if(refsTxt===undefined)refsTxt=prompt("Caravana(s) a corregir, como figuran en el listado. Alcanza con el número corto (31 = 000031). Varias: separadas por espacio o coma:")||"";
   const refs=[...new Set(String(refsTxt).split(/[\s,;]+/).filter(Boolean))]; if(!refs.length)return;
   if(catNueva===undefined)catNueva=prompt("Categoría CORRECTA para esos animales:\n"+CATS.join(" / "),"")||"";
   const cat=CATS.find(c=>c.toLowerCase()===String(catNueva).trim().toLowerCase()); if(!cat)return alert("Categoría inválida. Tiene que ser una de: "+CATS.join(", "));
   const M2=sesionComoM(ss); const hechos=[], saltados=[];
   for(const r of refs){
-    const a0=buscarAnimalRef(r); if(!a0){ saltados.push(r+" (no encontrado)"); continue; }
+    // primero se busca entre los animales de ESTE trabajo: alcanza con el número corto (31 = 000031)
+    let a0=null; { const rr=/^\d{1,5}$/.test(r)?r.padStart(6,"0"):r.toUpperCase(); const delTrabajo=[...new Set(M2.log.map(l=>l.key))].map(k=>state.animales[k]).filter(Boolean); let cand=delTrabajo.filter(a=>String(a.caravana||"").toUpperCase().endsWith(rr)||String(a.visual||"").toUpperCase()===r.toUpperCase()||String(a.visual||"").toUpperCase()===rr); if(!cand.length)cand=delTrabajo.filter(a=>String(a.caravana||"").toUpperCase().endsWith(r.toUpperCase())); if(cand.length===1)a0=cand[0]; else if(cand.length>1){ saltados.push(r+" (coincide con "+cand.length+" animales de este trabajo: escribí más dígitos)"); continue; } }
+    if(!a0)a0=buscarAnimalRef(r); if(!a0){ saltados.push(r+" (no encontrado)"); continue; }
     const key=a0.key; const filas=M2.log.filter(l=>l.key===key); if(!filas.length){ saltados.push(nombreAnimal(a0)+" (no figura en este trabajo)"); continue; }
     if(a0.cat===cat){ saltados.push(nombreAnimal(a0)+" (ya es "+cat+")"); continue; }
     const catVieja=a0.cat; const conAlta=filas.some(l=>l.alta);
