@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-k";
+window.APP_VERSION="2026.11.21-l";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -777,7 +777,7 @@ function renderMov(){
     <label class="s2" style="grid-column:1/-1">🐮 Caravanas del movimiento (opcional)
       <textarea id="mgrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y cada animal se da de alta / baja / recategoriza en su ficha." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.movGrupoTxt||"")}</textarea>
       <div id="mtropa" style="font-size:.84rem;line-height:1.45;margin-top:.3rem"></div>
-      <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} <button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('m')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
+      <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.85rem;font-weight:700;color:#2d4a1e;margin-right:.6rem;cursor:pointer"><input type="checkbox" style="width:18px;height:18px" ${tropaAutoOn()?"checked":""} onchange="tropaAutoSet('m',this.checked)"> Incluir las caravanas de la tropa</label><button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('m')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
     </label>
     <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):h(state.formMov.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
@@ -921,7 +921,7 @@ ${renderGuiaAct()}
     ${ef?"":`<label id="agrpLbl" class="s2" style="grid-column:1/-1;${["Tacto","Traslado de rodeo","Cambio de estado"].includes(state.formAct.tipo)?"display:none":""}">🐮 Caravanas de la actividad (opcional)
       <textarea id="agrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y la actividad queda anotada en la ficha de cada animal." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box"></textarea>
       <div id="atropa" style="font-size:.84rem;line-height:1.45;margin-top:.3rem"></div>
-      <div class="km"><button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('a')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, la actividad funciona como siempre (solo cantidad). Solo anota en las fichas: no cambia campo, categoría ni estado de los animales.</div>
+      <div class="km"><label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.85rem;font-weight:700;color:#2d4a1e;margin-right:.6rem;cursor:pointer"><input type="checkbox" style="width:18px;height:18px" ${tropaAutoOn()?"checked":""} onchange="tropaAutoSet('a',this.checked)"> Incluir las caravanas de la tropa</label><button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('a')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, la actividad funciona como siempre (solo cantidad). Solo anota en las fichas: no cambia campo, categoría ni estado de los animales.</div>
     </label>`}
   </div>
   <div id="trasladoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Traslado de rodeo"?"":"display:none"};background:#eaf0f8;border:1.5px solid #5a8fc0;border-radius:8px;padding:1rem;margin-top:.5rem">
@@ -2423,6 +2423,15 @@ window.updMovTr=function(){
 };
 // ── Tropa del formulario (Movimientos / Actividades): stock, fichas con caravana y sin caravanear ──
 const _tropaAuto={m:"",a:"",mc:"",ac:""};
+function tropaAutoOn(){ try{ return localStorage.getItem("sg_tropaAuto")!=="0"; }catch(e){ return true; } }
+// Tilde "Incluir las caravanas de la tropa": tildado trae todas; destildado deja la lista vacía (movimiento/actividad solo por cantidad) y no las vuelve a traer solas
+window.tropaAutoSet=function(f,on){
+  try{ localStorage.setItem("sg_tropaAuto",on?"1":"0"); }catch(e){}
+  if(on){ updTropa(f,"btn"); return; }
+  const ta=document.getElementById(f==="m"?"mgrp":"agrp"), ca=document.getElementById(f==="m"?"mca":"aca");
+  if(ta){ ta.value=""; if(f==="m")state.movGrupoTxt=""; } if(ca&&ca.value===_tropaAuto[f+"c"])ca.value=""; _tropaAuto[f]=""; _tropaAuto[f+"c"]="";
+  updTropa(f,"render");
+};
 function tropaOrigen(f){
   const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
   if(f==="a"){ const t=g("ati"); const ok=!["Tacto","Traslado de rodeo","Cambio de estado"].includes(t); return {campo:g("ac"),cat:g("acat"),ciclo:g("aci"),ok,auto:ok&&!!t}; }
@@ -2448,10 +2457,10 @@ window.updTropa=function(f,modo){
     if(t.otras>0&&!confirm("En "+o.campo+" hay "+t.todas.length+" "+o.cat+" con ficha; "+t.fichas.length+" son del ciclo "+o.ciclo+".\n\nAceptar = traer solo los "+t.fichas.length+" del ciclo "+o.ciclo+"\nCancelar = traer los "+t.todas.length))lista=t.todas;
     if(ta.value.trim()&&!eraAuto&&!confirm("Ya hay caravanas escritas a mano. ¿Reemplazarlas por las "+lista.length+" de la tropa?"))lista=null;
   }
-  if(lista&&(modo==="btn"||(modo==="change"&&o.auto&&(eraAuto||!ta.value.trim())))){
+  if(lista&&(modo==="btn"||(modo==="change"&&o.auto&&tropaAutoOn()&&(eraAuto||!ta.value.trim())))){
     const txt=lista.map(a=>a.caravana||a.visual||a.key).join("\n"); ta.value=txt; _tropaAuto[f]=txt; if(f==="m")state.movGrupoTxt=txt;
     const nc=String(Math.max(t.stock,lista.length)); if(ca&&(modo==="btn"||!ca.value||ca.value===_tropaAuto[f+"c"])){ ca.value=nc; _tropaAuto[f+"c"]=nc; }
-  } else if(modo==="change"&&!o.auto) limpiar();
+  } else if(modo==="change"&&(!o.auto||!tropaAutoOn())) limpiar();
   const enLista=ta.value.trim()?new Set(ta.value.trim().split(/[\s,;]+/).filter(Boolean)).size:0; const cant=ca&&ca.value?parseInt(ca.value)||0:0; const sin=t.stock-t.fichas.length;
   let html=`<div style="background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem">📊 <b>${h(o.campo)} / ${h(o.cat)}${o.ciclo?" / "+h(o.ciclo):""}</b>: stock <b>${t.stock}</b> · con caravana <b>${t.fichas.length}</b> · sin caravanear <b style="color:${sin>0?"#a04a00":sin<0?"#b00020":"#2d4a1e"}">${sin}</b>`;
   if(sin<0)html+=`<br>⚠️ Hay más fichas (${t.fichas.length}) que stock (${t.stock}) para ese campo, categoría y ciclo: revisá antes de guardar.`;
