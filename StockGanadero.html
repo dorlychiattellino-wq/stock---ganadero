@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-j";
+window.APP_VERSION="2026.11.21-k";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -5041,7 +5041,7 @@ function sesionDetalleHtml(x){
   if(!x||!Array.isArray(x.log)||!x.log.length)return "";
   const orden=[], por={}; for(const l of x.log){ if(!l||!l.key)continue; if(!por[l.key]){ por[l.key]={key:l.key,nombre:l.nombre,alta:false,peso:"",txt:[]}; orden.push(l.key); } const g=por[l.key]; if(l.alta)g.alta=true; else { if(l.peso)g.peso=l.peso; g.txt.push(l.txt||""); } }
   const sinAlta=orden.filter(k=>!por[k].alta).length;
-  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem"><strong style="color:#2d4a1e">Detalle por animal — ${fmtF(x.fecha)} ${h(x.campo||"")} (${orden.length})</strong><span><button class="bp" style="padding:.3rem .7rem;font-size:.82rem" onclick="sesionCambiarCat('${x.id}')">🔁 Corregir categoría</button> <button class="bs" style="padding:.3rem .7rem;font-size:.82rem" onclick="sesionDet('${x.id}')">✖ Cerrar detalle</button></span></div>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem"><span><strong style="color:#2d4a1e">Detalle por animal — ${fmtF(x.fecha)} ${h(x.campo||"")} (${orden.length})</strong><br><span style="font-size:.82rem">${(()=>{ const c={}; for(const k of orden){ const an=state.animales[k]; const n=an?an.cat||"(sin categoría)":"⚠️ sin ficha"; c[n]=(c[n]||0)+1; } return Object.keys(c).sort().map(n=>h(n)+": <strong>"+c[n]+"</strong>").join(" · "); })()}</span></span><span><button class="bp" style="padding:.3rem .7rem;font-size:.82rem" onclick="sesionCambiarCat('${x.id}')">🔁 Corregir categoría</button> <button class="bs" style="padding:.3rem .7rem;font-size:.82rem" onclick="sesionDet('${x.id}')">✖ Cerrar detalle</button></span></div>
   <div style="max-height:460px;overflow:auto;border:1px solid #d8d0c0;border-radius:6px"><table style="font-size:.8rem;width:100%"><thead><tr><th>#</th><th>Caravana</th><th>Categoría (ficha)</th><th>Campo</th><th>Peso</th><th>Ficha</th><th>Qué se registró</th></tr></thead><tbody>
   ${orden.map((k,i)=>{ const g=por[k]; const an=state.animales[k]; return `<tr style="${g.alta?"":"background:#fff4d6"}"><td>${i+1}</td><td style="font-family:monospace;white-space:nowrap"><strong>${h(an?(an.visual||eidCorto(an.caravana)||k):(g.nombre||k))}</strong></td><td><strong>${h(an?an.cat||"":"(sin ficha)")}</strong></td><td style="white-space:nowrap">${h(an?an.campo||"":"")}</td><td style="white-space:nowrap">${g.peso?h(g.peso)+" kg":"—"}</td><td style="white-space:nowrap">${g.alta?"🆕 alta ese día":"⚠️ ya tenía ficha"}</td><td class="km">${h(g.txt.join(" | "))}</td></tr>`; }).join("")}
   </tbody></table></div>${sinAlta?`<div class="km" style="margin-top:.2rem">Las filas en amarillo (${sinAlta}) son animales que <strong>ya tenían ficha</strong> antes de este trabajo (no pidieron alta).</div>`:""}`;
@@ -5057,22 +5057,34 @@ window.sesionCambiarCat=async function(id,refsTxt,catNueva){
   const cat=CATS.find(c=>c.toLowerCase()===String(catNueva).trim().toLowerCase()); if(!cat)return alert("Categoría inválida. Tiene que ser una de: "+CATS.join(", "));
   const M2=sesionComoM(ss); const hechos=[], saltados=[];
   for(const r of refs){
-    // primero se busca entre los animales de ESTE trabajo: alcanza con el número corto (31 = 000031)
-    let a0=null; { const rr=/^\d{1,5}$/.test(r)?r.padStart(6,"0"):r.toUpperCase(); const delTrabajo=[...new Set(M2.log.map(l=>l.key))].map(k=>state.animales[k]).filter(Boolean); let cand=delTrabajo.filter(a=>String(a.caravana||"").toUpperCase().endsWith(rr)||String(a.visual||"").toUpperCase()===r.toUpperCase()||String(a.visual||"").toUpperCase()===rr); if(!cand.length)cand=delTrabajo.filter(a=>String(a.caravana||"").toUpperCase().endsWith(r.toUpperCase())); if(cand.length===1)a0=cand[0]; else if(cand.length>1){ saltados.push(r+" (coincide con "+cand.length+" animales de este trabajo: escribí más dígitos)"); continue; } }
-    if(!a0)a0=buscarAnimalRef(r); if(!a0){ saltados.push(r+" (no encontrado)"); continue; }
-    const key=a0.key; const filas=M2.log.filter(l=>l.key===key); if(!filas.length){ saltados.push(nombreAnimal(a0)+" (no figura en este trabajo)"); continue; }
-    if(a0.cat===cat){ saltados.push(nombreAnimal(a0)+" (ya es "+cat+")"); continue; }
-    const catVieja=a0.cat; const conAlta=filas.some(l=>l.alta);
-    const contribs=filas.flatMap(l=>l.lote||[]);
-    if(filas.some(l=>l.alta&&(l.lote||[]).length)||contribs.some(c=>c.col!=="act"||!c.base||c.base.cat!==catVieja||String(c.id).lastIndexOf("_"+catVieja+"_")<0)){ saltados.push(nombreAnimal(a0)+" (tiene registros de stock o de otra categoría: usá ➖ y ➕)"); continue; }
+    // se busca entre los animales de ESTE trabajo (por lo guardado en el trabajo, aunque la ficha ya no exista): alcanza con el número corto (31 = 000031)
+    const R=r.toUpperCase(), rr=/^\d{1,5}$/.test(r)?r.padStart(6,"0"):R; const claves=[...new Set(M2.log.map(l=>l.key).filter(Boolean))];
+    const visDe=k=>{ const a=state.animales[k]; return String((a&&a.visual)||(k.startsWith("V_")?k.slice(2):"")).toUpperCase(); };
+    let cand=claves.filter(k=>(/^\d+$/.test(k)&&k.endsWith(rr))||visDe(k)===R||visDe(k)===rr); if(!cand.length)cand=claves.filter(k=>/^\d+$/.test(k)&&k.endsWith(R));
+    if(!cand.length){ const ax=buscarAnimalRef(r); if(ax&&claves.includes(ax.key))cand=[ax.key]; }
+    if(cand.length>1){ saltados.push(r+" (coincide con "+cand.length+" animales de este trabajo: escribí más dígitos)"); continue; }
+    if(!cand.length){ saltados.push(r+" (no figura en este trabajo)"); continue; }
+    const key=cand[0]; const a0=state.animales[key]||null; const filas=M2.log.filter(l=>l.key===key); const nom=a0?nombreAnimal(a0):(filas[0].nombre||key);
+    const conAlta=filas.some(l=>l.alta); const contribs=filas.flatMap(l=>l.lote||[]);
+    const catsLote=[...new Set(contribs.map(c=>c.base&&c.base.cat).filter(Boolean))];
+    if(catsLote.length>1||filas.some(l=>l.alta&&(l.lote||[]).length)||contribs.some(c=>c.col!=="act"||!c.base)){ saltados.push(nom+" (tiene registros de stock o de más de una categoría: usá ➖ y ➕)"); continue; }
+    const catVieja=catsLote[0]||(a0?a0.cat:"");
+    if(contribs.some(c=>String(c.id).lastIndexOf("_"+catVieja+"_")<0)){ saltados.push(nom+" (no se pudo identificar su registro: usá ➖ y ➕)"); continue; }
+    if(a0&&a0.cat===cat&&catVieja===cat){ saltados.push(nom+" (ya es "+cat+")"); continue; }
     // no se tocan pesadas ni eventos: solo se pasa lo que aportó este animal al lote de la categoría vieja a la nueva
-    for(const l of filas){
+    if(catVieja!==cat)for(const l of filas){
       for(const c of (l.lote||[])){ const k=String(c.id).lastIndexOf("_"+catVieja+"_"); c.id=String(c.id).slice(0,k)+"_"+cat+"_"+String(c.id).slice(k+catVieja.length+2); c.base={...c.base,cat}; }
       if(l.alta&&l.txt)l.txt=l.txt.replace("alta como "+catVieja,"alta como "+cat);
       if(conAlta&&!l.alta&&l.prev&&l.prev.cat===catVieja)l.prev={...l.prev,cat};
     }
-    const nA=sinUndef({...state.animales[key],cat,modificado:hoyISO()}); state.animales[key]=nA; await set(ref(db,"animales/"+key),nA);
-    hechos.push(nombreAnimal(a0)+": "+catVieja+" → "+cat);
+    let nota="";
+    if(a0){ const nA=sinUndef({...a0,cat,modificado:hoyISO()}); state.animales[key]=nA; await set(ref(db,"animales/"+key),nA); }
+    else { // la ficha no existe más (se borró): se vuelve a crear con lo que guardó el trabajo
+      const b0=(contribs[0]&&contribs[0].base)||{}; const pr=(filas.find(l=>l.prev)||{}).prev||{};
+      const nA=sinUndef({key,caravana:/^\d{12,}$/.test(key)?key:"",visual:key.startsWith("V_")?key.slice(2):"",campo:b0.campo||ss.campo||"",cat,sexo:sexoDeCat(cat),raza:"",ciclo:ss.ciclo||"",ingreso:ss.fecha,estado:"activo",origen:"manga",creado:hoyISO(),modificado:hoyISO(),origenNombre:pr.origenNombre||""});
+      state.animales[key]=nA; await set(ref(db,"animales/"+key),nA); nota=" (no tenía ficha: se volvió a crear en "+nA.campo+"; completá raza y ciclo en su ficha)";
+    }
+    hechos.push(nom+": "+(catVieja||"sin categoría")+" → "+cat+nota);
   }
   M2.fecha=ss.fecha;
   if(hechos.length)await persistirSesionEditada(ss,M2);
