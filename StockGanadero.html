@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-a";
+window.APP_VERSION="2026.11.21-f";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -523,8 +523,8 @@ async function savePar(data){
   toast("✅ Parametros guardados");
 }
 async function aPapelera(col,rec){ if(!rec)return; const id=col+"_"+rec.id; const item={id,col,rec,borrado:new Date().toISOString(),usuario:(state.sesion&&state.sesion.nombre)||""}; state.papelera[id]=item; await set(ref(db,"papelera/"+id),item); }
-async function delMov(id){ const m=state.mov[id]; const esp=m&&m.espejo&&state.mov[m.espejo]?state.mov[m.espejo]:null; if(confirm("Eliminar movimiento?"+(esp?" También se elimina el registro espejo del traslado en "+esp.campo+"." :"")+" (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",m); await remove(ref(db,`mov/${id}`)); if(esp){ await aPapelera("mov",esp); await remove(ref(db,`mov/${esp.id}`)); } toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
-async function delAct(id){ if(confirm("Eliminar actividad? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("act",state.act[id]); await remove(ref(db,`act/${id}`)); toast("Actividad eliminada (recuperable en Parámetros → Papelera)"); } }
+async function delMov(id){ const m=state.mov[id]; const esp=m&&m.espejo&&state.mov[m.espejo]?state.mov[m.espejo]:null; if(confirm("Eliminar movimiento?"+(esp?(m.ccEspejo?" También se elimina el registro espejo del cambio de categoría ("+esp.tipo+" de "+esp.cat+").":" También se elimina el registro espejo del traslado en "+esp.campo+".") :"")+" (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",m); await remove(ref(db,`mov/${id}`)); if(esp){ await aPapelera("mov",esp); await remove(ref(db,`mov/${esp.id}`)); } toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
+async function delAct(id){ if(confirm("Eliminar actividad? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("act",state.act[id]); await remove(ref(db,`act/${id}`)); for(const ev of Object.values(state.eventos||{})){ if(ev&&ev.origen==="actform"&&ev.sesion===id){ delete state.eventos[ev.id]; await remove(ref(db,"eventos/"+ev.id)); } } toast("Actividad eliminada (recuperable en Parámetros → Papelera)"); } }
 function renderPar(){ return renderParBase()+renderPapelera(); }
 window.restaurarPapelera=async function(id){ const it=state.papelera[id]; if(!it)return; if(state[it.col][it.rec.id]&&!confirm("Ya existe un registro con ese id. ¿Sobrescribir?"))return; await set(ref(db,it.col+"/"+it.rec.id),it.rec); delete state.papelera[id]; await remove(ref(db,"papelera/"+id)); toast("♻️ Registro recuperado en "+(it.col==="mov"?"Movimientos":"Actividades")); render(); };
 window.vaciarPapelera=async function(){ if(!confirm("¿Vaciar la papelera? Esto sí es definitivo."))return; for(const id of Object.keys(state.papelera)){ await remove(ref(db,"papelera/"+id)); } state.papelera={}; render(); };
@@ -762,6 +762,10 @@ function renderMov(){
       <select id="mtr2">${opts(clist.filter(c=>c!==(ef?ef.campo:state.formMov.campo)),ef?(ef.trOtro||""):(state.formMov.trOtro||""),"-- Elegir el otro campo --")}</select>
       <span class="km">${ef&&ef.espejo?"Al guardar se actualizan los dos registros del traslado (fecha, categoría, ciclo, cantidad y observaciones).":ef?"Este traslado no tiene registro espejo (se cargó por separado).":"Se guardan los dos registros de una vez: el egreso en el campo de origen y el ingreso en el destino (con RENSPA del origen)."}</span>
     </label>
+    <label id="mccLbl" class="s2" style="grid-column:1/-1;background:#f6efe2;border:1.5px solid #b08a4a;border-radius:8px;padding:.4rem .6rem;${(ef?ef.sub:(state.formMov.sub||""))==="Cambio Categoria"?"":"display:none"}"><span id="mccTxt">🔁 Cambio de categoría: ${(ef?ef.tipo:(state.formMov.tipo||"ingreso"))==="egreso"?"pasan a la categoría":"antes eran de la categoría"}</span>
+      ${ef?"":`<select id="mcc2">${opts(CATS,"","-- (opcional) elegir la otra categoría --")}</select>`}
+      <span class="km">${ef&&ef.espejo?"Este cambio tiene su registro espejo: al guardar se actualizan los dos (fecha, campo, ciclo, cantidad y observaciones). La categoría de cada uno se edita por separado.":ef?"Este registro no tiene espejo (se cargó por separado).":"Si la elegís, se guardan los dos registros de una vez en el mismo campo: el egreso de la categoría vieja y el ingreso con la nueva. Si la dejás vacía, se guarda solo este registro como siempre."}</span>
+    </label>
     <label class="s2" style="grid-column:1/-1">📍 Origen del ingreso (nombre / CUIT / RENSPA) — para nacimientos, compras y traslados de entrada
       <div style="display:flex;gap:.4rem;flex-wrap:wrap">
         <input id="mo_nom" list="origenes-list" placeholder="Nombre del origen (ej: El Rincón, o el vendedor)" value="${h(ef&&ef.origen?ef.origen.nombre:"")}" onchange="autoOrigen(this.value)" style="flex:2;min-width:180px"/><datalist id="origenes-list">${origenesLista().map(o=>`<option value="${h(o.nombre)}">${h(o.cuit||"")} ${h(o.renspa||"")}</option>`).join("")}</datalist>
@@ -772,7 +776,8 @@ function renderMov(){
     </label>
     <label class="s2" style="grid-column:1/-1">🐮 Caravanas del movimiento (opcional)
       <textarea id="mgrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y cada animal se da de alta / baja / recategoriza en su ficha." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box">${h(state.movGrupoTxt||"")}</textarea>
-      <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
+      <div id="mtropa" style="font-size:.84rem;line-height:1.45;margin-top:.3rem"></div>
+      <div class="km">${state.manga.grupo.length?`<button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="usarGrupoMangaEnMov()">🐂 Usar grupo de manga (${state.manga.grupo.length})</button>`:""} <button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('m')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, el movimiento funciona como siempre (solo cantidad).</div>
     </label>
     <label class="s2">Observaciones<input id="mob" list="obs-list-m" value="${ef?h(ef.obs||""):h(state.formMov.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-m">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
   </div>
@@ -802,7 +807,7 @@ function renderMov(){
         <td>${m.fecha?m.fecha.split('-').reverse().join('/'):''}</td><td>${h(m.campo)}</td><td>${h(m.cat)}</td><td>${h(m.ciclo||"—")}</td>
         <td><span class="${m.tipo==="ingreso"?"bi2":"be2"}">${m.tipo}</span></td>
         <td>${h(m.sub)}</td><td>${m.cant}</td><td class="obs">${h(m.obs||"—")}${caravanasHtml(m)}</td>
-        <td style="white-space:nowrap">${m.espejo?`<span title="Traslado con registro espejo en ${h(m.trOtro||"")}" style="font-size:.8rem">🔀</span>`:""}<button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
+        <td style="white-space:nowrap">${m.espejo?`<span title="${m.ccEspejo?"Cambio de categoría con registro espejo":"Traslado con registro espejo en "+h(m.trOtro||"")}" style="font-size:.8rem">${m.ccEspejo?"🔁":"🔀"}</span>`:""}<button class="bi" onclick="editMovBtn('${m.id}')">✏️</button><button class="bi" onclick="delMov('${m.id}')">🗑️</button></td>
       </tr>`).join("")}
     </tbody>
   </table></div>
@@ -913,6 +918,11 @@ ${renderGuiaAct()}
     ${(()=>{const sel=ef?ef.tipo:state.formAct.tipo; if(sel!=="Entore")return ""; const selT=(ef&&ef.toros)||state.formAct.toros||[]; const ts=Object.values(state.toros).filter(t=>t&&t.activo!==false&&(t.uso||"Toro a campo")!=="Semen (IATF)");
       return `<label class="s2" style="grid-column:1/-1">🐂 Toros del entore (tocá los que entran a este rodeo)<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.3rem">${ts.length?ts.map(t=>chip(t.nombre+(t.visual?" · "+t.visual:""),selT.includes(t.id),`togToroEntore('${t.id}')`,"#7a4010")).join(""):`<span class="km">No hay toros de campo cargados. Cargalos en la pestaña IATF → Toros, con uso "Toro a campo".</span>`}</div><span class="km">Con esto, cuando nazca un ternero de una vaca de este rodeo, la app propone el padre.</span></label>`;})()}
     <label class="s2">Observaciones<input id="aob" list="obs-list-a" value="${ef?h(ef.obs||""):h(state.formAct.obs)}" placeholder="Opcional... (autocompletado de las anteriores)" autocomplete="off"/><datalist id="obs-list-a">${observaciones().map(o=>`<option value="${h(o)}"/>`).join("")}</datalist></label>
+    ${ef?"":`<label id="agrpLbl" class="s2" style="grid-column:1/-1;${["Tacto","Traslado de rodeo","Cambio de estado"].includes(state.formAct.tipo)?"display:none":""}">🐮 Caravanas de la actividad (opcional)
+      <textarea id="agrp" rows="2" placeholder="Pegá caravanas (completas, últimos dígitos o visuales) separadas por coma, espacio o línea. Si las cargás, la cantidad se completa sola y la actividad queda anotada en la ficha de cada animal." style="width:100%;border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:monospace;font-size:.85rem;box-sizing:border-box"></textarea>
+      <div id="atropa" style="font-size:.84rem;line-height:1.45;margin-top:.3rem"></div>
+      <div class="km"><button type="button" class="bs" style="padding:.25rem .6rem;font-size:.78rem" onclick="traerCvTropa('a')">🐮 Traer las caravanas de este campo y categoría</button> Sin caravanas, la actividad funciona como siempre (solo cantidad). Solo anota en las fichas: no cambia campo, categoría ni estado de los animales.</div>
+    </label>`}
   </div>
   <div id="trasladoPanel" style="${(ef?ef.tipo:state.formAct.tipo)==="Traslado de rodeo"?"":"display:none"};background:#eaf0f8;border:1.5px solid #5a8fc0;border-radius:8px;padding:1rem;margin-top:.5rem">
     <h3 style="color:#1e4a6a;margin-bottom:.7rem">🔀 Datos del Traslado de Rodeo</h3>
@@ -2388,6 +2398,7 @@ function attachEvents(){
   const cm=document.getElementById("cancelMov"); if(cm)cm.onclick=()=>{state.editMov=null;render();};
   // act
   const sa=document.getElementById("submitAct"); if(sa)sa.onclick=doSubmitAct;
+  try{ updTropa("m","render"); updTropa("a","render"); }catch(e){}
   const ca=document.getElementById("cancelAct"); if(ca)ca.onclick=()=>{state.editAct=null;render();};
   // stock
   const dc=document.getElementById("dlCSV"); if(dc)dc.onclick=doDownloadCSV;
@@ -2407,7 +2418,51 @@ window.updMovTr=function(){
   const su=document.getElementById("msu"), l=document.getElementById("mtrLbl"); if(!su||!l)return;
   const es=/^Traslado/.test(su.value); l.style.display=es?"":"none";
   if(es){ const txt=l.childNodes[0]; if(txt&&txt.nodeType===3)txt.textContent="🔀 Traslado: "+(su.value==="Traslado salida"?"van al campo":"vienen del campo")+" "; }
+  const lc=document.getElementById("mccLbl"), tc=document.getElementById("mccTxt"), ti=document.getElementById("mti");
+  if(lc){ lc.style.display=su.value==="Cambio Categoria"?"":"none"; if(tc&&ti)tc.textContent="🔁 Cambio de categoría: "+(ti.value==="egreso"?"pasan a la categoría":"antes eran de la categoría"); }
 };
+// ── Tropa del formulario (Movimientos / Actividades): stock, fichas con caravana y sin caravanear ──
+const _tropaAuto={m:"",a:"",mc:"",ac:""};
+function tropaOrigen(f){
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():"";};
+  if(f==="a"){ const t=g("ati"); const ok=!["Tacto","Traslado de rodeo","Cambio de estado"].includes(t); return {campo:g("ac"),cat:g("acat"),ciclo:g("aci"),ok,auto:ok&&!!t}; }
+  const tipo=g("mti"), sub=g("msu"); let campo=g("mc"), cat=g("mcat"); const ciclo=g("mci");
+  if(tipo==="ingreso"){ if(sub==="Traslado entrada")campo=g("mtr2"); else if(sub==="Cambio Categoria")cat=g("mcc2"); else return {ok:false}; }
+  return {campo,cat,ciclo,ok:true,auto:["Cambio Categoria","Traslado salida","Traslado entrada"].includes(sub)};
+}
+function tropaInfo(campo,cat,ciclo){
+  let stock=0; for(const m of Object.values(state.mov||{})){ if(!m||m.campo!==campo||m.cat!==cat)continue; if(ciclo&&(m.ciclo||"")!==ciclo)continue; stock+=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); }
+  const todas=Object.values(state.animales||{}).filter(a=>a&&(a.estado||"activo")==="activo"&&a.campo===campo&&a.cat===cat);
+  const fichas=ciclo?todas.filter(a=>(a.ciclo||"")===ciclo):todas;
+  return {stock,fichas,todas,otras:todas.length-fichas.length};
+}
+window.updTropa=function(f,modo){
+  const box=document.getElementById(f==="m"?"mtropa":"atropa"), ta=document.getElementById(f==="m"?"mgrp":"agrp"), ca=document.getElementById(f==="m"?"mca":"aca");
+  if(!box||!ta)return; if(f==="m"&&state.editMov){ box.innerHTML=""; return; }
+  const o=tropaOrigen(f); const eraAuto=!!_tropaAuto[f]&&ta.value.trim()===_tropaAuto[f];
+  const limpiar=()=>{ if(eraAuto){ ta.value=""; if(f==="m")state.movGrupoTxt=""; if(ca&&ca.value===_tropaAuto[f+"c"])ca.value=""; } _tropaAuto[f]=""; _tropaAuto[f+"c"]=""; };
+  if(!o.ok||!o.campo||!o.cat){ box.innerHTML=""; if(modo==="change")limpiar(); if(modo==="btn")alert(o.ok?"Primero elegí el campo y la categoría que los animales tienen HOY en su ficha.":"Para este tipo de registro no hay una tropa de origen de la que traer caravanas."); return; }
+  const t=tropaInfo(o.campo,o.cat,o.ciclo); let lista=t.fichas;
+  if(modo==="btn"){
+    if(!t.todas.length)return alert("No hay animales activos con ficha en "+o.campo+" como "+o.cat+".");
+    if(t.otras>0&&!confirm("En "+o.campo+" hay "+t.todas.length+" "+o.cat+" con ficha; "+t.fichas.length+" son del ciclo "+o.ciclo+".\n\nAceptar = traer solo los "+t.fichas.length+" del ciclo "+o.ciclo+"\nCancelar = traer los "+t.todas.length))lista=t.todas;
+    if(ta.value.trim()&&!eraAuto&&!confirm("Ya hay caravanas escritas a mano. ¿Reemplazarlas por las "+lista.length+" de la tropa?"))lista=null;
+  }
+  if(lista&&(modo==="btn"||(modo==="change"&&o.auto&&(eraAuto||!ta.value.trim())))){
+    const txt=lista.map(a=>a.caravana||a.visual||a.key).join("\n"); ta.value=txt; _tropaAuto[f]=txt; if(f==="m")state.movGrupoTxt=txt;
+    const nc=String(Math.max(t.stock,lista.length)); if(ca&&(modo==="btn"||!ca.value||ca.value===_tropaAuto[f+"c"])){ ca.value=nc; _tropaAuto[f+"c"]=nc; }
+  } else if(modo==="change"&&!o.auto) limpiar();
+  const enLista=ta.value.trim()?new Set(ta.value.trim().split(/[\s,;]+/).filter(Boolean)).size:0; const cant=ca&&ca.value?parseInt(ca.value)||0:0; const sin=t.stock-t.fichas.length;
+  let html=`<div style="background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px;padding:.4rem .6rem">📊 <b>${h(o.campo)} / ${h(o.cat)}${o.ciclo?" / "+h(o.ciclo):""}</b>: stock <b>${t.stock}</b> · con caravana <b>${t.fichas.length}</b> · sin caravanear <b style="color:${sin>0?"#a04a00":sin<0?"#b00020":"#2d4a1e"}">${sin}</b>`;
+  if(sin<0)html+=`<br>⚠️ Hay más fichas (${t.fichas.length}) que stock (${t.stock}) para ese campo, categoría y ciclo: revisá antes de guardar.`;
+  if(t.otras>0)html+=`<br>Hay ${t.otras} ficha${t.otras>1?"s":""} más de ${h(o.cat)} en ${h(o.campo)} con otro ciclo (no incluidas).`;
+  if(enLista||cant){ html+=`<br>Vas a guardar: cantidad <b>${cant||enLista}</b> → <b>${enLista}</b> con caravana (${f==="a"?"se anota en su ficha":"se actualiza su ficha"})`+((cant||enLista)>enLista?` + <b>${(cant||enLista)-enLista}</b> sin caravanear (solo cuentan en la cantidad)`:"")+(cant&&cant<enLista?` <span style="color:#b00020">⚠️ la cantidad es menor que la lista: borrá de la lista las que no van</span>`:"")+"."; }
+  if(!o.auto&&!enLista)html+=`<br><span class="km">Para este subtipo no se cargan solas (suele ser solo una parte de la tropa): pegá las que correspondan o tocá el botón de abajo.</span>`;
+  box.innerHTML=html+"</div>";
+};
+window.traerCvTropa=function(f){ updTropa(f,"btn"); };
+document.addEventListener("change",e=>{ const id=e.target&&e.target.id; if(["mc","mcat","mci","mti","msu","mtr2","mcc2"].includes(id))setTimeout(()=>updTropa("m","change"),0); else if(["ac","acat","aci","ati"].includes(id))setTimeout(()=>updTropa("a","change"),0); });
+document.addEventListener("input",e=>{ const id=e.target&&e.target.id; if(id==="mca"||id==="mgrp")updTropa("m","render"); else if(id==="aca"||id==="agrp")updTropa("a","render"); });
 window.updActKg=function(){
   const tp=document.getElementById("trasladoPanel");
   const tipoEl=document.getElementById("ati");
@@ -2419,6 +2474,7 @@ window.updActKg=function(){
   const t=document.getElementById("ati").value;
   const kl=document.getElementById("kglabel");
   if(kl)kl.style.display=t==="Pesaje"?"flex":"none";
+  const gl=document.getElementById("agrpLbl"); if(gl)gl.style.display=["Tacto","Traslado de rodeo","Cambio de estado"].includes(t)?"none":"";
 };
 window.setFM=function(k,v){saveFormMov();state.filtMov[k]=v;if(k==="tipo"&&v&&state.filtMov.sub){const ok=(v==="ingreso"?ING:EGR).includes(state.filtMov.sub)||Object.values(state.mov).some(m=>m&&m.tipo===v&&m.sub===state.filtMov.sub);if(!ok)state.filtMov.sub="";}render();};
 window.setFA=function(k,v){saveFormAct();state.filtAct[k]=v;render();};
@@ -3035,9 +3091,10 @@ function doSubmitMov(){
   const refs=grpTxt?[...new Set(grpTxt.split(/[\s,;]+/).filter(Boolean))]:[];
   const cantFinal=cant||(refs.length||0);
   if(!fecha||!campo||!cat||!cantFinal)return alert("Completa: fecha, campo, categoria y cantidad (o pegá caravanas).");
-  if(refs.length&&cant&&cant!==refs.length&&!confirm("La cantidad ("+cant+") no coincide con las caravanas pegadas ("+refs.length+"). ¿Guardar igual?"))return;
+  if(refs.length&&cant&&cant>refs.length&&!confirm("Cantidad "+cant+": "+refs.length+" con caravana + "+(cant-refs.length)+" sin caravanear.\n\nEl movimiento se guarda por "+cant+" y se actualizan las "+refs.length+" fichas. ¿Guardar?"))return;
+  if(refs.length&&cant&&cant<refs.length&&!confirm("⚠️ La cantidad ("+cant+") es MENOR que las caravanas de la lista ("+refs.length+").\n\nSi guardás, el movimiento queda por "+cant+" pero se actualizan las "+refs.length+" fichas. Lo correcto es borrar de la lista las que no van.\n\n¿Guardar igual?"))return;
   const e={fecha,campo,cat,ciclo,tipo,sub,cant:cantFinal,obs,id:state.editMov?state.editMov.id:uid()};
-  if(state.editMov){ for(const k of ["caravanas","origen","destino","trOtro","espejo"]){ if(state.editMov[k]!==undefined&&e[k]===undefined)e[k]=state.editMov[k]; } }
+  if(state.editMov){ for(const k of ["caravanas","origen","destino","trOtro","espejo","ccEspejo"]){ if(state.editMov[k]!==undefined&&e[k]===undefined)e[k]=state.editMov[k]; } }
   const og=leerOrigen(); if(og)e.origen=og;
   // Traslado entre campos propios: se guardan los dos registros (egreso en origen + ingreso en destino)
   const esTr=/^Traslado/.test(sub); const otro=esTr?(document.getElementById("mtr2")||{}).value||"":"";
@@ -3051,12 +3108,16 @@ function doSubmitMov(){
     if(espejo.tipo==="ingreso")espejo.origen={nombre:origenCampo,cuit:"",renspa:renspaDe(origenCampo)||""}; else espejo.destino=destinoCampo;
     e.espejo=espejo.id;
   }
+  // Cambio de categoría con la otra categoría elegida: egreso de la vieja + ingreso de la nueva, mismo campo
+  const cc2El=document.getElementById("mcc2"); const cat2=(sub==="Cambio Categoria"&&!state.editMov&&cc2El)?cc2El.value:"";
+  if(cat2&&cat2===cat)return alert("La otra categoría tiene que ser distinta de la del registro.");
+  if(cat2){ espejo={fecha,campo,cat:cat2,ciclo,cant:cantFinal,obs,id:uid(),espejo:e.id,ccEspejo:true,tipo:tipo==="egreso"?"ingreso":"egreso",sub:"Cambio Categoria"}; e.espejo=espejo.id; e.ccEspejo=true; }
   // Si se edita un traslado con espejo, el otro registro recibe los mismos datos comunes (fecha, categoría, ciclo, cantidad, obs)
   let espejoEd=null;
-  if(state.editMov&&e.espejo&&state.mov[e.espejo]){ const m2=state.mov[e.espejo]; espejoEd={...m2,fecha,cat,ciclo,cant:cantFinal,obs}; if(esTr&&otro){ espejoEd.campo=otro; espejoEd.trOtro=campo; if(espejoEd.tipo==="ingreso")espejoEd.origen={nombre:campo,cuit:"",renspa:renspaDe(campo)||""}; else espejoEd.destino=campo; } }
-  saveMov(e).then(async()=>{ if(espejo)await saveMov(espejo); if(espejoEd){ await saveMov(espejoEd); toast("🔀 Se actualizó también el registro espejo en "+espejoEd.campo); } if(og)await guardarOrigen(og);
+  if(state.editMov&&e.espejo&&state.mov[e.espejo]){ const m2=state.mov[e.espejo]; espejoEd=e.ccEspejo?{...m2,fecha,campo,ciclo,cant:cantFinal,obs}:{...m2,fecha,cat,ciclo,cant:cantFinal,obs}; if(esTr&&otro){ espejoEd.campo=otro; espejoEd.trOtro=campo; if(espejoEd.tipo==="ingreso")espejoEd.origen={nombre:campo,cuit:"",renspa:renspaDe(campo)||""}; else espejoEd.destino=campo; } }
+  saveMov(e).then(async()=>{ if(espejo)await saveMov(espejo); if(espejoEd){ await saveMov(espejoEd); toast(e.ccEspejo?"🔁 Se actualizó también el registro espejo ("+espejoEd.cat+")":"🔀 Se actualizó también el registro espejo en "+espejoEd.campo); } if(og)await guardarOrigen(og);
     if(refs.length){ const ing=e.tipo==="ingreso"?e:espejo; if(ing)await aplicarMovAGrupo(ing,refs); else await aplicarMovAGrupo(e,refs); }
-    state.editMov=null;state.movGrupoTxt="";clearFormMov();render(); if(espejo)toast("🔀 Traslado guardado: egreso en "+(e.tipo==="egreso"?e.campo:espejo.campo)+" + ingreso en "+(e.tipo==="ingreso"?e.campo:espejo.campo)); });
+    state.editMov=null;state.movGrupoTxt="";clearFormMov();render(); if(espejo&&espejo.ccEspejo)toast("🔁 Cambio de categoría guardado en "+e.campo+": egreso de "+(e.tipo==="egreso"?e.cat:espejo.cat)+" + ingreso de "+(e.tipo==="ingreso"?e.cat:espejo.cat)); else if(espejo)toast("🔀 Traslado guardado: egreso en "+(e.tipo==="egreso"?e.campo:espejo.campo)+" + ingreso en "+(e.tipo==="ingreso"?e.campo:espejo.campo)); });
 }
 function doSubmitAct(){
   const fecha=document.getElementById("af").value;
@@ -3127,7 +3188,25 @@ function doSubmitAct(){
     e.trDestino=dest; e.trPre=trPre; e.trCut=trCut; e.trSeg=trSeg; e.trDsc=trDsc;
     e.cant=trPre+trSeg+trDsc; // cantidad total trasladada (informativo)
   }
-  saveAct(e).then(()=>{state.editAct=null;clearFormAct();render();});
+  // Caravanas pegadas (opcional): el registro guarda la lista y cada ficha recibe el evento
+  let animsCv=[];
+  const agEl=document.getElementById("agrp"); const agTxt=(!state.editAct&&agEl&&!ACT_SIN_CV.includes(tipo))?agEl.value.trim():"";
+  if(agTxt){
+    const refs=[...new Set(agTxt.split(/[\s,;]+/).filter(Boolean))]; const noEnc=[]; const vistos={};
+    for(const r of refs){ const a=buscarAnimalRef(r); if(!a)noEnc.push(r); else if(!vistos[a.key]){ vistos[a.key]=1; animsCv.push(a); } }
+    if(noEnc.length&&!confirm("No encontré estas caravanas en Animales:\n"+noEnc.join(", ")+"\n\n"+(animsCv.length?"Aceptar = guardar igual con las "+animsCv.length+" que sí encontré · Cancelar = revisar":"No encontré ninguna. Aceptar = guardar solo por cantidad · Cancelar = revisar")))return;
+    if(animsCv.length){
+      if(e.cant==null)e.cant=animsCv.length;
+      else if(e.cant>animsCv.length&&!confirm("Cantidad "+e.cant+": "+animsCv.length+" con caravana + "+(e.cant-animsCv.length)+" sin caravanear.\n\nLa actividad se guarda por "+e.cant+" y se anota en las "+animsCv.length+" fichas. ¿Guardar?"))return;
+      else if(e.cant<animsCv.length&&!confirm("⚠️ La cantidad ("+e.cant+") es MENOR que las caravanas de la lista ("+animsCv.length+"). Se anotaría en las "+animsCv.length+" fichas. ¿Guardar igual?"))return;
+      const otros=animsCv.filter(a=>a.campo!==campo||a.cat!==cat);
+      if(otros.length&&!confirm("⚠️ "+otros.length+" de las caravanas figuran en otro campo o categoría según su ficha (ej: "+nombreAnimal(otros[0])+" está en "+otros[0].campo+" como "+otros[0].cat+").\n\nLa actividad se guarda en "+campo+" / "+cat+" y se anota en sus fichas, sin moverlos. ¿Guardar igual?"))return;
+      e.caravanas=animsCv.map(a=>a.visual||a.caravana||a.key);
+    }
+  }
+  saveAct(e).then(async()=>{
+    if(animsCv.length){ const hora=mangaHora(); for(const a of animsCv){ const ev={id:idEvento(a.key,fecha,hora,tipo)+"_"+e.id.slice(-4),animal:a.key,fecha,hora,tipo,producto:"",dosis:"",enfermedad:"",obs:"Actividades (manual) · "+campo+(obs?" · "+obs:""),origen:"actform",sesion:e.id}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev); } toast("🐮 "+tipo+" anotada en "+animsCv.length+" ficha"+(animsCv.length>1?"s":"")); }
+    state.editAct=null;clearFormAct();render();});
 }
 function doDownloadCSV(){
   const f=state.filtStock;
@@ -4306,8 +4385,9 @@ async function registrarAnimal(M,a,inp){
   const acts=inp.over?inp.over:{tipos:M.tipos,productos:M.productos,prodDosis:M.prodDosis};
   const peso=parseFloat(inp.peso); const ids={pesadas:[],eventos:[]}; const partes=[]; let c_pesoDestete=null;
   const Mx={...M,tactoRes:inp.tactoRes||"",estRepSel:inp.estRepSel||"",ceDestAnim:inp.ceDestAnim||"",peso:inp.peso||""};
+  const trE=mangaTrEntrada(M); if(trE){ Mx.campo2Anim=mangaOrigenCampo(M,a); Mx.catOrigAnim=mangaOrigenCat(M,a)||a.cat; }
   if(M.pesar&&peso>0){ const esDestete=acts.tipos.includes("Pesaje")||acts.tipos.includes("Destete"); const id=a.key+"_"+M.fecha+"_"+Date.now().toString(36); const p={id,animal:a.key,fecha:M.fecha,hora:mangaHora(),peso,origen:"manual",sesion:"manga",tipo:esDestete?"destete":"control"}; state.pesadas[id]=p; await set(ref(db,"pesadas/"+id),p); ids.pesadas.push(id); partes.push(peso+" kg"+(esDestete?" (destete)":"")); if(esDestete&&!a.pesoDestete)c_pesoDestete=peso; }
-  let c; if(M.modo==="mov"){ c=contribMov(Mx,a); if(acts.tipos.length){ const c2=contribAct(Mx,a,{...acts,tipos:acts.tipos.filter(t=>t!=="Traslado de rodeo")}); c={anim:{...c.anim,...c2.anim},lote:[...c.lote,...c2.lote],evs:c2.evs,txt:[c.txt,c2.txt].filter(Boolean).join(" · ")}; } } else c=contribAct(Mx,a,acts);
+  let c; if(M.modo==="mov"){ c=contribMov(Mx,a); if(acts.tipos.length){ const aAct=M.movTipo==="ingreso"?{...a,...c.anim}:a; /* en un ingreso, lo que se le hace hoy queda en el campo y la categoría con que entra */ const c2=contribAct(Mx,aAct,{...acts,tipos:acts.tipos.filter(t=>t!=="Traslado de rodeo")}); c={anim:{...c.anim,...c2.anim},lote:[...c.lote,...c2.lote],evs:c2.evs,txt:[c.txt,c2.txt].filter(Boolean).join(" · ")}; } } else c=contribAct(Mx,a,acts);
   if(c.txt)partes.push(c.txt);
   const prev={cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||"",sexo:a.sexo||"",ingresoTipo:a.ingresoTipo||"",origenNombre:a.origenNombre||"",fechaTacto:a.fechaTacto||""};
   const iatfInfo=c.anim._iatf; delete c.anim._iatf; const iatfTacto=c.anim._iatfTacto; delete c.anim._iatfTacto;
@@ -4317,7 +4397,7 @@ async function registrarAnimal(M,a,inp){
   if(iatfInfo){ const rid=uid(); const r={id:rid,fecha:M.fecha,campo:a.campo||M.campo,cat:a.cat,ciclo:M.ciclo||cicloDe(a),toroId:iatfInfo.toroId,caravana:iatfInfo.caravana,resultado:"pendiente",origen:"manga",sesion:M.sesionId}; state.iatf[rid]=r; await set(ref(db,"iatf/"+rid),r); ids.iatf=[rid]; const t=state.toros[iatfInfo.toroId]; if(t&&Array.isArray(t.usos)){} }
   const evs=M.modo==="mov"?[{tipo:"Otro",producto:(M.movTipo==="ingreso"?"Ingreso: ":"Egreso: ")+M.movSub,dosis:"",enfermedad:"",obs:c.txt},...(c.evs||[])]:(c.evs||[]);
   let n=0; for(const x of evs){ n++; const e={id:idEvento(a.key,M.fecha,mangaHora(),x.tipo+" "+(x.producto||""))+"_"+Date.now().toString(36)+n,animal:a.key,fecha:M.fecha,hora:mangaHora(),tipo:x.tipo,producto:x.producto||"",dosis:x.dosis||"",enfermedad:x.enfermedad||"",obs:x.obs||"",origen:"manga",sesion:M.sesionId}; state.eventos[e.id]=e; await set(ref(db,"eventos/"+e.id),e); ids.eventos.push(e.id); }
-  M.log.push({key:a.key,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids,lote:c.lote,prev,tacto:inp.tactoRes||"",estRepSel:inp.estRepSel||"",ceDestAnim:inp.ceDestAnim||"",over:inp.over?JSON.parse(JSON.stringify(inp.over)):null,peso:inp.peso||"",fecha:M.fecha});
+  M.log.push({key:a.key,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids,lote:c.lote,prev,tacto:inp.tactoRes||"",estRepSel:inp.estRepSel||"",ceDestAnim:inp.ceDestAnim||"",over:inp.over?JSON.parse(JSON.stringify(inp.over)):null,peso:inp.peso||"",fecha:M.fecha,...(trE?{campo2:Mx.campo2Anim,catOrig:Mx.catOrigAnim}:{})});
   if(!M.grupo.includes(a.key))M.grupo.push(a.key);
   return partes.join(" · ")||"registrado";
 }
@@ -4333,7 +4413,7 @@ window.mangaOk=async function(){
   const txt=await registrarAnimal(M,a,{peso:M.peso,tactoRes:M.tactoRes,estRepSel:M.estRepSel,ceDestAnim:M.ceDestAnim,over:M.over});
   { const u=mangaActsDe(M); const igual=JSON.stringify([...u.tipos].sort())===JSON.stringify([...M.tipos].sort())&&JSON.stringify([...u.productos].sort())===JSON.stringify([...M.productos].sort())&&JSON.stringify(u.prodDosis||{})===JSON.stringify(M.prodDosis||{}); M.ult=igual?null:{tipos:[...u.tipos],productos:[...u.productos],prodDosis:{...(u.prodDosis||{})}}; }
   await sincronizarLote(M); toast("✔ "+nombreAnimal(a)+": "+txt);
-  M.animal=null; M.dupAviso=false; M.dupOk=false; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
+  M.animal=null; M.campo2Anim=""; M.catOrigAnim=""; M.altaKey=null; M.dupAviso=false; M.dupOk=false; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.over=null; M.panel=""; M.extra=M.bajaOpen=false; render(); mangaScrollArriba(); enfocar("bl_eid"); guardarSesionManga();
 };
 
 
@@ -4344,6 +4424,7 @@ const CATS_TERN=["Terneros","Terneras"];
 function caravanasHtml(rec){ const l=rec&&rec.caravanas; if(!l||!l.length)return ""; return `<details style="margin-top:.2rem"><summary style="cursor:pointer;color:#2d4a1e;font-weight:600;font-size:.8rem">🐮 ${l.length} caravana${l.length>1?"s":""} ▾</summary><div style="font-family:monospace;font-size:.78rem;line-height:1.5;margin-top:.2rem;max-height:160px;overflow:auto;background:#f6f8f2;padding:.3rem .5rem;border-radius:6px">${l.map(x=>h(x)).join(" · ")}</div></details>`; }
 function mgDefaults(){ return {v2:true,on:true,cfg:true,modo:"",fecha:hoyISO(),campo:"",campos:[],cats:[],ciclo:cicloActual(),pesar:false,
   movTipo:"ingreso",movSub:"",movCat:"",movCampo2:"",movOrigen:{nombre:"",cuit:"",renspa:""},movCatNueva:"",
+  movCampos2:[],catsOrig:[],movCatOrig:"",campo2Anim:"",catOrigAnim:"",altaKey:null,
   tiposDisp:[],tipos:[],prodsDisp:[],productos:[],prodDosis:{},prodTipo:{},over:null,torosEntore:[],torosIatf:[],toroIatfSel:"",
   trDestino:"",trMov:true,ceDest:"",ceMotivo:"(sin motivo especial)",ceNota:"",
   altaCat:"Terneros",raza:"",padre:"",altaMadre:"",altaToroSel:false,_toroId:null,
@@ -4354,7 +4435,7 @@ function mangaHora(){ return new Date().toTimeString().slice(0,8); }
 function torosLista(){ return Object.values(state.toros).filter(t=>t&&t.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre)); }
 function resumenSesion(M){
   const base=`${fmtF(M.fecha)} · <strong>${h((M.campos||[]).length>1?M.campos.join(" / ")+" (ahora: "+(M.campo||"?")+")":(M.campo||"sin campo"))}</strong> · ${h(M.ciclo)}${M.pesar?" · ⚖️ pesa":""}`;
-  if(M.modo==="mov"){ const o=M.movOrigen||{}; const extra=M.tipos.length?` · + ${h(M.tipos.join(" + "))}${M.productos.length?" ("+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis}))+")":""}`:""; return base+` · <strong>MOVIMIENTO: ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · ${h(M.movSub||"?")}</strong>`+(M.movTipo==="ingreso"&&M.movCat?" como "+h(M.movCat):"")+(M.movSub==="Cambio Categoria"&&M.movCatNueva?" → "+h(M.movCatNueva):"")+(M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(M.movCampo2):"")+(o.nombre?" · origen "+h(o.nombre):"")+extra; }
+  if(M.modo==="mov"){ const o=M.movOrigen||{}; const extra=M.tipos.length?` · + ${h(M.tipos.join(" + "))}${M.productos.length?" ("+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis}))+")":""}`:""; return base+` · <strong>MOVIMIENTO: ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · ${h(M.movSub||"?")}</strong>`+(M.movTipo==="ingreso"&&M.movCat?" como "+h(M.movCat):"")+(M.movSub==="Cambio Categoria"&&M.movCatNueva?" → "+h(M.movCatNueva):"")+(M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(mangaTrEntrada(M)&&mangaOrigenes(M).length>1?mangaOrigenes(M).join(" / ")+" (ahora: "+M.movCampo2+")":M.movCampo2):"")+(o.nombre?" · origen "+h(o.nombre):"")+extra; }
   if(M.modo==="act"){ return base+` · <strong>ACTIVIDAD: ${h(M.tipos.join(" + ")||"(elegí)")}</strong>`+(M.productos.length?" · "+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis})):"")+(M.tipos.includes("Traslado de rodeo")&&M.trDestino?" · a "+h(M.trDestino):"")+(M.tipos.includes("Cambio de estado")&&M.ceDest?" · → "+h(M.ceDest):""); }
   return base+" · <span style='color:#c82010'>elegí Movimiento o Actividad</span>";
 }
@@ -4410,7 +4491,8 @@ function renderMangaCfg(M,clist,cicl){
     <div class="fg">
       ${M.movTipo==="ingreso"?`<label class="s2">Categoría(s) con la que ingresan <span class="km">(una o varias; con varias, en la manga elegís cuál a cada animal y queda para el siguiente)</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${CATS.map(c=>chip(c,(M.cats||[]).includes(c),`mangaTogCat('${h(c)}')`,"#7a4010")).join("")}</div>${(M.cats||[]).length>1?`<span class="km">Ahora: <strong>${h(M.movCat)}</strong></span>`:""}</label>`:""}
       ${M.movSub==="Cambio Categoria"?`<label>Pasan a ser<select onchange="setFAnimMgMov('movCatNueva',this.value)">${opts(CATS,M.movCatNueva,"-- Elegir --")}</select></label>`:""}
-      ${M.movSub==="Traslado entrada"?`<label>Vienen del campo<select onchange="setFAnimMgMov('movCampo2',this.value)">${opts(clist.filter(c=>c!==M.campo),M.movCampo2,"-- Elegir --")}</select><span class="km">Se registra la salida en ese campo y la entrada acá.</span></label>`:""}
+      ${M.movSub==="Traslado entrada"?`<label class="s2">Vienen del campo <span class="km">(uno o varios; con varios, en la manga elegís de cuál viene cada animal y queda para el siguiente. Se registra la salida en ese campo y la entrada acá.)</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${clist.filter(c=>c!==M.campo).map(c=>chip(c,mangaOrigenes(M).includes(c),`mangaTogCampo2('${h(c)}')`)).join("")}</div>${mangaOrigenes(M).length>1?`<span class="km">Ahora: <strong>${h(M.movCampo2)}</strong>. Los animales que ya tienen ficha en uno de esos campos salen del campo de su ficha.</span>`:""}</label>
+      <label class="s2">¿Alguno cambia de categoría al entrar? Categoría(s) que tenían en el campo de origen <span class="km">(opcional. Los que ya tienen ficha salen con la categoría de su ficha; esto es para los animales <strong>nuevos</strong>: ej. salen del otro campo como Novillitos y entran acá como Novillos)</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">${CATS.map(c=>chip(c,(M.catsOrig||[]).includes(c),`mangaTogCatOrig('${h(c)}')`,"#1e4a7a")).join("")}</div></label>`:""}
       ${M.movSub==="Traslado salida"?`<label>Van al campo<select onchange="setFAnimMgMov('movCampo2',this.value)">${opts(clist.filter(c=>c!==M.campo),M.movCampo2,"-- Elegir --")}</select><span class="km">Se registra la salida acá y la entrada allá.</span></label>`:""}
       ${["Compra","Donacion","Otro ingreso"].includes(M.movSub)?`<label>Origen (vendedor / establecimiento)<input list="mg-org" value="${h(M.movOrigen.nombre)}" onchange="setFAnimMgOrigen(this.value)"/><datalist id="mg-org">${org.map(o=>`<option value="${h(o.nombre)}">${h(o.cuit||"")} ${h(o.renspa||"")}</option>`).join("")}</datalist></label><label>CUIT<input value="${h(M.movOrigen.cuit)}" onchange="MG().movOrigen.cuit=this.value"/></label><label>RENSPA<input value="${h(M.movOrigen.renspa)}" onchange="MG().movOrigen.renspa=this.value"/></label>`:""}
       ${["Venta","Faena","Otro egreso"].includes(M.movSub)?`<label class="s2">Destino / comprador (opcional)<input value="${h(M.movOrigen.nombre)}" onchange="MG().movOrigen.nombre=this.value"/></label>`:""}
@@ -4502,7 +4584,7 @@ function renderMangaAlta(M){
   return `<div id="mangaPanel" style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #c82010">
     <div style="font-size:1.2rem;color:#c82010;font-weight:800">❓ Animal nuevo: <span style="font-family:monospace">${h(M.nuevoEID)}</span></div>
     ${(M.campos||[]).length>1?`<div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.3rem 0"><span class="km">📍 Campo:</span>${M.campos.map(c=>chip(c,M.campo===c,`mangaSelCampo('${h(c)}')`)).join("")}</div>`:""}
-    <div class="km" style="margin:.2rem 0 .5rem">Se carga en <strong>${h(M.campo)}</strong>${M.modo==="mov"&&M.movTipo==="ingreso"?" por <strong>"+h(M.movSub)+"</strong>"+(M.movOrigen.nombre?" desde "+h(M.movOrigen.nombre):M.movCampo2?" desde "+h(M.movCampo2):""):" (no suma al stock por lote)"}.</div>
+    <div class="km" style="margin:.2rem 0 .5rem">Se carga en <strong>${h(M.campo)}</strong>${M.modo==="mov"&&M.movTipo==="ingreso"?" por <strong>"+h(M.movSub)+"</strong>"+(M.movOrigen.nombre?" desde "+h(M.movOrigen.nombre):mangaTrEntrada(M)?" desde "+h(mangaOrigenCampo(M,null)):M.movCampo2?" desde "+h(M.movCampo2):""):" (no suma al stock por lote)"}.</div>
     ${limpiarEID(M.nuevoEID).length>=12?(()=>{const sinE=Object.values(state.animales).filter(x=>x&&(x.estado||"activo")==="activo"&&x.visual&&limpiarEID(x.caravana).length<12).sort((a,b)=>a.visual.localeCompare(b.visual,"es",{numeric:true})); return sinE.length?`<div style="background:#eef3f8;border:2px solid #1e4a7a;border-radius:10px;padding:.6rem;margin-bottom:.6rem"><strong style="color:#1e4a7a">🔗 ¿Es un animal que ya está cargado por su caravana visual?</strong> <span class="km">(vacas, vaquillonas, toros con IATF/tactos) — escribí la visual y la app une las dos caravanas conservando todo el historial</span>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.4rem"><input id="mg_recar" list="mg-visuales" value="${h(M.recarVisual||"")}" oninput="MG().recarVisual=this.value" onchange="MG().recarVisual=this.value" placeholder="Ej: BT627A025" style="width:200px;padding:.6rem;font-size:1.05rem;font-family:monospace;text-transform:uppercase"/><datalist id="mg-visuales">${sinE.map(x=>`<option value="${h(x.visual)}">${h(x.cat||"")} · ${h(x.campo||"")}${x.estadoRep?" · "+h(x.estadoRep):""}</option>`).join("")}</datalist><button style="${BTN_V};flex:0 0 auto;padding:.7rem 1rem;background:#1e4a7a" onclick="mangaRecaravanear()">🔗 UNIR con esa visual</button></div></div>`:"";})():""}
     ${esTern||cats.length>1?`<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem;align-items:center">
@@ -4524,7 +4606,7 @@ function renderMangaAnimal(M,a){
   const er=a.estadoRep||""; const necesitaEstado=(conTr||conCe)&&!er&&!M.estRepSel;
   const editando=Number.isInteger(M.editIdx)&&M.log[M.editIdx]&&M.log[M.editIdx].key===a.key; const yaPaso=!editando&&M.grupo.includes(a.key)&&!M.dupOk;
   let seRegistra="";
-  if(M.modo==="mov")seRegistra=`📋 ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · <strong>${h(M.movSub)}</strong>${M.movSub==="Cambio Categoria"?" "+h(a.cat)+" → "+h(M.movCatNueva):M.movTipo==="ingreso"&&M.movCat&&M.movCat!==a.cat?" (pasa de "+h(a.cat)+" a "+h(M.movCat)+")":""}${M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(M.movCampo2):""}`+(acts.tipos.length?` · 🩺 <strong>${h(acts.tipos.join(" + "))}</strong>${acts.productos.length?" · "+h(prodTexto(acts)):""}`:"");
+  if(M.modo==="mov")seRegistra=`📋 ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · <strong>${h(M.movSub)}</strong>${M.movSub==="Cambio Categoria"?" "+h(a.cat)+" → "+h(M.movCatNueva):mangaTrEntrada(M)?(mangaOrigenCat(M,a)!==(mangaConFichaPrevia(M,a)?M.movCat:a.cat)?" (pasa de "+h(mangaOrigenCat(M,a))+" a "+h(mangaConFichaPrevia(M,a)?M.movCat:a.cat)+")":""):M.movTipo==="ingreso"&&M.movCat&&M.movCat!==a.cat?" (pasa de "+h(a.cat)+" a "+h(M.movCat)+")":""}${mangaTrEntrada(M)?" desde "+h(mangaOrigenCampo(M,a)):M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(M.movCampo2):""}`+(acts.tipos.length?` · 🩺 <strong>${h(acts.tipos.join(" + "))}</strong>${acts.productos.length?" · "+h(prodTexto(acts)):""}`:"");
   else seRegistra=`🩺 <strong>${h(acts.tipos.join(" + ")||"nada")}</strong>${acts.productos.length?" · "+h(prodTexto(acts)):""}`;
   return `<div id="mangaPanel" style="background:#fff;border-radius:12px;padding:1rem;border:3px solid #2d4a1e">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;align-items:baseline">
@@ -4592,8 +4674,23 @@ function ajustarPesajeControl(M){ if(!_pcNormalizado){ _pcNormalizado=true; norm
   if(M.pesar&&!esDest){ asegurarActividad(PC); if(!M.tiposDisp.includes(PC))M.tiposDisp.push(PC); if(!M.tipos.includes(PC))M.tipos.push(PC); }
   else { M.tipos=M.tipos.filter(t=>t!==PC); M.tiposDisp=M.tiposDisp.filter(t=>t!==PC); } }
 window.setFAnimMg=function(k,v){ const M=MG(); M[k]=v; if(k==="pesar")ajustarPesajeControl(M); if(k==="raza"||k==="padre"||k==="ciclo"||k==="fecha"||k==="ceNota"||k==="altaMadre"){ if(k!=="altaMadre")return; } render(); };
-window.setFAnimMgMov=function(k,v){ const M=MG(); M[k]=v; if(k==="movTipo"){ M.movSub=""; M.movCampo2=""; M.movCatNueva=""; } if(k==="movSub"){ M.movCampo2=""; M.movCatNueva=""; if(!["Compra","Donacion","Otro ingreso","Venta","Faena","Otro egreso"].includes(v))M.movOrigen={nombre:"",cuit:"",renspa:""}; } if(k==="movCat"&&!M.padre&&!CATS_TERN.includes(v)){} render(); };
+window.setFAnimMgMov=function(k,v){ const M=MG(); M[k]=v; if(k==="movTipo"||k==="movSub"){ M.movCampos2=[]; M.catsOrig=[]; M.movCatOrig=""; M.campo2Anim=""; M.catOrigAnim=""; } if(k==="movTipo"){ M.movSub=""; M.movCampo2=""; M.movCatNueva=""; } if(k==="movSub"){ M.movCampo2=""; M.movCatNueva=""; if(!["Compra","Donacion","Otro ingreso","Venta","Faena","Otro egreso"].includes(v))M.movOrigen={nombre:"",cuit:"",renspa:""}; } if(k==="movCat"&&!M.padre&&!CATS_TERN.includes(v)){} render(); };
 function mangaCatActual(M){ return M.modo==="mov"&&M.movTipo==="ingreso"?M.movCat:M.altaCat; }
+// ── Traslado entrada con varios campos de origen y cambio de categoría ──
+function mangaTrEntrada(M){ return M.modo==="mov"&&M.movTipo==="ingreso"&&M.movSub==="Traslado entrada"; }
+function mangaOrigenes(M){ const l=(M.movCampos2||[]).filter(Boolean); return l.length?l:(M.movCampo2?[M.movCampo2]:[]); }
+function mangaConFichaPrevia(M,a){ return !!a&&M.altaKey!==a.key&&!(M.log||[]).some(l=>l.alta===a.key); } // el animal ya estaba cargado antes de este trabajo (no se dio de alta recién)
+// Campo del que sale: lo que se tocó para este animal → el campo de su ficha (si es uno de los orígenes del trabajo) → el origen marcado
+function mangaOrigenCampo(M,a){ if(M.campo2Anim)return M.campo2Anim; if(mangaConFichaPrevia(M,a)&&a.campo&&a.campo!==M.campo&&mangaOrigenes(M).includes(a.campo))return a.campo; return M.movCampo2||""; }
+// Categoría con la que sale del origen: lo que se tocó para este animal → la de su ficha → la marcada para animales nuevos → la misma con la que entra
+function mangaOrigenCat(M,a){ if(M.catOrigAnim)return M.catOrigAnim; if(mangaConFichaPrevia(M,a))return a.cat; return M.movCatOrig||(a?a.cat:M.movCat)||""; }
+window.mangaTogCampo2=function(c){ const M=MG(); M.movCampos2=[...mangaOrigenes(M)]; const i=M.movCampos2.indexOf(c); if(i>=0){ M.movCampos2.splice(i,1); if(M.movCampo2===c)M.movCampo2=M.movCampos2[0]||""; } else { M.movCampos2.push(c); M.movCampo2=c; } render(); };
+window.mangaTogCatOrig=function(c){ const M=MG(); M.catsOrig=[...(M.catsOrig||[])]; const i=M.catsOrig.indexOf(c); if(i>=0){ M.catsOrig.splice(i,1); if(M.movCatOrig===c)M.movCatOrig=""; } else M.catsOrig.push(c); render(); };
+window.mangaSelCampo2=function(c){ const M=MG(); M.movCampo2=c; if(M.animal||M.nuevoEID)M.campo2Anim=c; render(); };
+window.mangaSelCatOrig=function(c){ const M=MG(); const a=M.animal?state.animales[M.animal]:null;
+  if(mangaConFichaPrevia(M,a)){ M.catOrigAnim=c||""; } // animal con ficha: vale solo para este animal
+  else { M.movCatOrig=c||""; M.catOrigAnim=(M.animal||M.nuevoEID)?(c||""):""; } // animal nuevo (o ninguno en pantalla): queda para los nuevos que sigan
+  render(); };
 function mangaSetCatActual(M,c){ if(M.modo==="mov"&&M.movTipo==="ingreso")M.movCat=c; else M.altaCat=c; }
 window.mangaSelCat=function(c){ const M=MG(); if(!c)return; mangaSetCatActual(M,c); M.altaCatSel=c; render(); };
 window.mangaSelCampo=function(c){ const M=MG(); M.campo=c; render(); };
@@ -4643,15 +4740,21 @@ window.guiaAgregar=function(){ const items=JSON.parse(JSON.stringify(state.guiaA
 window.guiaBorrar=async function(i){ const items=JSON.parse(JSON.stringify(state.guiaAct||GUIA_ACT_DEF)); if(!items[i])return; if(!confirm("¿Quitar la nota \""+items[i].titulo+"\"?"))return; items.splice(i,1); state.guiaAct=items; state.guiaEdit=null; await set(ref(db,"guiaAct"),items); render(); };
 window.guiaRestaurar=async function(){ if(!confirm("¿Volver al texto original de las 3 notas? Se pierden los cambios y las notas agregadas."))return; state.guiaAct=null; state.guiaEdit=null; await remove(ref(db,"guiaAct")); render(); };
 function renderMangaSel(M){
-  const cs=M.campos||[], ks=M.cats||[]; if(cs.length<2&&ks.length<2)return "";
+  const cs=M.campos||[], ks=M.cats||[]; const tr=mangaTrEntrada(M); const os=tr?mangaOrigenes(M):[], ko=tr?(M.catsOrig||[]):[];
+  if(cs.length<2&&ks.length<2&&os.length<2&&!ko.length)return "";
   const cur=mangaCatActual(M); const mov=M.modo==="mov"&&M.movTipo==="ingreso";
+  const a=M.animal?state.animales[M.animal]:null; const hay=!!(a||M.nuevoEID);
+  const c2=tr?mangaOrigenCampo(M,a):"", kOrig=tr?mangaOrigenCat(M,a):""; const porFicha=tr&&mangaConFichaPrevia(M,a);
   return `<div style="background:#fff;border:2px solid #e0c090;border-radius:12px;padding:.5rem .7rem;margin-bottom:.6rem">
     ${cs.length>1?`<div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.2rem 0"><span class="km" style="min-width:80px">📍 Campo:</span>${cs.map(c=>chip(c,M.campo===c,`mangaSelCampo('${h(c)}')`)).join("")}</div>`:""}
+    ${os.length>1?`<div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.2rem 0"><span class="km" style="min-width:80px">🚚 Viene de:</span>${os.map(c=>chip(c,c2===c,`mangaSelCampo2('${h(c)}')`,"#1e4a7a")).join("")}${porFicha&&!M.campo2Anim&&c2===a.campo?`<span class="km">(por su ficha)</span>`:""}</div>`:""}
+    ${ko.length?`<div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.2rem 0"><span class="km" style="min-width:80px">↩️ En origen era:</span>${chip(porFicha?"según su ficha":"igual que entra",porFicha?!M.catOrigAnim:(!M.catOrigAnim&&!M.movCatOrig),`mangaSelCatOrig('')`,"#1e4a7a")}${ko.map(c=>chip(c,porFicha?M.catOrigAnim===c:kOrig===c&&!!(M.catOrigAnim||M.movCatOrig),`mangaSelCatOrig('${h(c)}')`,"#1e4a7a")).join("")}</div>`:""}
     ${ks.length>1?`<div style="display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.2rem 0"><span class="km" style="min-width:80px">🐮 Categ.${mov?" (ingresan como)":" (nuevas)"}:</span>${ks.map(c=>chip(c,cur===c,`mangaSelCat('${h(c)}')`,"#7a4010")).join("")}</div>`:""}
-    <div class="km">Lo marcado acá se aplica al animal que pasa y queda igual para el siguiente (tocá para cambiarlo).</div></div>`;
+    ${tr&&hay?`<div style="background:#eef3f8;border-radius:8px;padding:.35rem .6rem;margin:.3rem 0;font-size:.95rem;color:#1e4a7a">Este animal: sale de <strong>${h(c2||"?")}</strong> como <strong>${h(kOrig||cur)}</strong> → entra a <strong>${h(M.campo)}</strong> como <strong>${h(a&&!mangaConFichaPrevia(M,a)?a.cat:(M.altaCatSel&&!a?M.altaCatSel:cur))}</strong>${porFicha&&a.campo&&a.campo!==M.campo&&a.campo!==c2?` <span style="color:#c82010">⚠️ su ficha dice que estaba en ${h(a.campo)}</span>`:""}</div>`:""}
+    <div class="km">Lo marcado acá se aplica al animal que pasa y queda igual para el siguiente (tocá para cambiarlo).${tr&&(os.length>1||ko.length)?" Los animales que ya tienen ficha salen del campo y con la categoría de su ficha, salvo que toques otra cosa.":""}</div></div>`;
 }
 window.setFAnimMgOrigen=function(nombre){ const M=MG(); const o=origenesLista().find(x=>normTxt(x.nombre)===normTxt(nombre)); M.movOrigen={nombre:nombre||"",cuit:o?o.cuit||"":"",renspa:o?o.renspa||"":""}; render(); };
-window.mangaCfg=function(v){ const M=MG(); M.campos=M.campos||[]; M.cats=M.cats||[]; if(M.campo&&!M.campos.includes(M.campo))M.campos.push(M.campo); if(!M.campo&&M.campos.length)M.campo=M.campos[0]; if(M.cats.length&&!M.cats.includes(mangaCatActual(M)))mangaSetCatActual(M,M.cats[0]); if(v===false){ if(!M.campo)return alert("Elegí el campo donde estamos."); if(!M.modo)return alert("Elegí si vas a hacer un Movimiento o una Actividad."); if(M.modo==="mov"){ if(!M.movSub)return alert("Elegí el tipo de movimiento."); if(M.movTipo==="ingreso"&&!M.movCat)return alert("Elegí la categoría con la que ingresan."); if(M.movSub==="Cambio Categoria"&&!M.movCatNueva)return alert("Elegí a qué categoría pasan."); if(["Traslado entrada","Traslado salida"].includes(M.movSub)&&!M.movCampo2)return alert("Elegí el otro campo del traslado."); } if(M.modo==="act"){ if(!M.tipos.length)return alert("Elegí al menos una actividad."); if(M.tipos.includes("Traslado de rodeo")&&!M.trDestino)return alert("Elegí el campo destino del traslado de rodeo."); } if(M.tipos.includes("Cambio de estado")&&!M.ceDest)return alert("Elegí a qué estado pasan."); if(M.tipos.includes("IATF")&&!(M.torosIatf||[]).length)return alert("Marcá el semen (toros) que se va a usar hoy."); if(M.tipos.includes("IATF")&&!M.toroIatfSel)M.toroIatfSel=M.torosIatf[0]; if(M.modo==="mov"&&M.tipos.includes("Traslado de rodeo"))return alert("El traslado de rodeo se hace como Actividad (o usá el movimiento Traslado)."); }
+window.mangaCfg=function(v){ const M=MG(); M.campos=M.campos||[]; M.cats=M.cats||[]; if(mangaTrEntrada(M)){ M.movCampos2=[...new Set([...(M.movCampos2||[]),M.movCampo2])].filter(c=>c&&c!==M.campo); if(!M.movCampos2.includes(M.movCampo2))M.movCampo2=M.movCampos2[0]||""; if(M.movCatOrig&&!(M.catsOrig||[]).includes(M.movCatOrig))M.movCatOrig=""; } if(M.campo&&!M.campos.includes(M.campo))M.campos.push(M.campo); if(!M.campo&&M.campos.length)M.campo=M.campos[0]; if(M.cats.length&&!M.cats.includes(mangaCatActual(M)))mangaSetCatActual(M,M.cats[0]); if(v===false){ if(!M.campo)return alert("Elegí el campo donde estamos."); if(!M.modo)return alert("Elegí si vas a hacer un Movimiento o una Actividad."); if(M.modo==="mov"){ if(!M.movSub)return alert("Elegí el tipo de movimiento."); if(M.movTipo==="ingreso"&&!M.movCat)return alert("Elegí la categoría con la que ingresan."); if(M.movSub==="Cambio Categoria"&&!M.movCatNueva)return alert("Elegí a qué categoría pasan."); if(["Traslado entrada","Traslado salida"].includes(M.movSub)&&!M.movCampo2)return alert("Elegí el otro campo del traslado."); } if(M.modo==="act"){ if(!M.tipos.length)return alert("Elegí al menos una actividad."); if(M.tipos.includes("Traslado de rodeo")&&!M.trDestino)return alert("Elegí el campo destino del traslado de rodeo."); } if(M.tipos.includes("Cambio de estado")&&!M.ceDest)return alert("Elegí a qué estado pasan."); if(M.tipos.includes("IATF")&&!(M.torosIatf||[]).length)return alert("Marcá el semen (toros) que se va a usar hoy."); if(M.tipos.includes("IATF")&&!M.toroIatfSel)M.toroIatfSel=M.torosIatf[0]; if(M.modo==="mov"&&M.tipos.includes("Traslado de rodeo"))return alert("El traslado de rodeo se hace como Actividad (o usá el movimiento Traslado)."); }
   if(v===false){ const repro=M.tipos.filter(t=>ACT_REPRO.includes(t)); const nac=M.modo==="mov"&&M.movSub==="Nacimiento"; if(repro.length||nac){ if(!/^\d{4}\/\d{4}$/.test(M.ciclo||""))return alert("El ciclo productivo tiene que tener el formato 2027/2028."); if(!confirm("⚠️ CONFIRMÁ EL CICLO PRODUCTIVO\n\n"+(nac?"Nacimientos":repro.join(" + "))+" → van al Productivo del ciclo "+M.ciclo+".\n\n¿Es correcto? (Cancelar para corregirlo antes de empezar)"))return; } }
   M.cfg=!!v; render(); if(!M.cfg)enfocar("bl_eid"); guardarSesionManga(); };
 window.mangaNuevaSesion=function(){ const M=MG(); M.ult=null; if(M.grupo.length&&!confirm("¿Cerrar el trabajo de hoy ("+M.grupo.length+" animales) y empezar otro? Lo registrado queda guardado."))return; const keep={fecha:M.fecha,campo:M.campo,campos:[...(M.campos||[])],cats:[...(M.cats||[])],altaCat:M.altaCat,ciclo:M.ciclo,raza:M.raza,padre:M.padre}; state.manga={...mgDefaults(),...keep}; render(); };
@@ -4659,7 +4762,7 @@ window.mangaEscribir=function(){ const el=document.getElementById("bl_eid"); if(
 window.mangaAuto=function(){ const M=MG(); M.auto=!M.auto; if(M.auto&&(M.pesar||M.tipos.includes("Tacto")))toast("⚡ Automático: se frena en cada animal para cargar peso/tacto, pero el resto se registra solo"); render(); enfocar("bl_eid"); };
 window.mangaPanel=function(p){ const M=MG(); M.panel=M.panel===p?"":p; render(); };
 window.mangaKey=function(k){ const M=MG(); if(k==="⌫")M.peso=M.peso.slice(0,-1); else if(k==="."){ if(!M.peso.includes("."))M.peso=(M.peso||"0")+"."; } else if(M.peso.replace(".","").length<5)M.peso+=k; render(); };
-window.mangaCancelar=function(){ const M=MG(); M.dupAviso=false; M.dupOk=false; M.editIdx=null; M.animal=null; M.nuevoEID=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=null; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; render(); enfocar("bl_eid"); };
+window.mangaCancelar=function(){ const M=MG(); M.campo2Anim=""; M.catOrigAnim=""; M.altaKey=null; M.dupAviso=false; M.dupOk=false; M.editIdx=null; M.animal=null; M.nuevoEID=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=null; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; render(); enfocar("bl_eid"); };
 window.mangaExtra=function(v){ const M=MG(); M.extra=v!==false; M.bajaOpen=false; render(); };
 window.mangaOverReset=function(){ const M=MG(); M.over=null; M.ult=null; render(); };
 window.mangaTacto=function(v){ MG().tactoRes=v; render(); };
@@ -4773,7 +4876,7 @@ window.balanzaCopiarLog=function(){ const t=balanzaTextoLog(); if(navigator.clip
 function mangaScrollArriba(){ setTimeout(()=>{ const el=document.getElementById("bl_eid"); if(el){ const top=el.getBoundingClientRect().top+window.scrollY-70; window.scrollTo({top:Math.max(0,top),behavior:"smooth"}); } },60); }
 function balanzaTomarSiEstable(){ const M=MG(); if(BAL.estado!=="ok"||!M.pesar||!BAL.autoTomar)return; if(BAL.estable&&BAL.ultimo>=20&&(M.animal||M.nuevoEID)&&!M.peso){ M.peso=String(BAL.ultimo); BAL._tomado=BAL.ultimo; toast("⚖️ "+BAL.ultimo+" kg"); } }
 function mangaLeer(a,eidOrVisual){ const M=MG(); if(M.cfg){ alert("Primero tocá ✔ LISTO, A LA MANGA."); return; }
-  M.editIdx=null; M.dupAviso=false; M.dupOk=false; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
+  M.editIdx=null; M.campo2Anim=""; M.catOrigAnim=""; M.altaKey=null; M.dupAviso=false; M.dupOk=false; M.recarVisual=""; M.peso=""; M.tactoRes=""; M.estRepSel=""; M.ceDestAnim=""; M.panel=""; M.extra=M.bajaOpen=false; M.over=M.ult?JSON.parse(JSON.stringify(M.ult)):null; M.altaCatSel=""; M._toroId=null; M.altaMadre="";
   if(a&&M.grupo.includes(a.key)){ M.repetidas=(M.repetidas||0)+1; M.animal=a.key; M.nuevoEID=""; M.dupAviso=true; render(); mangaScrollArriba(); return; }
   if(a){ M.animal=a.key; M.nuevoEID=""; } else { M.animal=null; M.nuevoEID=eidOrVisual; }
   balanzaTomarSiEstable(); render(); mangaScrollArriba(); 
@@ -4804,7 +4907,7 @@ window.mangaAlta=async function(cat){
   if(state.animales[key])return alert("Esa caravana ya está cargada.");
   const esMov=M.modo==="mov"&&M.movTipo==="ingreso";
   let og={nombre:M.campo,cuit:"",renspa:(typeof renspaDe==="function"?renspaDe(M.campo):"")||""}; let ingresoTipo="Nacimiento";
-  if(esMov){ ingresoTipo=M.movSub; if(["Compra","Donacion","Otro ingreso"].includes(M.movSub))og={...M.movOrigen}; else if(M.movSub==="Traslado entrada"&&M.movCampo2)og={nombre:M.movCampo2,cuit:"",renspa:(typeof renspaDe==="function"?renspaDe(M.movCampo2):"")||""}; }
+  if(esMov){ ingresoTipo=M.movSub; if(["Compra","Donacion","Otro ingreso"].includes(M.movSub))og={...M.movOrigen}; else if(M.movSub==="Traslado entrada"&&mangaOrigenCampo(M,null)){ const c2=mangaOrigenCampo(M,null); og={nombre:c2,cuit:"",renspa:(typeof renspaDe==="function"?renspaDe(c2):"")||""}; } }
   const madreRef=(M.altaMadre||"").trim(); const madre=madreRef?buscarAnimalRef(madreRef):null;
   let a=sinUndef({key,caravana:isE?limpiarEID(eid):"",visual:isE?"":String(eid).toUpperCase(),campo:M.campo,cat,sexo:sexoDeCat(cat),raza:M.raza||"",ciclo:M.ciclo||"",ingreso:M.fecha,ingresoTipo,estado:"activo",origen:"manga",creado:hoyISO(),origenNombre:og.nombre||"",origenCuit:og.cuit||"",origenRenspa:og.renspa||"",madre:madre?(madre.visual||madre.caravana):madreRef});
   let padreTxt="";
@@ -4815,7 +4918,7 @@ window.mangaAlta=async function(cat){
   const ev={id:idEvento(key,M.fecha,mangaHora(),"Alta "+ingresoTipo)+"_"+Date.now().toString(36),animal:key,fecha:M.fecha,hora:mangaHora(),tipo:"Otro",producto:"Alta: "+ingresoTipo,dosis:"",enfermedad:"",obs:"Origen: "+(og.nombre||"")+(og.renspa?" · RENSPA "+og.renspa:""),origen:"manga",sesion:"manga"}; state.eventos[ev.id]=ev; await set(ref(db,"eventos/"+ev.id),ev);
   M.log.push({key,nombre:nombreAnimal(a),txt:"🆕 alta como "+cat+(a.raza?" "+a.raza:"")+" · "+ingresoTipo+(og.nombre?" desde "+og.nombre:"")+padreTxt,ids:{pesadas:[],eventos:[ev.id]},alta:key,lote:[]});
   toast("🆕 "+nombreAnimal(a)+" dado de alta como "+cat);
-  mangaSetCatActual(M,cat); M.nuevoEID=""; M.animal=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba();  guardarSesionManga();
+  mangaSetCatActual(M,cat); M.nuevoEID=""; M.animal=key; M.altaKey=key; M.altaCatSel=""; M._toroId=null; M.altaMadre=""; M.panel=""; render(); mangaScrollArriba();  guardarSesionManga();
   // si no hace falta cargar nada más (peso, tacto, estado), el alta completa el registro del trabajo de hoy
   const necesita=M.pesar||M.tipos.includes("Tacto")||M.tipos.includes("Traslado de rodeo")||M.tipos.includes("Cambio de estado");
   if(!necesita){ await mangaOk(); }
@@ -4828,12 +4931,14 @@ function contribMov(M,a){ // devuelve {anim: cambios ficha, lote:[contribs], txt
   if(M.movTipo==="ingreso"){
     const cat=M.movSub==="Cambio Categoria"?M.movCatNueva:(M.movCat||a.cat);
     const CI=claveFB(M.campo||"");
+    const esTrE=M.movSub==="Traslado entrada"; const campo2=esTrE?mangaOrigenCampo(M,a):M.movCampo2; const catOrig=esTrE?(mangaOrigenCat(M,a)||a.cat):a.cat;
     lote.push({id:`${S}_i_${CI}_${cat}`,col:"mov",base:{...base,campo:M.campo,cat,tipo:"ingreso",sub:M.movSub,...(o?{origen:o}:{})},n:{cant:1}});
-    if(M.movSub==="Traslado entrada")lote.push({id:`${S}_e_${CI}_${a.cat}`,col:"mov",base:{...base,campo:M.movCampo2,cat:a.cat,tipo:"egreso",sub:"Traslado salida"},n:{cant:1}});
+    // la salida va al campo y categoría de origen de ESTE animal (el id incluye el campo de origen: con dos orígenes no se mezclan)
+    if(esTrE)lote.push({id:`${S}_e_${CI}_${claveFB(campo2||"")}_${catOrig}`,col:"mov",base:{...base,campo:campo2,cat:catOrig,tipo:"egreso",sub:"Traslado salida",destino:M.campo},n:{cant:1}});
     if(M.movSub==="Cambio Categoria")lote.push({id:`${S}_e_${CI}_${a.cat}`,col:"mov",base:{...base,ciclo:cicloDe(a)||M.ciclo,campo:M.campo,cat:a.cat,tipo:"egreso",sub:"Cambio Categoria"},n:{cant:1}});
     Object.assign(anim,{campo:M.campo,cat,sexo:a.sexo||sexoDeCat(cat),estado:"activo",fechaBaja:""});
-    if(!a.ingresoTipo||a.origen==="hook"){ anim.ingresoTipo=M.movSub; if(o){anim.origenNombre=o.nombre;anim.origenCuit=o.cuit||"";anim.origenRenspa=o.renspa||"";} else if(M.movCampo2){anim.origenNombre=M.movCampo2;anim.origenRenspa=(typeof renspaDe==="function"?renspaDe(M.movCampo2):"")||"";} }
-    txt="⬇️ "+M.movSub+(cat!==a.cat?" · "+a.cat+" → "+cat:"")+(M.movCampo2?" desde "+M.movCampo2:"")+((M.campos||[]).length>1?" en "+M.campo:"");
+    if(!a.ingresoTipo||a.origen==="hook"){ anim.ingresoTipo=M.movSub; if(o){anim.origenNombre=o.nombre;anim.origenCuit=o.cuit||"";anim.origenRenspa=o.renspa||"";} else if(campo2){anim.origenNombre=campo2;anim.origenRenspa=(typeof renspaDe==="function"?renspaDe(campo2):"")||"";} }
+    txt="⬇️ "+M.movSub+(cat!==catOrig?" · "+catOrig+" → "+cat:"")+(campo2?" desde "+campo2:"")+((M.campos||[]).length>1?" en "+M.campo:"");
   } else {
     const campoSal=a.campo||M.campo; const cicloA=cicloDe(a)||M.ciclo; const CS=(campoSal+"_"+cicloA).replace(/[.#$\[\]\/]/g,"_");
     lote.push({id:`${S}_e_${CS}_${a.cat}`,col:"mov",base:{...base,ciclo:cicloA,campo:campoSal,cat:a.cat,tipo:"egreso",sub:M.movSub,...(o?{destino:o.nombre}:{})},n:{cant:1}});
@@ -4846,6 +4951,7 @@ function contribMov(M,a){ // devuelve {anim: cambios ficha, lote:[contribs], txt
 }
 function iatfPendMatch(a,M){ // IATF pendientes de la vaca que corresponden a este tacto: mismo ciclo que la sesión; si el registro no tiene ciclo, por fecha (25 a 120 días)
   return iatfDe(a).filter(x=>x.resultado==="pendiente"&&((x.ciclo&&M.ciclo)?x.ciclo===M.ciclo:(x.fecha&&(()=>{const d=diasEntre(x.fecha,M.fecha);return d>=25&&d<=120;})()))); }
+const ACT_SIN_CV=["Tacto","Traslado de rodeo","Cambio de estado"];
 const ACT_REPRO=["Tacto","Preñez","Cut","Vacias","2da oportunidad","Descarte","IATF","Entore","Desentore","Cambio de estado","Traslado de rodeo","Repaso con toros a IATF","Selección a IATF","Destete","Pesaje","Nacimiento","Nacimientos","Parto"];
 function contribAct(M,a,acts){
   const S=M.sesionId; const campoA=a.campo||M.campo; const esRepro=acts.tipos.some(t=>ACT_REPRO.includes(t));
@@ -4960,7 +5066,7 @@ window.reconstruirSesiones=async function(){
         lote.push({id:claveFB(`${S}_a_${CA}_${a.cat}_${t}`),col:"act",base:{...base,tipo:t,obs:"Manga "+fmtF(fecha)+" (reconstruido)"+(pr?" · "+pr:"")},n:{cant:1}}); partes.push(t+(pr?" ("+pr+(e.dosis?" · "+e.dosis:"")+")":"")); }
       M2.log.push({key:k,nombre:nombreAnimal(a),txt:partes.join(" · ")||"pasó",ids:{pesadas:[],eventos:mios.map(e=>e.id)},lote,prev:{cat:a.cat,campo:a.campo,estado:a.estado||"activo",estadoRep:a.estadoRep||"",fechaBaja:a.fechaBaja||""},tacto:(mios.find(e=>e.tipo==="Tacto")||{}).producto||"",fecha});
       M2.grupo.push(k); }
-    const cfg={}; for(const kk of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp"])cfg[kk]=M2[kk];
+    const cfg={}; for(const kk of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp","movCampos2","catsOrig","movCatOrig"])cfg[kk]=M2[kk];
     const tactos={}; for(const l of M2.log)if(l.tacto)tactos[l.key]=l.tacto;
     const ss=limpioProfundo({id:sid,fecha,campo,ciclo:M2.ciclo,modo:M2.modo,cfg,log:M2.log,pendiente:true,lote:calcularLote(M2),aprobado:false,aprobadoEn:"",aprobadoIds:[],rechazado:false,tipos:M2.modo==="mov"?[(M2.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M2.movSub,...tipos]:tipos,productos,animales:M2.grupo,tactos,loteIds:Object.keys(calcularLote(M2)),usuario:"(reconstruido)",actualizado:new Date().toISOString()});
     state.mangaSesiones[sid]=ss; await set(ref(db,"mangaSesiones/"+sid),ss); n++; }
@@ -4997,7 +5103,10 @@ window.mangaDeshacer=async function(i){
 window.mangaEditar=async function(i){
   const M=MG(); const l=M.log[i]; if(!l)return; M.dupAviso=false; M.dupOk=false;
   if(l.alta){ const a=state.animales[l.alta]; const eid=a?(a.caravana||a.visual):l.alta; const raza=a?a.raza:""; const madre=a?a.madre:""; M._silencio=true; await mangaDeshacer(i); M._silencio=false; M.animal=null; M.nuevoEID=eid; if(raza)M.raza=raza; M.altaMadre=madre||""; toast("✏️ Corregí y volvé a dar de alta"); render(); return; }
-  M.editIdx=i; M.animal=l.key; M.nuevoEID=""; M.peso=""; balanzaTomarSiEstable(); if(!M.peso)M.peso=l.peso||""; M.tactoRes=l.tacto||""; M.estRepSel=l.estRepSel||""; M.ceDestAnim=l.ceDestAnim||""; M.over=l.over||null; M.extra=false; M.panel=""; M.bajaOpen=false;
+  M.editIdx=i; M.animal=l.key; M.nuevoEID=""; M.altaKey=null; M.campo2Anim=l.campo2||""; M.catOrigAnim=l.catOrig||""; M.peso="";
+  // al corregir un ingreso, parte de lo que se había registrado para ESE animal (categoría de entrada y campo), no de lo último marcado
+  { const cur=state.animales[l.key]; if(cur&&M.modo==="mov"&&M.movTipo==="ingreso"&&M.movSub!=="Cambio Categoria"){ if(cur.cat&&(M.cats||[]).includes(cur.cat))M.movCat=cur.cat; if(cur.campo&&(M.campos||[]).includes(cur.campo))M.campo=cur.campo; } }
+  balanzaTomarSiEstable(); if(!M.peso)M.peso=l.peso||""; M.tactoRes=l.tacto||""; M.estRepSel=l.estRepSel||""; M.ceDestAnim=l.ceDestAnim||""; M.over=l.over||null; M.extra=false; M.panel=""; M.bajaOpen=false;
   toast("✏️ Corregí y tocá REGISTRAR (o Saltar para dejarlo como estaba)"); render(); mangaScrollArriba();
 };
 async function guardarSesionManga(){
@@ -5005,8 +5114,8 @@ async function guardarSesionManga(){
   if(!M.log.length&&!state.mangaSesiones[M.sesionId])return; // sin nada registrado no se guarda (evita trabajos vacíos)
   const tactos={}; for(const l of M.log){ if(l.tacto)tactos[l.key]=l.tacto; }
   const prev=state.mangaSesiones[M.sesionId]||{};
-  const cfg={}; for(const k of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","torosIatf","toroIatfSel","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp","campos","cats","altaCat"])cfg[k]=M[k];
-  const logS=M.log.map(l=>({key:l.key,nombre:l.nombre,txt:l.txt,ids:l.ids,lote:l.lote,prev:l.prev,tacto:l.tacto||"",estRepSel:l.estRepSel||"",ceDestAnim:l.ceDestAnim||"",peso:l.peso||"",alta:l.alta||null,fecha:l.fecha||M.fecha}));
+  const cfg={}; for(const k of ["modo","movTipo","movSub","movCat","movCampo2","movOrigen","movCatNueva","tipos","productos","prodDosis","prodTipo","torosEntore","torosIatf","toroIatfSel","trDestino","trMov","ceDest","ceMotivo","ceNota","pesar","tiposDisp","prodsDisp","campos","cats","altaCat","movCampos2","catsOrig","movCatOrig"])cfg[k]=M[k];
+  const logS=M.log.map(l=>({key:l.key,nombre:l.nombre,txt:l.txt,ids:l.ids,lote:l.lote,prev:l.prev,tacto:l.tacto||"",estRepSel:l.estRepSel||"",ceDestAnim:l.ceDestAnim||"",peso:l.peso||"",alta:l.alta||null,fecha:l.fecha||M.fecha,...(l.campo2?{campo2:l.campo2}:{}),...(l.catOrig?{catOrig:l.catOrig}:{})}));
   if(prev.aprobado&&mangaRequiereAprobacion()&&JSON.stringify((prev.animales||[]).slice().sort())===JSON.stringify(M.grupo.slice().sort())&&(prev.log||[]).length===M.log.length)return; // ya aprobado y sin cambios reales: no pisar
   if(M.log.length===0&&!prev.id)return; // no guardar trabajos vacíos (solo configurados)
   const ss={id:M.sesionId,fecha:M.fecha,campo:M.campo||"",campos:M.campos||[],ciclo:M.ciclo||"",modo:M.modo,cfg,log:logS,pendiente:mangaRequiereAprobacion()&&M.log.length>0&&(!prev.aprobado||M.log.length!==(prev.log||[]).length),lote:mangaRequiereAprobacion()?calcularLote(M):(prev.lote||null),aprobado:prev.aprobado||false,aprobadoEn:prev.aprobadoEn||"",aprobadoIds:prev.aprobadoIds||[],rechazado:false,tipos:M.modo==="mov"?[(M.movTipo==="ingreso"?"Ingreso ":"Egreso ")+M.movSub,...M.tipos]:M.tipos,productos:M.productos.map(p=>M.prodDosis[p]?p+" "+M.prodDosis[p]:p),animales:M.grupo,tactos,loteIds:M.loteIds||[],usuario:(state.sesion&&state.sesion.nombre)||"",actualizado:new Date().toISOString()};
