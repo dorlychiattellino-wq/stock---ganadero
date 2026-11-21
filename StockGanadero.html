@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-l";
+window.APP_VERSION="2026.11.21-m";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -253,7 +253,8 @@ function saldoEstado(campo,cat,ciclo,estado,excluirId){
     if(o===estado&&o!==pd)total-=n; if(d===estado&&d!==po)total+=n; if(po===estado&&po!==d&&po!==pd&&!SALIDAS_ESTADO.includes(d))total-=n; if(pd===estado&&pd!==o&&pd!==po)total+=n; }
   return total;
 } // desde esta fecha, el traslado de rodeo también mueve Vacías (antes se cargaba el ajuste a mano) // salidas: se descuentan del sub-estado; del padre solo si se carga aparte (como siempre)
-const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios"];
+const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios","🧱 Corrales"];
+const CORR_TAB = 14; // se muestra al lado de Animales, pero va al final de la lista para no correr los números de las demás
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
 const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,vacias:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
@@ -526,6 +527,87 @@ async function aPapelera(col,rec){ if(!rec)return; const id=col+"_"+rec.id; cons
 async function delMov(id){ const m=state.mov[id]; const esp=m&&m.espejo&&state.mov[m.espejo]?state.mov[m.espejo]:null; if(confirm("Eliminar movimiento?"+(esp?(m.ccEspejo?" También se elimina el registro espejo del cambio de categoría ("+esp.tipo+" de "+esp.cat+").":" También se elimina el registro espejo del traslado en "+esp.campo+".") :"")+" (queda 60 días en la papelera de Parámetros)")){ await aPapelera("mov",m); await remove(ref(db,`mov/${id}`)); if(esp){ await aPapelera("mov",esp); await remove(ref(db,`mov/${esp.id}`)); } toast("Movimiento eliminado (recuperable en Parámetros → Papelera)"); } }
 async function delAct(id){ if(confirm("Eliminar actividad? (queda 60 días en la papelera de Parámetros)")){ await aPapelera("act",state.act[id]); await remove(ref(db,`act/${id}`)); for(const ev of Object.values(state.eventos||{})){ if(ev&&ev.origen==="actform"&&ev.sesion===id){ delete state.eventos[ev.id]; await remove(ref(db,"eventos/"+ev.id)); } } toast("Actividad eliminada (recuperable en Parámetros → Papelera)"); } }
 function renderPar(){ return renderParBase()+renderPapelera(); }
+// ══════════ CORRALES ══════════
+// Agrupa los animales con ficha de un campo en corrales (campo "corral" de la ficha). No toca stock, movimientos ni actividades.
+function corrSt(){ if(!state.corr)state.corr={campo:"",cats:[],corral:"*",pmin:"",pmax:"",orden:"asc",sel:{},n:"5"}; return state.corr; }
+function corrUltPesos(){ const m={}; for(const p of Object.values(state.pesadas||{})){ if(!p||!p.animal||!(p.peso>0))continue; const k=(p.fecha||"")+(p.hora||""); if(!m[p.animal]||k>m[p.animal].k)m[p.animal]={k,peso:+p.peso,fecha:p.fecha}; } return m; }
+function corrAnimales(campo){ return Object.values(state.animales||{}).filter(a=>a&&(a.estado||"activo")==="activo"&&a.campo===campo); }
+function corrResumen(lista,up){ const con=lista.filter(a=>up[a.key]); const kg=con.reduce((s,a)=>s+up[a.key].peso,0); const ps=con.map(a=>up[a.key].peso); return {n:lista.length,pes:con.length,kg,prom:con.length?kg/con.length:0,min:ps.length?Math.min(...ps):0,max:ps.length?Math.max(...ps):0}; }
+const corrNum=(v,d)=>(+v||0).toLocaleString("es-AR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});
+function corrFiltrados(){ const C=corrSt(); const up=corrUltPesos(); let l=corrAnimales(C.campo);
+  if(C.cats.length)l=l.filter(a=>C.cats.includes(a.cat)); if(C.corral==="")l=l.filter(a=>!(a.corral||"").trim()); else if(C.corral!=="*")l=l.filter(a=>(a.corral||"").trim()===C.corral);
+  const mn=parseFloat(C.pmin), mx=parseFloat(C.pmax); if(mn>0)l=l.filter(a=>up[a.key]&&up[a.key].peso>=mn); if(mx>0)l=l.filter(a=>up[a.key]&&up[a.key].peso<=mx);
+  const pv=a=>up[a.key]?up[a.key].peso:null; l.sort((a,b)=>{ const x=pv(a),y=pv(b); if(x===null&&y===null)return 0; if(x===null)return 1; if(y===null)return -1; return C.orden==="asc"?x-y:y-x; }); return {l,up}; }
+function renderCorrales(){
+  const C=corrSt(); const cs=campos(); if(!C.campo||!cs.includes(C.campo)){ const conF=cs.map(c=>[c,corrAnimales(c).length]).sort((a,b)=>b[1]-a[1]); C.campo=cs.includes("La Quinta")&&corrAnimales("La Quinta").length?"La Quinta":(conF[0]?conF[0][0]:""); }
+  const up=corrUltPesos(); const todos=corrAnimales(C.campo);
+  const cats=CATS.filter(c=>todos.some(a=>a.cat===c)); const corrales=[...new Set(todos.map(a=>(a.corral||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es",{numeric:true}));
+  const fila=(nombre,lista,extra)=>{ const r=corrResumen(lista,up); return `<tr><td>${nombre}</td><td><strong>${r.n}</strong></td><td>${r.pes}${r.pes<r.n?` <span class="km" style="color:#a04a00">(${r.n-r.pes} sin peso)</span>`:""}</td><td><strong>${corrNum(r.kg)} kg</strong></td><td>${r.pes?corrNum(r.prom,1)+" kg":"—"}</td><td>${r.pes?corrNum(r.min)+" / "+corrNum(r.max):"—"}</td>${extra||""}</tr>`; };
+  const fechas=todos.map(a=>up[a.key]&&up[a.key].fecha).filter(Boolean).sort(); const stockMov=cat=>{ let n=0; for(const m of Object.values(state.mov||{})){ if(m&&m.campo===C.campo&&m.cat===cat)n+=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); } return n; };
+  const comp=lista=>cats.map(c=>{ const n=lista.filter(a=>a.cat===c).length; return n?h(c)+" "+n:""; }).filter(Boolean).join(" · ");
+  const {l}=corrFiltrados(); const selKeys=l.filter(a=>C.sel[a.key]); const rs=corrResumen(selKeys,up);
+  return `
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem"><h2 style="margin:0">⚖️ Kilos en el campo</h2><label style="min-width:220px;display:flex;flex-direction:column;font-weight:700;font-size:.85rem">Campo<select onchange="setFCorr('campo',this.value)">${cs.map(c=>`<option ${c===C.campo?"selected":""}>${h(c)}</option>`).join("")}</select></label></div>
+    <p class="hint">Se calcula con la <strong>última pesada de cada animal con ficha</strong>${fechas.length?` (pesadas del ${fmtF(fechas[0])}${fechas[0]!==fechas[fechas.length-1]?" al "+fmtF(fechas[fechas.length-1]):""})`:""}. Los animales sin caravanear no entran. Esta pestaña no modifica el stock.</p>
+    <div class="tw"><table><thead><tr><th>Categoría</th><th>Con ficha</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>Stock (Movimientos)</th></tr></thead><tbody>
+    ${cats.map(c=>{ const st=stockMov(c); const n=todos.filter(a=>a.cat===c).length; return fila(`<strong>${h(c)}</strong>`,todos.filter(a=>a.cat===c),`<td>${st}${st!==n?` <span class="km" style="color:#a04a00">(${st>n?(st-n)+" sin ficha":(n-st)+" fichas de más"})</span>`:""}</td>`); }).join("")}
+    ${fila("<strong>TOTAL</strong>",todos,"<td></td>").replace("<tr>",'<tr style="background:#ede8dc;font-weight:700">')}
+    </tbody></table></div></div>
+  <div class="card"><h2>🧱 Corrales de ${h(C.campo)}</h2>
+    <p class="hint">Un corral es una agrupación de animales dentro del campo: no cambia campo, categoría ni stock. Para armar uno, elegí animales en la lista de abajo y movelos al corral (podés escribir un nombre nuevo).</p>
+    <div class="tw"><table><thead><tr><th>Corral</th><th>Animales</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>Composición</th><th></th></tr></thead><tbody>
+    ${corrales.map(n=>{ const li=todos.filter(a=>(a.corral||"").trim()===n); return fila(`<strong>${h(n)}</strong>`,li,`<td class="km">${comp(li)}</td><td class="ac" style="white-space:nowrap"><button class="bi" title="Ver los animales de este corral en la lista" onclick="setFCorr('corral','${h(n).replace(/'/g,"\\'")}')">🔎</button> <button class="bi" title="Cambiar el nombre del corral" onclick="corrRenombrar('${h(n).replace(/'/g,"\\'")}')">✏️</button> <button class="bi" title="Deshacer el corral (los animales quedan sin corral)" onclick="corrVaciar('${h(n).replace(/'/g,"\\'")}')">🗑️</button></td>`); }).join("")}
+    ${(()=>{ const li=todos.filter(a=>!(a.corral||"").trim()); return li.length||!corrales.length?fila(`<em>Sin corral</em>`,li,`<td class="km">${comp(li)}</td><td class="ac"><button class="bi" title="Ver en la lista" onclick="setFCorr('corral','')">🔎</button></td>`):""; })()}
+    </tbody></table></div></div>
+  <div class="card"><h2>🐮 Armar corrales</h2>
+    <div class="fg">
+      <label class="s2" style="grid-column:1/-1">Categorías <span class="km">(ninguna marcada = todas)</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem">${cats.map(c=>`<button type="button" class="${C.cats.includes(c)?"bp":"bs"}" style="padding:.3rem .8rem" onclick="corrTogCat('${c}')">${C.cats.includes(c)?"✔ ":""}${h(c)}</button>`).join("")}</div></label>
+      <label>Corral actual<select onchange="setFCorr('corral',this.value)"><option value="*" ${C.corral==="*"?"selected":""}>Todos</option><option value="" ${C.corral===""?"selected":""}>Sin corral</option>${corrales.map(n=>`<option ${C.corral===n?"selected":""}>${h(n)}</option>`).join("")}</select></label>
+      <label>Peso desde (kg)<input type="number" value="${h(C.pmin)}" onchange="setFCorr('pmin',this.value)" placeholder="ej: 350"/></label>
+      <label>Peso hasta (kg)<input type="number" value="${h(C.pmax)}" onchange="setFCorr('pmax',this.value)" placeholder="ej: 420"/></label>
+      <label>Orden<select onchange="setFCorr('orden',this.value)"><option value="asc" ${C.orden==="asc"?"selected":""}>Más livianos primero</option><option value="desc" ${C.orden==="desc"?"selected":""}>Más pesados primero</option></select></label>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.6rem 0;padding:.5rem .7rem;background:#f6efe2;border:1.5px solid #b08a4a;border-radius:8px">
+      <button class="bs" onclick="corrSelTodos(true)">☑ Marcar los ${l.length} de la lista</button>
+      <button class="bs" onclick="corrSelTodos(false)">☐ Desmarcar todos</button>
+      <span style="white-space:nowrap">Marcar los <input type="number" min="1" value="${h(C.n)}" onchange="setFCorr('n',this.value,true)" style="width:64px;display:inline-block"/> primeros de la lista <button class="bs" onclick="corrSelPrimeros()">☑</button></span>
+    </div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.6rem;padding:.5rem .7rem;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px">
+      <div id="corrSelInfo" style="flex:1;min-width:220px"><strong>${selKeys.length}</strong> marcados · <strong>${corrNum(rs.kg)} kg</strong>${rs.pes?" · promedio "+corrNum(rs.prom,1)+" kg":""}</div>
+      <label style="min-width:230px;display:flex;flex-direction:column;font-weight:700;font-size:.85rem">Mover los marcados al corral<input id="corrDest" list="corrLista" placeholder="Elegí o escribí un nombre nuevo" autocomplete="off"/><datalist id="corrLista">${corrales.map(n=>`<option value="${h(n)}"></option>`).join("")}</datalist></label>
+      <button class="bp" onclick="corrMover()">➡️ Mover</button>
+      <button class="bs" onclick="corrMover('')">Sacar del corral</button>
+    </div>
+    <div class="tw"><table><thead><tr><th></th><th>#</th><th>Caravana</th><th>Visual</th><th>Categoría</th><th>Sexo</th><th>Último peso</th><th>Corral</th></tr></thead><tbody>
+    ${l.map((a,i)=>`<tr><td><input type="checkbox" style="width:20px;height:20px" ${C.sel[a.key]?"checked":""} onchange="corrSel('${a.key}',this.checked)"/></td><td>${i+1}</td><td style="font-family:monospace"><strong>${h(eidCorto(a.caravana)||"—")}</strong></td><td>${h(a.visual||"—")}</td><td>${h(a.cat||"")}</td><td>${h(a.sexo||sexoDeCat(a.cat))}</td><td>${up[a.key]?`<strong>${corrNum(up[a.key].peso)} kg</strong> <span class="km">${fmtF(up[a.key].fecha)}</span>`:"—"}</td><td>${(a.corral||"").trim()?`<strong>${h(a.corral)}</strong>`:`<span class="km">sin corral</span>`}</td></tr>`).join("")||`<tr><td colspan="8" class="km" style="padding:1rem;text-align:center">No hay animales con ficha para ese filtro.</td></tr>`}
+    </tbody></table></div></div>`;
+}
+window.setFCorr=function(k,v,sinRender){ const C=corrSt(); if(k==="campo"&&v!==C.campo){ C.sel={}; C.cats=[]; C.corral="*"; } C[k]=v; if(!sinRender)render(); };
+window.corrTogCat=function(c){ const C=corrSt(); C.cats=C.cats.includes(c)?C.cats.filter(x=>x!==c):[...C.cats,c]; render(); };
+function corrSelInfo(){ const C=corrSt(); const {l,up}=corrFiltrados(); const sk=l.filter(a=>C.sel[a.key]); const r=corrResumen(sk,up); const el=document.getElementById("corrSelInfo"); if(el)el.innerHTML=`<strong>${sk.length}</strong> marcados · <strong>${corrNum(r.kg)} kg</strong>${r.pes?" · promedio "+corrNum(r.prom,1)+" kg":""}`; }
+window.corrSel=function(k,on){ const C=corrSt(); if(on)C.sel[k]=1; else delete C.sel[k]; corrSelInfo(); };
+window.corrSelTodos=function(on){ const C=corrSt(); if(!on){ C.sel={}; } else { for(const a of corrFiltrados().l)C.sel[a.key]=1; } render(); };
+window.corrSelPrimeros=function(){ const C=corrSt(); const n=parseInt(C.n)||0; if(n<1)return alert("Indicá cuántos."); C.sel={}; for(const a of corrFiltrados().l.slice(0,n))C.sel[a.key]=1; render(); };
+window.corrMover=async function(dest){
+  const C=corrSt(); if(dest===undefined){ const el=document.getElementById("corrDest"); dest=el?el.value.trim():""; if(!dest)return alert("Elegí o escribí el nombre del corral de destino."); }
+  const lista=corrFiltrados().l.filter(a=>C.sel[a.key]); if(!lista.length)return alert("Marcá al menos un animal de la lista.");
+  if(dest===""&&!confirm("¿Sacar del corral a los "+lista.length+" animales marcados?"))return;
+  for(const a of lista){ const n=sinUndef({...state.animales[a.key],corral:dest,modificado:hoyISO()}); state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  C.sel={}; toast(dest?"🧱 "+lista.length+" animales → corral "+dest:"🧱 "+lista.length+" animales quedaron sin corral"); render();
+};
+window.corrRenombrar=async function(viejo){
+  const C=corrSt(); const nuevo=(prompt("Nuevo nombre para el corral \""+viejo+"\":",viejo)||"").trim(); if(!nuevo||nuevo===viejo)return;
+  const li=corrAnimales(C.campo).filter(a=>(a.corral||"").trim()===viejo); const ya=corrAnimales(C.campo).filter(a=>(a.corral||"").trim()===nuevo).length;
+  if(ya&&!confirm("Ya existe el corral \""+nuevo+"\" con "+ya+" animales. ¿Unir los dos corrales?"))return;
+  for(const a of li){ const n=sinUndef({...state.animales[a.key],corral:nuevo,modificado:hoyISO()}); state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  if(C.corral===viejo)C.corral=nuevo; toast("✏️ Corral renombrado: "+nuevo); render();
+};
+window.corrVaciar=async function(nombre){
+  const C=corrSt(); const li=corrAnimales(C.campo).filter(a=>(a.corral||"").trim()===nombre); if(!confirm("¿Deshacer el corral \""+nombre+"\"? Sus "+li.length+" animales quedan sin corral (no se borra ningún animal)."))return;
+  for(const a of li){ const n=sinUndef({...state.animales[a.key],corral:"",modificado:hoyISO()}); state.animales[a.key]=n; await set(ref(db,"animales/"+a.key),n); }
+  if(C.corral===nombre)C.corral="*"; toast("Corral deshecho"); render();
+};
+
 window.restaurarPapelera=async function(id){ const it=state.papelera[id]; if(!it)return; if(state[it.col][it.rec.id]&&!confirm("Ya existe un registro con ese id. ¿Sobrescribir?"))return; await set(ref(db,it.col+"/"+it.rec.id),it.rec); delete state.papelera[id]; await remove(ref(db,"papelera/"+id)); toast("♻️ Registro recuperado en "+(it.col==="mov"?"Movimientos":"Actividades")); render(); };
 window.vaciarPapelera=async function(){ if(!confirm("¿Vaciar la papelera? Esto sí es definitivo."))return; for(const id of Object.keys(state.papelera)){ await remove(ref(db,"papelera/"+id)); } state.papelera={}; render(); };
 function renderPapelera(){
@@ -625,7 +707,7 @@ function buildApp(){
   return `
     ${buildHeader()}
     ${buildSyncBar()}
-    <nav id="nav">${TABS.map((t,i)=>{
+    <nav id="nav">${[0,1,CORR_TAB,2,3,4,5,6,7,8,9,10,11,12,13].map(i=>{ const t=TABS[i];
       if(i===13&&!esAdmin())return "";
       if(esOperario()&&!OP_TABS.includes(i))return "";
       return `<button class="${state.tab===i?"active":""}" data-tab="${i}">${h(t)}</button>`;
@@ -648,6 +730,7 @@ function buildApp(){
       ${state.tab===11 ? renderSenasa() : ""}
       ${state.tab===12 ? renderPar() : ""}
       ${state.tab===13 ? renderUsuarios() : ""}
+      ${state.tab===CORR_TAB ? renderCorrales() : ""}
     </main>`;
 }
 
