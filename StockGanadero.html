@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.21-m";
+window.APP_VERSION="2026.11.22-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -256,7 +256,7 @@ function saldoEstado(campo,cat,ciclo,estado,excluirId){
 const TABS = ["🐂 Manga","🐮 Animales","📋 Movimientos","🐄 Actividades","📊 Stock","💰 Comercializable","🐄 Stock Reprod.","📈 Productivo","🔀 Comparativo","🧬 IATF","💰 Presupuestos","📄 SENASA","⚙️ Parametros","👥 Usuarios","🧱 Corrales"];
 const CORR_TAB = 14; // se muestra al lado de Animales, pero va al final de la lista para no correr los números de las demás
 const MANGA_TAB = 0; const ANIM_TAB = 1; const MOV_TAB = 2; const ACT_TAB = 3;
-const OP_TABS = [MANGA_TAB,4,6,7,8,10]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
+const OP_TABS = [MANGA_TAB,4,6,7,8,10,14]; // Manga, Stock, Stock Reprod., Productivo, Comparativo, Presupuestos (solo lectura) // pestañas visibles para operarios: Stock, Comercializable, Stock Reprod., Productivo, IATF
 const DP   = {prenez:85,nacimiento:80,destete:90,kgAnimal:180,cut:10,descarte:10,seg:15,vacias:15,aborto:3,muerteParto:3,muertePost:3,iatfVerde:70,iatfAmarillo:50};
 
 // ── STATE ──
@@ -530,42 +530,66 @@ function renderPar(){ return renderParBase()+renderPapelera(); }
 // ══════════ CORRALES ══════════
 // Agrupa los animales con ficha de un campo en corrales (campo "corral" de la ficha). No toca stock, movimientos ni actividades.
 function corrSt(){ if(!state.corr)state.corr={campo:"",cats:[],corral:"*",pmin:"",pmax:"",orden:"asc",sel:{},n:"5"}; return state.corr; }
-function corrUltPesos(){ const m={}; for(const p of Object.values(state.pesadas||{})){ if(!p||!p.animal||!(p.peso>0))continue; const k=(p.fecha||"")+(p.hora||""); if(!m[p.animal]||k>m[p.animal].k)m[p.animal]={k,peso:+p.peso,fecha:p.fecha}; } return m; }
+// última pesada de cada animal + la anterior de OTRA fecha → ADPV del último tramo
+function corrUltPesos(){ const por={}; for(const p of Object.values(state.pesadas||{})){ if(!p||!p.animal||!(p.peso>0))continue; (por[p.animal]=por[p.animal]||[]).push(p); }
+  const m={}; for(const k of Object.keys(por)){ const ps=por[k].sort((a,b)=>((a.fecha||"")+(a.hora||"")).localeCompare((b.fecha||"")+(b.hora||""))); const u=ps[ps.length-1]; const r={peso:+u.peso,fecha:u.fecha,n:ps.length,prev:null,adpv:null,dias:null};
+    for(let x=ps.length-2;x>=0;x--){ const d=diasEntre(ps[x].fecha,u.fecha); if(d>0){ r.prev={peso:+ps[x].peso,fecha:ps[x].fecha}; r.dias=d; r.adpv=(r.peso-r.prev.peso)/d; break; } } m[k]=r; } return m; }
 function corrAnimales(campo){ return Object.values(state.animales||{}).filter(a=>a&&(a.estado||"activo")==="activo"&&a.campo===campo); }
-function corrResumen(lista,up){ const con=lista.filter(a=>up[a.key]); const kg=con.reduce((s,a)=>s+up[a.key].peso,0); const ps=con.map(a=>up[a.key].peso); return {n:lista.length,pes:con.length,kg,prom:con.length?kg/con.length:0,min:ps.length?Math.min(...ps):0,max:ps.length?Math.max(...ps):0}; }
+function corrResumen(lista,up){ const con=lista.filter(a=>up[a.key]); const kg=con.reduce((s,a)=>s+up[a.key].peso,0); const ps=con.map(a=>up[a.key].peso); const ad=con.filter(a=>up[a.key].adpv!==null).map(a=>up[a.key].adpv); return {n:lista.length,pes:con.length,kg,prom:con.length?kg/con.length:0,min:ps.length?Math.min(...ps):0,max:ps.length?Math.max(...ps):0,adN:ad.length,adProm:ad.length?ad.reduce((s,v)=>s+v,0)/ad.length:null}; }
 const corrNum=(v,d)=>(+v||0).toLocaleString("es-AR",{minimumFractionDigits:d||0,maximumFractionDigits:d||0});
+const corrAdpv=v=>v===null||v===undefined?"—":`<span style="color:${v<0?"#b00020":"#2d4a1e"};font-weight:700">${v>=0?"+":""}${corrNum(v,3)}</span>`;
 function corrFiltrados(){ const C=corrSt(); const up=corrUltPesos(); let l=corrAnimales(C.campo);
   if(C.cats.length)l=l.filter(a=>C.cats.includes(a.cat)); if(C.corral==="")l=l.filter(a=>!(a.corral||"").trim()); else if(C.corral!=="*")l=l.filter(a=>(a.corral||"").trim()===C.corral);
   const mn=parseFloat(C.pmin), mx=parseFloat(C.pmax); if(mn>0)l=l.filter(a=>up[a.key]&&up[a.key].peso>=mn); if(mx>0)l=l.filter(a=>up[a.key]&&up[a.key].peso<=mx);
-  const pv=a=>up[a.key]?up[a.key].peso:null; l.sort((a,b)=>{ const x=pv(a),y=pv(b); if(x===null&&y===null)return 0; if(x===null)return 1; if(y===null)return -1; return C.orden==="asc"?x-y:y-x; }); return {l,up}; }
+  const porAd=C.orden.startsWith("adpv"); const pv=a=>up[a.key]?(porAd?up[a.key].adpv:up[a.key].peso):null; const asc=C.orden==="asc"||C.orden==="adpv_asc";
+  l.sort((a,b)=>{ const x=pv(a),y=pv(b); if(x===null&&y===null)return 0; if(x===null)return 1; if(y===null)return -1; return asc?x-y:y-x; }); return {l,up}; }
+function corrCats(todos){ return CATS.filter(c=>todos.some(a=>a.cat===c)); }
+function corrNombres(todos){ return [...new Set(todos.map(a=>(a.corral||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es",{numeric:true})); }
+function corrFila(nombre,lista,up,extra){ const r=corrResumen(lista,up); return `<tr><td>${nombre}</td><td><strong>${r.n}</strong></td><td>${r.pes}${r.pes<r.n?` <span class="km" style="color:#a04a00">(${r.n-r.pes} sin peso)</span>`:""}</td><td><strong>${corrNum(r.kg)} kg</strong></td><td>${r.pes?corrNum(r.prom,1)+" kg":"—"}</td><td>${r.pes?corrNum(r.min)+" / "+corrNum(r.max):"—"}</td><td>${corrAdpv(r.adProm)}${r.adN?` <span class="km">kg/día (${r.adN} an.)</span>`:""}</td>${extra||""}</tr>`; }
+function corrTablaKilos(campo,up){ const todos=corrAnimales(campo); const cats=corrCats(todos);
+  const stockMov=cat=>{ let n=0; for(const m of Object.values(state.mov||{})){ if(m&&m.campo===campo&&m.cat===cat)n+=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); } return n; };
+  return `<div class="tw"><table><thead><tr><th>Categoría</th><th>Con ficha</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>ADPV prom.</th><th>Stock (Movimientos)</th></tr></thead><tbody>
+    ${cats.map(c=>{ const st=stockMov(c); const n=todos.filter(a=>a.cat===c).length; return corrFila(`<strong>${h(c)}</strong>`,todos.filter(a=>a.cat===c),up,`<td>${st}${st!==n?` <span class="km" style="color:#a04a00">(${st>n?(st-n)+" sin ficha":(n-st)+" ficha(s) de más"})</span>`:""}</td>`); }).join("")}
+    ${corrFila("<strong>TOTAL</strong>",todos,up,"<td></td>").replace("<tr>",'<tr style="background:#ede8dc;font-weight:700">')}
+    </tbody></table></div>`; }
+function corrTablaCorrales(campo,up,acciones){ const todos=corrAnimales(campo); const cats=corrCats(todos); const corrales=corrNombres(todos); const q=n=>h(n).replace(/'/g,"\\'");
+  const comp=lista=>cats.map(c=>{ const n=lista.filter(a=>a.cat===c).length; return n?h(c)+" "+n:""; }).filter(Boolean).join(" · "); const sin=todos.filter(a=>!(a.corral||"").trim());
+  return `<div class="tw"><table><thead><tr><th>Corral</th><th>Animales</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>ADPV prom.</th><th>Composición</th>${acciones?"<th></th>":""}</tr></thead><tbody>
+    ${corrales.map(n=>{ const li=todos.filter(a=>(a.corral||"").trim()===n); return corrFila(`<strong>${h(n)}</strong>`,li,up,`<td class="km">${comp(li)}</td>${acciones?`<td class="ac" style="white-space:nowrap"><button class="bi" title="Ver los animales de este corral en la lista" onclick="setFCorr('corral','${q(n)}')">🔎</button> <button class="bi" title="Cambiar el nombre del corral" onclick="corrRenombrar('${q(n)}')">✏️</button> <button class="bi" title="Deshacer el corral (los animales quedan sin corral)" onclick="corrVaciar('${q(n)}')">🗑️</button></td>`:""}`); }).join("")}
+    ${sin.length||!corrales.length?corrFila(`<em>Sin corral</em>`,sin,up,`<td class="km">${comp(sin)}</td>${acciones?`<td class="ac"><button class="bi" title="Ver en la lista" onclick="setFCorr('corral','')">🔎</button></td>`:""}`):""}
+    </tbody></table></div>`; }
+function corrFilaAnimal(a,i,up,check){ const u=up[a.key]; return `<tr>${check!==undefined?`<td><input type="checkbox" style="width:20px;height:20px" ${check?"checked":""} onchange="corrSel('${a.key}',this.checked)"/></td>`:""}<td>${i+1}</td><td style="font-family:monospace"><strong>${h(eidCorto(a.caravana)||"—")}</strong></td><td>${h(a.visual||"—")}</td><td>${h(a.cat||"")}</td><td>${h(a.sexo||sexoDeCat(a.cat))}</td><td style="white-space:nowrap">${u?`<strong>${corrNum(u.peso)} kg</strong> <span class="km">${fmtF(u.fecha)}</span>`:"—"}</td><td style="white-space:nowrap">${u&&u.prev?`${corrNum(u.prev.peso)} kg <span class="km">${fmtF(u.prev.fecha)}</span>`:"—"}</td><td style="white-space:nowrap">${u&&u.adpv!==null?`${corrAdpv(u.adpv)} <span class="km">${(u.peso-u.prev.peso>=0?"+":"")+corrNum(u.peso-u.prev.peso)} kg en ${u.dias} d</span>`:"—"}</td><td>${(a.corral||"").trim()?`<strong>${h(a.corral)}</strong>`:`<span class="km">sin corral</span>`}</td></tr>`; }
+const CORR_TH_ANIMAL=`<th>#</th><th>Caravana</th><th>Visual</th><th>Categoría</th><th>Sexo</th><th>Último peso</th><th>Peso anterior</th><th>ADPV (kg/día)</th><th>Corral</th>`;
+const CORR_NOTA_ADPV=`<strong>ADPV</strong> = kilos ganados por día entre las dos últimas pesadas de cada animal (de fechas distintas). Con una sola pesada no hay ADPV.`;
+// Vista de operario: solo lectura, sin filtros ni botones
+function renderCorralesLectura(){
+  const up=corrUltPesos(); let cs=campos().filter(c=>corrAnimales(c).some(a=>(a.corral||"").trim())); if(!cs.length)return `<div class="card"><h2>🧱 Corrales</h2><p class="hint">Todavía no hay corrales armados.</p></div>`;
+  return cs.map(campo=>{ const todos=corrAnimales(campo); const grupos=[...corrNombres(todos).map(n=>[n,todos.filter(a=>(a.corral||"").trim()===n)]),["Sin corral",todos.filter(a=>!(a.corral||"").trim())]].filter(g=>g[1].length);
+    return `<div class="card"><h2>🧱 Corrales de ${h(campo)}</h2><p class="hint">Solo lectura. Kilos según la última pesada de cada animal con ficha. ${CORR_NOTA_ADPV}</p>
+      ${corrTablaCorrales(campo,up,false)}<h3 style="margin:1rem 0 .4rem">Por categoría</h3>${corrTablaKilos(campo,up)}
+      ${grupos.map(([n,li])=>{ li=[...li].sort((a,b)=>(up[b.key]?up[b.key].peso:-1)-(up[a.key]?up[a.key].peso:-1)); return `<h3 style="margin:1rem 0 .4rem">${h(n)} (${li.length})</h3><div class="tw"><table><thead><tr>${CORR_TH_ANIMAL}</tr></thead><tbody>${li.map((a,i)=>corrFilaAnimal(a,i,up)).join("")}</tbody></table></div>`; }).join("")}
+    </div>`; }).join("");
+}
 function renderCorrales(){
+  if(!esAdmin())return renderCorralesLectura();
   const C=corrSt(); const cs=campos(); if(!C.campo||!cs.includes(C.campo)){ const conF=cs.map(c=>[c,corrAnimales(c).length]).sort((a,b)=>b[1]-a[1]); C.campo=cs.includes("La Quinta")&&corrAnimales("La Quinta").length?"La Quinta":(conF[0]?conF[0][0]:""); }
-  const up=corrUltPesos(); const todos=corrAnimales(C.campo);
-  const cats=CATS.filter(c=>todos.some(a=>a.cat===c)); const corrales=[...new Set(todos.map(a=>(a.corral||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es",{numeric:true}));
-  const fila=(nombre,lista,extra)=>{ const r=corrResumen(lista,up); return `<tr><td>${nombre}</td><td><strong>${r.n}</strong></td><td>${r.pes}${r.pes<r.n?` <span class="km" style="color:#a04a00">(${r.n-r.pes} sin peso)</span>`:""}</td><td><strong>${corrNum(r.kg)} kg</strong></td><td>${r.pes?corrNum(r.prom,1)+" kg":"—"}</td><td>${r.pes?corrNum(r.min)+" / "+corrNum(r.max):"—"}</td>${extra||""}</tr>`; };
-  const fechas=todos.map(a=>up[a.key]&&up[a.key].fecha).filter(Boolean).sort(); const stockMov=cat=>{ let n=0; for(const m of Object.values(state.mov||{})){ if(m&&m.campo===C.campo&&m.cat===cat)n+=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); } return n; };
-  const comp=lista=>cats.map(c=>{ const n=lista.filter(a=>a.cat===c).length; return n?h(c)+" "+n:""; }).filter(Boolean).join(" · ");
+  const up=corrUltPesos(); const todos=corrAnimales(C.campo); const cats=corrCats(todos); const corrales=corrNombres(todos);
+  const fechas=todos.map(a=>up[a.key]&&up[a.key].fecha).filter(Boolean).sort();
   const {l}=corrFiltrados(); const selKeys=l.filter(a=>C.sel[a.key]); const rs=corrResumen(selKeys,up);
   return `
   <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem"><h2 style="margin:0">⚖️ Kilos en el campo</h2><label style="min-width:220px;display:flex;flex-direction:column;font-weight:700;font-size:.85rem">Campo<select onchange="setFCorr('campo',this.value)">${cs.map(c=>`<option ${c===C.campo?"selected":""}>${h(c)}</option>`).join("")}</select></label></div>
-    <p class="hint">Se calcula con la <strong>última pesada de cada animal con ficha</strong>${fechas.length?` (pesadas del ${fmtF(fechas[0])}${fechas[0]!==fechas[fechas.length-1]?" al "+fmtF(fechas[fechas.length-1]):""})`:""}. Los animales sin caravanear no entran. Esta pestaña no modifica el stock.</p>
-    <div class="tw"><table><thead><tr><th>Categoría</th><th>Con ficha</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>Stock (Movimientos)</th></tr></thead><tbody>
-    ${cats.map(c=>{ const st=stockMov(c); const n=todos.filter(a=>a.cat===c).length; return fila(`<strong>${h(c)}</strong>`,todos.filter(a=>a.cat===c),`<td>${st}${st!==n?` <span class="km" style="color:#a04a00">(${st>n?(st-n)+" sin ficha":(n-st)+" fichas de más"})</span>`:""}</td>`); }).join("")}
-    ${fila("<strong>TOTAL</strong>",todos,"<td></td>").replace("<tr>",'<tr style="background:#ede8dc;font-weight:700">')}
-    </tbody></table></div></div>
+    <p class="hint">Se calcula con la <strong>última pesada de cada animal con ficha</strong>${fechas.length?` (pesadas del ${fmtF(fechas[0])}${fechas[0]!==fechas[fechas.length-1]?" al "+fmtF(fechas[fechas.length-1]):""})`:""}. Los animales sin caravanear no entran. ${CORR_NOTA_ADPV} Esta pestaña no modifica el stock.</p>
+    ${corrTablaKilos(C.campo,up)}</div>
   <div class="card"><h2>🧱 Corrales de ${h(C.campo)}</h2>
-    <p class="hint">Un corral es una agrupación de animales dentro del campo: no cambia campo, categoría ni stock. Para armar uno, elegí animales en la lista de abajo y movelos al corral (podés escribir un nombre nuevo).</p>
-    <div class="tw"><table><thead><tr><th>Corral</th><th>Animales</th><th>Pesados</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th><th>Composición</th><th></th></tr></thead><tbody>
-    ${corrales.map(n=>{ const li=todos.filter(a=>(a.corral||"").trim()===n); return fila(`<strong>${h(n)}</strong>`,li,`<td class="km">${comp(li)}</td><td class="ac" style="white-space:nowrap"><button class="bi" title="Ver los animales de este corral en la lista" onclick="setFCorr('corral','${h(n).replace(/'/g,"\\'")}')">🔎</button> <button class="bi" title="Cambiar el nombre del corral" onclick="corrRenombrar('${h(n).replace(/'/g,"\\'")}')">✏️</button> <button class="bi" title="Deshacer el corral (los animales quedan sin corral)" onclick="corrVaciar('${h(n).replace(/'/g,"\\'")}')">🗑️</button></td>`); }).join("")}
-    ${(()=>{ const li=todos.filter(a=>!(a.corral||"").trim()); return li.length||!corrales.length?fila(`<em>Sin corral</em>`,li,`<td class="km">${comp(li)}</td><td class="ac"><button class="bi" title="Ver en la lista" onclick="setFCorr('corral','')">🔎</button></td>`):""; })()}
-    </tbody></table></div></div>
+    <p class="hint">Un corral es una agrupación de animales dentro del campo: no cambia campo, categoría ni stock. Para armar uno, elegí animales en la lista de abajo y movelos al corral (podés escribir un nombre nuevo). Los operarios ven esta pestaña en solo lectura.</p>
+    ${corrTablaCorrales(C.campo,up,true)}</div>
   <div class="card"><h2>🐮 Armar corrales</h2>
     <div class="fg">
       <label class="s2" style="grid-column:1/-1">Categorías <span class="km">(ninguna marcada = todas)</span><div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem">${cats.map(c=>`<button type="button" class="${C.cats.includes(c)?"bp":"bs"}" style="padding:.3rem .8rem" onclick="corrTogCat('${c}')">${C.cats.includes(c)?"✔ ":""}${h(c)}</button>`).join("")}</div></label>
       <label>Corral actual<select onchange="setFCorr('corral',this.value)"><option value="*" ${C.corral==="*"?"selected":""}>Todos</option><option value="" ${C.corral===""?"selected":""}>Sin corral</option>${corrales.map(n=>`<option ${C.corral===n?"selected":""}>${h(n)}</option>`).join("")}</select></label>
       <label>Peso desde (kg)<input type="number" value="${h(C.pmin)}" onchange="setFCorr('pmin',this.value)" placeholder="ej: 350"/></label>
       <label>Peso hasta (kg)<input type="number" value="${h(C.pmax)}" onchange="setFCorr('pmax',this.value)" placeholder="ej: 420"/></label>
-      <label>Orden<select onchange="setFCorr('orden',this.value)"><option value="asc" ${C.orden==="asc"?"selected":""}>Más livianos primero</option><option value="desc" ${C.orden==="desc"?"selected":""}>Más pesados primero</option></select></label>
+      <label>Orden<select onchange="setFCorr('orden',this.value)">${[["asc","Más livianos primero"],["desc","Más pesados primero"],["adpv_desc","Mayor ADPV primero"],["adpv_asc","Menor ADPV primero"]].map(o=>`<option value="${o[0]}" ${C.orden===o[0]?"selected":""}>${o[1]}</option>`).join("")}</select></label>
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.6rem 0;padding:.5rem .7rem;background:#f6efe2;border:1.5px solid #b08a4a;border-radius:8px">
       <button class="bs" onclick="corrSelTodos(true)">☑ Marcar los ${l.length} de la lista</button>
@@ -578,8 +602,8 @@ function renderCorrales(){
       <button class="bp" onclick="corrMover()">➡️ Mover</button>
       <button class="bs" onclick="corrMover('')">Sacar del corral</button>
     </div>
-    <div class="tw"><table><thead><tr><th></th><th>#</th><th>Caravana</th><th>Visual</th><th>Categoría</th><th>Sexo</th><th>Último peso</th><th>Corral</th></tr></thead><tbody>
-    ${l.map((a,i)=>`<tr><td><input type="checkbox" style="width:20px;height:20px" ${C.sel[a.key]?"checked":""} onchange="corrSel('${a.key}',this.checked)"/></td><td>${i+1}</td><td style="font-family:monospace"><strong>${h(eidCorto(a.caravana)||"—")}</strong></td><td>${h(a.visual||"—")}</td><td>${h(a.cat||"")}</td><td>${h(a.sexo||sexoDeCat(a.cat))}</td><td>${up[a.key]?`<strong>${corrNum(up[a.key].peso)} kg</strong> <span class="km">${fmtF(up[a.key].fecha)}</span>`:"—"}</td><td>${(a.corral||"").trim()?`<strong>${h(a.corral)}</strong>`:`<span class="km">sin corral</span>`}</td></tr>`).join("")||`<tr><td colspan="8" class="km" style="padding:1rem;text-align:center">No hay animales con ficha para ese filtro.</td></tr>`}
+    <div class="tw"><table><thead><tr><th></th>${CORR_TH_ANIMAL}</tr></thead><tbody>
+    ${l.map((a,i)=>corrFilaAnimal(a,i,up,!!C.sel[a.key])).join("")||`<tr><td colspan="10" class="km" style="padding:1rem;text-align:center">No hay animales con ficha para ese filtro.</td></tr>`}
     </tbody></table></div></div>`;
 }
 window.setFCorr=function(k,v,sinRender){ const C=corrSt(); if(k==="campo"&&v!==C.campo){ C.sel={}; C.cats=[]; C.corral="*"; } C[k]=v; if(!sinRender)render(); };
@@ -990,7 +1014,7 @@ ${renderGuiaAct()}
         };
         const lista=actividadesAll();
         if(sel&&!lista.includes(sel))lista.push(sel); // si edito un registro con actividad desactivada, la muestro igual
-        return `<option value="">-- Seleccionar --</option>`+lista.map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(t)}</option>`).join("");
+        return `<option value="">-- Seleccionar --</option>`+lista.map(t=>`<option value="${h(t)}" style="${colores[t]||""}" ${t===sel?"selected":""}>${h(nomAct(t))}</option>`).join("");
       })()}
     </select>
       <button type="button" onclick="abrirModalActs()" style="background:#3d6428;color:#f0e6c8;border:none;border-radius:6px;padding:.42rem .65rem;cursor:pointer;font-size:.75rem;font-weight:600;white-space:nowrap;flex-shrink:0">➕ Admin.</button>
@@ -2310,6 +2334,7 @@ async function restaurarBackup(file){
       if(data.mangaCatalogo) await set(ref(db,"mangaCatalogo"),data.mangaCatalogo);
       if(data.origenes) await set(ref(db,"origenes"),data.origenes);
       if(data.presupuestos) await set(ref(db,"presupuestos"),data.presupuestos);
+      if(data.guiaAct) await set(ref(db,"guiaAct"),data.guiaAct);
       toast("✅ Backup restaurado correctamente");
     }catch(err){
       alert("❌ Error al leer el archivo: "+err.message+"\n\nAsegurate de seleccionar un archivo .json generado con el botón Backup.");
@@ -2318,7 +2343,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,presupuestos:state.presu,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,presupuestos:state.presu,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios,guiaAct:state.guiaAct||null};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+hoyISO()+".json";a.click();
@@ -3371,6 +3396,7 @@ function fmtF(iso){ if(!iso)return "—"; const [y,m,d]=String(iso).split("-"); 
 function diasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function hoyISO(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); } // fecha LOCAL (no UTC)
 function sinUndef(o){ const r={}; for(const k of Object.keys(o)){ if(o[k]!==undefined)r[k]=o[k]; } return r; }
+function nomAct(t){ return t==="Pesaje"?"Pesaje (DESTETE)":t; } // solo cómo se muestra; en los datos sigue siendo "Pesaje"
 function claveFB(k){ return String(k).replace(/[.#$\/\[\]]/g,"_"); } // Firebase no admite . # $ / [ ] en las claves
 function limpioProfundo(o){ try{ const j=JSON.parse(JSON.stringify(o,(k,v)=>v===undefined?null:(typeof v==="number"&&!isFinite(v)?null:v))); const fix=x=>{ if(Array.isArray(x))return x.map(fix); if(x&&typeof x==="object"){ const r={}; for(const k of Object.keys(x))r[claveFB(k)]=fix(x[k]); return r; } return x; }; return fix(j); }catch(e){ return o; } }
 
@@ -4194,9 +4220,9 @@ function renderChips(M,fn,esSesion){
   return `<div>
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
       <strong>¿Qué se le hace a cada animal?</strong>
-      ${esSesion?`<div style="display:flex;gap:.4rem;align-items:center"><select id="mg_selT" onchange="${fn}('addTipo',this.value);this.value=''" style="width:auto;padding:.5rem"><option value="">＋ Agregar actividad a la lista de hoy…</option>${restoT.map(t=>`<option>${h(t)}</option>`).join("")}<option value="__nueva">✏️ Escribir una nueva…</option></select></div>`:""}
+      ${esSesion?`<div style="display:flex;gap:.4rem;align-items:center"><select id="mg_selT" onchange="${fn}('addTipo',this.value);this.value=''" style="width:auto;padding:.5rem"><option value="">＋ Agregar actividad a la lista de hoy…</option>${restoT.map(t=>`<option value="${h(t)}">${h(nomAct(t))}</option>`).join("")}<option value="__nueva">✏️ Escribir una nueva…</option></select></div>`:""}
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0;min-height:2.2rem">${tiposDisp.length?tiposDisp.map(t=>chipX(t,acts.tipos.includes(t),`${fn}('tipo','${h(t)}')`,esSesion?`${fn}('quitarTipo','${h(t)}')`:"", "#2d4a1e")).join(""):`<span class="km">Elegí en el desplegable las actividades que se van a hacer hoy. Después las prendés o apagás con un toque.</span>`}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0;min-height:2.2rem">${tiposDisp.length?tiposDisp.map(t=>chipX(nomAct(t),acts.tipos.includes(t),`${fn}('tipo','${h(t)}')`,esSesion?`${fn}('quitarTipo','${h(t)}')`:"", "#2d4a1e")).join(""):`<span class="km">Elegí en el desplegable las actividades que se van a hacer hoy. Después las prendés o apagás con un toque.</span>`}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
       <strong>Productos / medicamentos</strong> <span class="km">(opcional; cada uno con su dosis)</span>
       ${esSesion?`<select id="mg_selP" onchange="${fn}('addProd',this.value);this.value=''" style="width:auto;padding:.5rem"><option value="">＋ Agregar producto a la lista de hoy…</option>${Object.entries(grupos).map(([c,ps])=>`<optgroup label="${h(c)}">${ps.map(p=>`<option value="${h(p.nombre)}">${h(p.nombre)}${p.dosis?" · "+h(p.dosis):""}</option>`).join("")}</optgroup>`).join("")}<option value="__nuevo">✏️ Escribir uno nuevo…</option></select>`:""}
@@ -4245,7 +4271,7 @@ function renderSesionesManga(){
   ${ss.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Campo</th><th>Animales</th><th>Trabajo</th><th>Tactos</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>
   ${ss.map(x=>{const nt=x.tactos?Object.keys(x.tactos).length:0; const nl=x.lote?Object.keys(x.lote).length:0; const cambios=x.aprobado&&x.pendiente&&x.actualizado>x.aprobadoEn; const est=x.rechazado?`<span style="color:#c82010">✖ Rechazado</span>`:x.aprobado?(cambios?`<span style="color:#a06a1f">⚠️ Aprobado, con cambios nuevos</span>`:`<span style="color:#2d4a1e">✅ Aprobado</span>`):x.pendiente?`<span style="color:#c82010;font-weight:700">⏳ Pendiente (${nl} reg.)</span>`:`<span class="km">directo</span>`;
     return `<tr style="${x.pendiente&&!x.aprobado?"background:#fff4f0":""}"><td>${fmtF(x.fecha)}</td><td>${h(x.campo||"")}</td><td><strong>${(x.animales||[]).length}</strong></td><td class="km">${h((x.tipos||[]).join(", "))}${(x.animales||[]).length?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#7a4010">ver caravanas</summary><div style="font-family:monospace;font-size:.75rem;max-height:120px;overflow:auto">${(x.animales||[]).map(k=>{const an=state.animales[k];return h(an?(an.visual||eidCorto(an.caravana)||k):k);}).join(" · ")}</div></details>`:""}${Array.isArray(x.log)&&x.log.length?`<div style="margin-top:.2rem"><a href="javascript:void(0)" onclick="sesionDet('${x.id}')" style="font-size:.78rem;color:#2d4a1e;font-weight:700;text-decoration:none">${state.sesDet===x.id?"▼ ocultar":"▶ ver"} detalle por animal (${new Set(x.log.map(l=>l&&l.key)).size})</a></div>`:""}${x.lote?`<details style="margin-top:.2rem"><summary style="cursor:pointer;font-size:.78rem;color:#1e4a7a">ver ${nl} registro(s)</summary>${Object.values(x.lote).map(({col,rec})=>`<div style="font-size:.78rem">${col==="mov"?"📋":"🩺"} ${h(rec.tipo||"")} ${h(rec.sub||"")} · ${h(rec.campo||"")} · ${h(rec.cat||"")} · <strong>${rec.cant||0}</strong>${rec.ceDestino?" → "+h(rec.ceDestino):""}${rec.trDestino?" → "+h(rec.trDestino):""}</div>`).join("")}</details>`:""}</td><td>${nt||"—"}</td><td class="km">${h(x.usuario||"")}</td><td>${est}</td>
-    <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="¿Quién faltó pasar en este trabajo? (compara contra los animales activos que elijas)" onclick="sesionFaltantes('${x.id}')" style="${state.faltSes===x.id?"background:#2d4a1e;color:#fff":""}">🔍</button> <button class="bi" title="Agregar una caravana a este trabajo (animal que no pasó por la manga): se le aplica el mismo movimiento/actividad con la fecha que indiques" onclick="sesionAgregarCaravana('${x.id}')">➕</button> <button class="bi" title="Quitar una caravana de este trabajo (revierte sus registros y descuenta del lote)" onclick="sesionQuitarCaravana('${x.id}')">➖</button> <button class="bi" title="Corregir la CATEGORÍA de uno o varios animales de este trabajo (ej: quedó como Novillitos y era Novillos): cambia la ficha y pasa sus registros del día a la categoría correcta, sin tocar pesos ni sanidad" onclick="sesionCambiarCat('${x.id}')">🔁</button> <button class="bi" title="Cargar estas caravanas en el formulario de Movimientos (para hacerles otro movimiento por lote)" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Aplicarles otra actividad a todo el grupo (Actividad masiva)" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Quitar este trabajo de la lista (no borra fichas, pesadas ni registros ya aprobados)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>${state.sesDet===x.id?`<tr><td colspan="8" style="background:#fffdf6;padding:.5rem">${sesionDetalleHtml(x)}</td></tr>`:""}`;}).join("")}
+    <td style="white-space:nowrap">${x.lote&&(x.pendiente||cambios)&&!x.rechazado?`<button class="bp" style="padding:.3rem .6rem;font-size:.8rem" onclick="aprobarSesionManga('${x.id}')">✅ Aprobar</button> <button class="bs" style="padding:.3rem .6rem;font-size:.8rem;color:#c82010" onclick="rechazarSesionManga('${x.id}')">✖</button> `:""}<button class="bi" title="¿Quién faltó pasar en este trabajo? (compara contra los animales activos que elijas)" onclick="sesionFaltantes('${x.id}')" style="${state.faltSes===x.id?"background:#2d4a1e;color:#fff":""}">🔍</button> <button class="bi" title="Agregar una caravana a este trabajo (animal que no pasó por la manga): se le aplica el mismo movimiento/actividad con la fecha que indiques" onclick="sesionAgregarCaravana('${x.id}')">➕</button> <button class="bi" title="Quitar una caravana de este trabajo (revierte sus registros y descuenta del lote)" onclick="sesionQuitarCaravana('${x.id}')">➖</button> <button class="bi" title="Corregir la CATEGORÍA de uno o varios animales de este trabajo (ej: quedó como Novillitos y era Novillos): cambia la ficha y pasa sus registros del día a la categoría correcta, sin tocar pesos ni sanidad" onclick="sesionCambiarCat('${x.id}')">🔁</button> ${Array.isArray(x.log)&&x.log.some(l=>(l.lote||[]).some(c=>c&&c.col==="act"&&c.base&&c.base.tipo==="Pesaje"))?`<button class="bi" title="Este trabajo se cargó con Pesaje de DESTETE. Tocá para pasarlo a Pesaje de control: los pesos quedan igual, pero dejan de contar como destete en las fichas y en el Productivo" onclick="sesionPesajeAControl('${x.id}')" style="background:#ffe9c2;border-color:#e08a20">⚖️</button> `:""}<button class="bi" title="Cargar estas caravanas en el formulario de Movimientos (para hacerles otro movimiento por lote)" onclick="usarSesionEnMov('${x.id}')">📋</button> <button class="bi" title="Aplicarles otra actividad a todo el grupo (Actividad masiva)" onclick="abrirMasiva()">🩺</button> <button class="bi" title="Quitar este trabajo de la lista (no borra fichas, pesadas ni registros ya aprobados)" onclick="eliminarSesionManga('${x.id}')">🗑️</button></td></tr>${state.sesDet===x.id?`<tr><td colspan="8" style="background:#fffdf6;padding:.5rem">${sesionDetalleHtml(x)}</td></tr>`:""}`;}).join("")}
   </tbody></table></div>`:""}
   ${state.faltSes&&state.mangaSesiones[state.faltSes]?`<div id="faltSesPanel" style="margin-top:.6rem"><div class="km" style="margin-bottom:.3rem">Faltantes del trabajo del <strong>${fmtF(state.mangaSesiones[state.faltSes].fecha)}</strong> en ${h(state.mangaSesiones[state.faltSes].campo||"")} (${(state.mangaSesiones[state.faltSes].animales||[]).length} pasaron):</div>${renderFaltantes(state.faltSesCtx)}</div>`:""}
   </div>`;
@@ -4532,8 +4558,8 @@ function mangaHora(){ return new Date().toTimeString().slice(0,8); }
 function torosLista(){ return Object.values(state.toros).filter(t=>t&&t.activo!==false).sort((a,b)=>a.nombre.localeCompare(b.nombre)); }
 function resumenSesion(M){
   const base=`${fmtF(M.fecha)} · <strong>${h((M.campos||[]).length>1?M.campos.join(" / ")+" (ahora: "+(M.campo||"?")+")":(M.campo||"sin campo"))}</strong> · ${h(M.ciclo)}${M.pesar?" · ⚖️ pesa":""}`;
-  if(M.modo==="mov"){ const o=M.movOrigen||{}; const extra=M.tipos.length?` · + ${h(M.tipos.join(" + "))}${M.productos.length?" ("+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis}))+")":""}`:""; return base+` · <strong>MOVIMIENTO: ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · ${h(M.movSub||"?")}</strong>`+(M.movTipo==="ingreso"&&M.movCat?" como "+h(M.movCat):"")+(M.movSub==="Cambio Categoria"&&M.movCatNueva?" → "+h(M.movCatNueva):"")+(M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(mangaTrEntrada(M)&&mangaOrigenes(M).length>1?mangaOrigenes(M).join(" / ")+" (ahora: "+M.movCampo2+")":M.movCampo2):"")+(o.nombre?" · origen "+h(o.nombre):"")+extra; }
-  if(M.modo==="act"){ return base+` · <strong>ACTIVIDAD: ${h(M.tipos.join(" + ")||"(elegí)")}</strong>`+(M.productos.length?" · "+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis})):"")+(M.tipos.includes("Traslado de rodeo")&&M.trDestino?" · a "+h(M.trDestino):"")+(M.tipos.includes("Cambio de estado")&&M.ceDest?" · → "+h(M.ceDest):""); }
+  if(M.modo==="mov"){ const o=M.movOrigen||{}; const extra=M.tipos.length?` · + ${h(M.tipos.map(nomAct).join(" + "))}${M.productos.length?" ("+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis}))+")":""}`:""; return base+` · <strong>MOVIMIENTO: ${M.movTipo==="ingreso"?"Ingreso":"Egreso"} · ${h(M.movSub||"?")}</strong>`+(M.movTipo==="ingreso"&&M.movCat?" como "+h(M.movCat):"")+(M.movSub==="Cambio Categoria"&&M.movCatNueva?" → "+h(M.movCatNueva):"")+(M.movCampo2?(M.movTipo==="ingreso"?" desde ":" hacia ")+h(mangaTrEntrada(M)&&mangaOrigenes(M).length>1?mangaOrigenes(M).join(" / ")+" (ahora: "+M.movCampo2+")":M.movCampo2):"")+(o.nombre?" · origen "+h(o.nombre):"")+extra; }
+  if(M.modo==="act"){ return base+` · <strong>ACTIVIDAD: ${h(M.tipos.map(nomAct).join(" + ")||"(elegí)")}</strong>`+(M.productos.length?" · "+h(prodTexto({productos:M.productos,prodDosis:M.prodDosis})):"")+(M.tipos.includes("Traslado de rodeo")&&M.trDestino?" · a "+h(M.trDestino):"")+(M.tipos.includes("Cambio de estado")&&M.ceDest?" · → "+h(M.ceDest):""); }
   return base+" · <span style='color:#c82010'>elegí Movimiento o Actividad</span>";
 }
 function renderMangaTab(){ if(!_pcNormalizado&&state.loaded&&esAdmin()){ _pcNormalizado=true; normalizarPesajeControl(); } const M=MG(); M.on=true; if(!M.sesionId)M.sesionId=uid(); return renderManga(); }
@@ -5181,6 +5207,30 @@ window.sesionCambiarCat=async function(id,refsTxt,catNueva){
   M2.fecha=ss.fecha;
   if(hechos.length)await persistirSesionEditada(ss,M2);
   render(); alert((hechos.length?"✅ Corregidos ("+hechos.length+"):\n"+hechos.join("\n"):"No se corrigió ninguno.")+(saltados.length?"\n\n⚠️ Sin cambios:\n"+saltados.join("\n"):""));
+};
+// Pasa el pesaje de DESTETE de un trabajo guardado a "Pesaje de control": no cambia ningún peso; saca la marca de destete de fichas, pesadas, actividades y del Productivo
+window.sesionPesajeAControl=async function(id){
+  const ss=state.mangaSesiones[id]; if(!ss||!Array.isArray(ss.log))return alert("Este trabajo no guarda el detalle; no se puede convertir desde acá.");
+  const filasP=ss.log.filter(l=>(l.lote||[]).some(c=>c&&c.col==="act"&&c.base&&c.base.tipo==="Pesaje")); if(!filasP.length)return alert("Este trabajo no tiene pesaje de destete.");
+  if(!confirm("Pasar el pesaje de este trabajo ("+fmtF(ss.fecha)+" · "+(ss.campo||"")+") de DESTETE a PESAJE DE CONTROL.\n\n• Los pesos NO cambian y siguen sirviendo para el ADPV y los corrales.\n• En las fichas deja de figurar como \"peso de destete\".\n• En Actividades pasa de \"Pesaje\" a \"Pesaje de control\" y sale del Productivo.\n\nAnimales: "+new Set(filasP.map(l=>l.key)).size+". ¿Continuar?"))return;
+  await asegurarActividad(PC_NOMBRE);
+  const M2=sesionComoM(ss); let nF=0,nP=0; const mapa={};
+  for(const l of M2.log){
+    let era=false;
+    for(const c of (l.lote||[])){ if(c&&c.col==="act"&&c.base&&c.base.tipo==="Pesaje"){ era=true; const sid=String(c.id); const nid=sid.endsWith("_Pesaje")?claveFB(sid.slice(0,-6)+PC_NOMBRE):claveFB(sid+"_control"); mapa[sid]=nid; c.id=nid; c.base={...c.base,tipo:PC_NOMBRE}; } }
+    if(!era)continue;
+    if(l.txt)l.txt=l.txt.replace(" kg (destete)"," kg (control)");
+    for(const pid of (l.ids&&l.ids.pesadas)||[]){ const pz=state.pesadas[pid]; if(pz&&pz.tipo==="destete"){ const n={...pz,tipo:"control"}; state.pesadas[pid]=n; await set(ref(db,"pesadas/"+pid),n); nP++; } }
+    for(const eid of (l.ids&&l.ids.eventos)||[]){ const e=state.eventos[eid]; if(e&&e.tipo==="Pesaje"){ const n={...e,tipo:PC_NOMBRE}; state.eventos[eid]=n; await set(ref(db,"eventos/"+eid),n); } }
+    const a=state.animales[l.key]; if(a&&a.pesoDestete&&a.fechaDestete===(l.fecha||ss.fecha)){ const n=sinUndef({...a,modificado:hoyISO()}); delete n.pesoDestete; delete n.fechaDestete; state.animales[l.key]=n; await set(ref(db,"animales/"+l.key),n); nF++; }
+  }
+  const cambiar=arr=>[...new Set((arr||[]).map(t=>t==="Pesaje"?PC_NOMBRE:t))];
+  const ss2={...ss,tipos:cambiar(ss.tipos),cfg:ss.cfg?{...ss.cfg,tipos:cambiar(ss.cfg.tipos),tiposDisp:cambiar(ss.cfg.tiposDisp)}:ss.cfg};
+  // Solo se tocan los registros de Pesaje de este trabajo: el resto (otras actividades, traslados) queda como está, con lo que se le haya editado a mano
+  const esPend=ss.pendiente&&!ss.aprobado; const lote=calcularLote(M2); const reId=arr=>arr?[...new Set(arr.map(x=>mapa[x]||x))]:arr;
+  if(!esPend){ for(const [viejo,nuevo] of Object.entries(mapa)){ const r=state.act[viejo]; if(!r)continue; const n=sinUndef({...r,id:nuevo,tipo:PC_NOMBRE}); state.act[nuevo]=n; await set(ref(db,"act/"+nuevo),n); delete state.act[viejo]; await remove(ref(db,"act/"+viejo)); } }
+  const nS=limpioProfundo({...ss2,lote,loteIds:Object.keys(lote),aprobadoIds:esPend?ss.aprobadoIds:reId(ss.aprobadoIds||ss.loteIds||[]),log:M2.log,actualizado:new Date().toISOString(),editadoPor:(state.sesion&&state.sesion.nombre)||""}); state.mangaSesiones[ss.id]=nS; await set(ref(db,"mangaSesiones/"+ss.id),nS);
+  render(); alert("✅ Listo: el pesaje quedó como Pesaje de control.\n\n• "+nP+" pesadas pasaron de destete a control (mismo peso).\n• "+nF+" fichas dejaron de tener peso de destete.\n• Actividades y Productivo actualizados"+(ss.pendiente&&!ss.aprobado?" (el trabajo sigue pendiente de aprobar)":"")+".");
 };
 window.sesionQuitarCaravana=async function(id){
   const ss=state.mangaSesiones[id]; if(!ss)return; if(!ss.log)return alert("Este trabajo es anterior a la versión que guarda el detalle; no se puede editar.");
