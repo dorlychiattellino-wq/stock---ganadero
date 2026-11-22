@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.22-b";
+window.APP_VERSION="2026.11.22-d";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -176,6 +176,11 @@ function set(r,val){
   if(typeof r==="string")r=ref(db,r); // Firebase rechaza "undefined" anidados: se limpian antes de guardar
   const op={id:opId(),t:"set",path:pathOf(r),val:val===undefined?null:val};
   encolar(op);
+  // Trabajo de manga SIN conexión: se guarda completo en cada animal y va creciendo. Si cada versión se le pasa a Firebase, al volver la señal
+  // las sube todas, una por una (con 89 animales tardó ~45 min). Sin señal queda solo en la cola del dispositivo, donde la versión nueva
+  // reemplaza a la anterior, y al conectar se sube una sola vez (la última). Con señal, todo sigue igual que antes.
+  let sinSenal=false; try{ sinSenal=op.path.startsWith("mangaSesiones/")&&!!state&&state.loaded&&state.online===false; }catch(e){ sinSenal=false; }
+  if(sinSenal){ try{ cacheSet("mangaSesiones",state.mangaSesiones); }catch(e){} return Promise.resolve(); }
   try{ _set(r,op.val).then(()=>sacarDeCola(op.id)).catch(e=>{ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); }); }
   catch(e){ sacarDeCola(op.id); console.error("set",op.path,e); if(typeof toast==="function")toast("⚠️ No se pudo guardar "+op.path.split("/")[0]+": "+(e&&e.message||e)); }
   actualizarBarraPendientes();
@@ -4576,7 +4581,7 @@ function renderManga(){
       ${!M.cfg?`<button style="${M.faltOpen?BTN_V:BTN_G};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaFalt()">🔍 ¿Quién falta?</button>`:""}
       ${!M.cfg&&M.pesar?`<button style="${BAL.estado==="ok"?BTN_V:BTN_G};flex:0 0 auto;padding:.6rem 1rem;${BAL.estado==="ok"?"background:#1e4a7a;border-color:#1e4a7a":""}" onclick="balanzaBoton()">⚖️ ${BAL.estado==="ok"?"Balanza: "+(BAL.nombre||"conectada"):BAL.estado==="conectando"?"Conectando…":"Conectar balanza"}</button>`:""}
       ${M.cfg?`<button style="${listo?BTN_V:BTN_G};flex:0 0 auto;padding:.7rem 1.1rem" onclick="mangaCfg(false)">✔ LISTO, A LA MANGA</button>`:`<button style="${BTN_G};flex:0 0 auto;padding:.6rem 1rem" onclick="mangaCfg(true)">⚙️ Cambiar el trabajo</button>`}
-      <button class="bs" onclick="mangaNuevaSesion()" title="Cerrar este trabajo y empezar otro">🆕 Nuevo trabajo</button>
+      <button class="bs" onclick="mangaCopia()" title="Descarga a este dispositivo un archivo con todos los trabajos de manga de hoy (queda en Descargas, fuera de la app)">💾 Guardar copia</button> <button class="bs" onclick="mangaNuevaSesion()" title="Cerrar este trabajo y empezar otro">🆕 Nuevo trabajo</button>
     </div>
   </div>
   <div style="margin:.3rem 0 .6rem;font-size:.95rem;color:#5a4020">${resumenSesion(M)}${(typeof navigator!=="undefined"&&navigator.onLine===false)||leerCola().length>0?` <span style="background:#fff8ee;color:#a06a1f;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">📡 ${navigator.onLine===false?"sin señal · ":""}${leerCola().length} cambio(s) guardados en la tablet, se suben solos cuando haya internet</span>`:""}${mangaRequiereAprobacion()?` <span style="background:#fdf0ee;color:#c82010;border-radius:6px;padding:.1rem .5rem;font-size:.8rem">⏳ este trabajo lo revisa y aprueba un administrador antes de pasar al stock</span>`:""}</div>
@@ -4830,6 +4835,8 @@ function renderEstadoDisp(M){
   </div>`;
 }
 function statsPesaje(M){ const ps=M.log.map(l=>parseFloat(l.peso)).filter(v=>v>0); const n=ps.length; const tot=ps.reduce((a,b)=>a+b,0); return {n,tot,prom:n?tot/n:0,min:n?Math.min(...ps):0,max:n?Math.max(...ps):0}; }
+function statsPesajeCat(M){ const g={}; for(const l of M.log){ const v=parseFloat(l.peso); if(!(v>0))continue; const an=state.animales[l.key]; const c=(an&&an.cat)||"(sin categoría)"; (g[c]=g[c]||[]).push(v); } return Object.keys(g).sort((a,b)=>{ const ia=CATS.indexOf(a), ib=CATS.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); }).map(c=>{ const ps=g[c]; const tot=ps.reduce((a,b)=>a+b,0); return {cat:c,n:ps.length,tot,prom:tot/ps.length,min:Math.min(...ps),max:Math.max(...ps)}; }); }
+window.mangaTogStatsCat=function(){ const M=MG(); M.statsCat=!M.statsCat; render(); };
 function renderPanelBalanza(M){
   const st=statsPesaje(M); const on=BAL.estado==="ok";
   const caja=(t,v,u)=>`<div style="flex:1;min-width:90px;text-align:center;background:#fff;border-radius:10px;padding:.4rem .3rem;border:1.5px solid #e0c090"><div style="font-size:.7rem;color:#8a6030;text-transform:uppercase;letter-spacing:.3px">${t}</div><div style="font-size:1.5rem;font-weight:800;color:#2d4a1e;font-family:monospace">${v}</div>${u?`<div style="font-size:.7rem;color:#8a6030">${u}</div>`:""}</div>`;
@@ -4843,7 +4850,10 @@ function renderPanelBalanza(M){
       <div style="flex:2 1 300px;display:flex;gap:.5rem;flex-wrap:wrap">
         ${caja("Animales",st.n,"pesados hoy")}${caja("Promedio",st.n?st.prom.toFixed(1):"—","kg")}${caja("Total",st.n?Math.round(st.tot).toLocaleString("es-AR"):"—","kg")}${caja("Mín / Máx",st.n?st.min+" / "+st.max:"—","kg")}
       </div>
-    </div></div>`;
+    </div>
+    ${st.n?`<div style="margin-top:.45rem"><button onclick="mangaTogStatsCat()" style="background:#fff;border:1.5px solid #e0a050;border-radius:8px;padding:.3rem .8rem;font-weight:700;color:#5a4020;cursor:pointer;font-size:.85rem">📊 Por categoría ${M.statsCat?"▲":"▼"}</button>
+      ${M.statsCat?`<div style="margin-top:.4rem;overflow-x:auto"><table style="width:100%;font-size:.95rem;background:#fff;border-radius:8px"><thead><tr><th>Categoría</th><th>Animales</th><th>Kg totales</th><th>Promedio</th><th>Mín / Máx</th></tr></thead><tbody>${statsPesajeCat(M).map(g=>`<tr><td><strong>${h(g.cat)}</strong></td><td>${g.n}</td><td><strong>${Math.round(g.tot).toLocaleString("es-AR")} kg</strong></td><td>${g.prom.toFixed(1)} kg</td><td>${g.min} / ${g.max}</td></tr>`).join("")}</tbody></table></div>`:""}</div>`:""}
+    </div>`;
 }
 function renderGuiaAct(){
   const items=state.guiaAct||GUIA_ACT_DEF; const ed=state.guiaEdit;
@@ -4880,7 +4890,32 @@ window.setFAnimMgOrigen=function(nombre){ const M=MG(); const o=origenesLista().
 window.mangaCfg=function(v){ const M=MG(); M.campos=M.campos||[]; M.cats=M.cats||[]; if(mangaTrEntrada(M)){ M.movCampos2=[...new Set([...(M.movCampos2||[]),M.movCampo2])].filter(c=>c&&c!==M.campo); if(!M.movCampos2.includes(M.movCampo2))M.movCampo2=M.movCampos2[0]||""; if(M.movCatOrig&&!(M.catsOrig||[]).includes(M.movCatOrig))M.movCatOrig=""; } if(M.campo&&!M.campos.includes(M.campo))M.campos.push(M.campo); if(!M.campo&&M.campos.length)M.campo=M.campos[0]; if(M.cats.length&&!M.cats.includes(mangaCatActual(M)))mangaSetCatActual(M,M.cats[0]); if(v===false){ if(!M.campo)return alert("Elegí el campo donde estamos."); if(!M.modo)return alert("Elegí si vas a hacer un Movimiento o una Actividad."); if(M.modo==="mov"){ if(!M.movSub)return alert("Elegí el tipo de movimiento."); if(M.movTipo==="ingreso"&&!M.movCat)return alert("Elegí la categoría con la que ingresan."); if(M.movSub==="Cambio Categoria"&&!M.movCatNueva)return alert("Elegí a qué categoría pasan."); if(["Traslado entrada","Traslado salida"].includes(M.movSub)&&!M.movCampo2)return alert("Elegí el otro campo del traslado."); } if(M.modo==="act"){ if(!M.tipos.length)return alert("Elegí al menos una actividad."); if(M.tipos.includes("Traslado de rodeo")&&!M.trDestino)return alert("Elegí el campo destino del traslado de rodeo."); } if(M.tipos.includes("Cambio de estado")&&!M.ceDest)return alert("Elegí a qué estado pasan."); if(M.tipos.includes("IATF")&&!(M.torosIatf||[]).length)return alert("Marcá el semen (toros) que se va a usar hoy."); if(M.tipos.includes("IATF")&&!M.toroIatfSel)M.toroIatfSel=M.torosIatf[0]; if(M.modo==="mov"&&M.tipos.includes("Traslado de rodeo"))return alert("El traslado de rodeo se hace como Actividad (o usá el movimiento Traslado)."); }
   if(v===false){ const repro=M.tipos.filter(t=>ACT_REPRO.includes(t)); const nac=M.modo==="mov"&&M.movSub==="Nacimiento"; if(repro.length||nac){ if(!/^\d{4}\/\d{4}$/.test(M.ciclo||""))return alert("El ciclo productivo tiene que tener el formato 2027/2028."); if(!confirm("⚠️ CONFIRMÁ EL CICLO PRODUCTIVO\n\n"+(nac?"Nacimientos":repro.join(" + "))+" → van al Productivo del ciclo "+M.ciclo+".\n\n¿Es correcto? (Cancelar para corregirlo antes de empezar)"))return; } }
   M.cfg=!!v; render(); if(!M.cfg)enfocar("bl_eid"); guardarSesionManga(); };
-window.mangaNuevaSesion=function(){ const M=MG(); M.ult=null; if(M.grupo.length&&!confirm("¿Cerrar el trabajo de hoy ("+M.grupo.length+" animales) y empezar otro? Lo registrado queda guardado."))return; const keep={fecha:M.fecha,campo:M.campo,campos:[...(M.campos||[])],cats:[...(M.cats||[])],altaCat:M.altaCat,ciclo:M.ciclo,raza:M.raza,padre:M.padre}; state.manga={...mgDefaults(),...keep}; render(); };
+// Copia de seguridad de los trabajos de manga del día en un archivo aparte (carpeta Descargas del dispositivo). No modifica ningún dato.
+function mangaCopiaDatos(){
+  const M=MG(); const hoy=hoyISO(); const pend=new Set(leerCola().filter(o=>o.path&&o.path.startsWith("mangaSesiones/")).map(o=>o.path.split("/")[1]));
+  const ses=Object.values(state.mangaSesiones||{}).filter(x=>x&&Array.isArray(x.log)&&x.log.length&&(x.fecha===hoy||x.id===M.sesionId||pend.has(x.id)||String(x.actualizado||"").slice(0,10)===hoy)).sort((a,b)=>String(a.actualizado||"").localeCompare(String(b.actualizado||"")));
+  const filas=[["Trabajo","Fecha","Campo","Qué se hizo","Estado","#","Caravana","Visual","Categoría","Campo del animal","Peso (kg)","Ficha","Qué se registró"]]; const claves=new Set();
+  ses.forEach((x,si)=>{ const orden=[], por={}; for(const l of x.log){ if(!l||!l.key)continue; claves.add(l.key); if(!por[l.key]){ por[l.key]={alta:false,peso:"",txt:[],nombre:l.nombre}; orden.push(l.key); } const g=por[l.key]; if(l.alta)g.alta=true; else { if(l.peso)g.peso=l.peso; g.txt.push(l.txt||""); } }
+    orden.forEach((k,i)=>{ const g=por[k], an=state.animales[k]; filas.push([si+1,x.fecha||"",x.campo||"",(x.tipos||[]).join(" + "),x.aprobado?"Aprobado":x.rechazado?"Rechazado":x.pendiente?"Pendiente de aprobar":"Directo (admin)",i+1,an?(an.caravana||""):(/^\d{12,}$/.test(k)?k:""),an?(an.visual||""):(k.startsWith("V_")?k.slice(2):""),an?an.cat||"":"",an?an.campo||"":"",g.peso?parseFloat(g.peso):"",g.alta?"alta ese día":"ya tenía ficha",g.txt.join(" | ")]); }); });
+  const tec={tipo:"copia_manga",version:window.APP_VERSION,generado:new Date().toISOString(),usuario:(state.sesion&&state.sesion.nombre)||"",sesiones:ses,animales:{},pesadas:{},eventos:{},pendientesDeSubir:leerCola().length};
+  for(const k of claves){ if(state.animales[k])tec.animales[k]=state.animales[k]; } for(const pz of Object.values(state.pesadas||{})){ if(pz&&claves.has(pz.animal))tec.pesadas[pz.id]=pz; } for(const e of Object.values(state.eventos||{})){ if(e&&claves.has(e.animal))tec.eventos[e.id]=e; }
+  return {ses,filas,tec,animales:claves.size};
+}
+window.mangaCopia=function(silencioso){
+  try{
+    const d=mangaCopiaDatos(); if(!d.ses.length){ if(!silencioso)alert("Todavía no hay nada registrado hoy para copiar."); return false; }
+    const ahora=new Date(); const p2=n=>String(n).padStart(2,"0"); const nombre="Manga_copia_"+hoyISO()+"_"+p2(ahora.getHours())+p2(ahora.getMinutes());
+    if(typeof XLSX!=="undefined"&&XLSX.utils&&XLSX.writeFile){
+      const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(d.filas); ws["!cols"]=[6,11,14,34,18,5,18,12,13,14,10,14,70].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws,"Animales");
+      const js=JSON.stringify(d.tec); const partes=[["No modificar esta hoja: es el respaldo completo para recuperar el trabajo en la app."],["partes",Math.ceil(js.length/30000)]]; for(let i=0;i<js.length;i+=30000)partes.push([js.slice(i,i+30000)]);
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(partes),"Respaldo"); XLSX.writeFile(wb,nombre+".xlsx");
+    } else { // sin la librería de Excel: archivo de texto con el respaldo completo
+      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(d.tec)],{type:"application/json"})); a.download=nombre+".json"; a.click();
+    }
+    toast("💾 Copia guardada en Descargas: "+d.ses.length+" trabajo(s), "+d.animales+" animales"); return true;
+  }catch(e){ console.error("mangaCopia",e); if(!silencioso)alert("No se pudo generar la copia: "+(e&&e.message||e)+"\n\nLo registrado sigue guardado en la app."); return false; }
+};
+window.mangaNuevaSesion=function(){ const M=MG(); M.ult=null; if(M.grupo.length&&!confirm("¿Cerrar el trabajo de hoy ("+M.grupo.length+" animales) y empezar otro? Lo registrado queda guardado.\n\nAl cerrar se descarga sola una copia de seguridad a este dispositivo."))return; if(M.grupo.length)mangaCopia(true); const keep={fecha:M.fecha,campo:M.campo,campos:[...(M.campos||[])],cats:[...(M.cats||[])],altaCat:M.altaCat,ciclo:M.ciclo,raza:M.raza,padre:M.padre}; state.manga={...mgDefaults(),...keep}; render(); };
 window.mangaEscribir=function(){ const el=document.getElementById("bl_eid"); if(!el)return; el.setAttribute("inputmode","numeric"); el.value=""; el.focus(); el.click(); };
 window.mangaAuto=function(){ const M=MG(); M.auto=!M.auto; if(M.auto&&(M.pesar||M.tipos.includes("Tacto")))toast("⚡ Automático: se frena en cada animal para cargar peso/tacto, pero el resto se registra solo"); render(); enfocar("bl_eid"); };
 window.mangaPanel=function(p){ const M=MG(); M.panel=M.panel===p?"":p; render(); };
