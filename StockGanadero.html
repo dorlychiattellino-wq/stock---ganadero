@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.22-d";
+window.APP_VERSION="2026.11.23-b";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -722,7 +722,7 @@ function buildLogin(){
 function aplicarModoLectura(){
   if(!esOperario())return;
   if(state.tab===MANGA_TAB)return; // en la manga el operario trabaja con todo habilitado
-  const permitido=/^\s*(setF|toggleF|limpiarF|cerrarPopupRec|togFPresuVar|togPresuCer|if\(this\.value\)\{togFPresuVar)/;
+  const permitido=/^\s*(alertaTog|setF|toggleF|limpiarF|cerrarPopupRec|togFPresuVar|togPresuCer|if\(this\.value\)\{togFPresuVar)/;
   const main=document.querySelector("main"); if(!main)return;
   main.querySelectorAll("[onclick]").forEach(el=>{
     if(!permitido.test(el.getAttribute("onclick")||""))el.style.display="none";
@@ -827,7 +827,7 @@ function renderMov(){
         <option value="info" ${state.editAlerta.color==="info"?"selected":""}>🔵 Informativo</option>
       </select></label>
       <label class="s2">Título<input id="al_titulo" value="${h(state.editAlerta.titulo||"")}" placeholder="Ej: Stock real vs ejecutivo no coincide"/></label>
-      <label class="s2">Mensaje / Detalle<input id="al_mensaje" value="${h(state.editAlerta.mensaje||"")}" placeholder="Detalle de la alerta..."/></label>
+      ${alertaDetallesForm("m")}
     </div>
     <div class="br">
       <button class="bp" onclick="guardarAlerta()">💾 Guardar alerta</button>
@@ -841,11 +841,9 @@ function renderMov(){
                   info:{bg:"#dbeafe",border:"#3b82f6",text:"#1e40af",icon:"🔵"}};
     const c=colors[al.color]||colors.atencion;
     return `
-    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.7rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
+    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.55rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;color:${c.text};font-size:.92rem">${c.icon} ${h(al.titulo||"(sin título)")}</div>
-        ${al.mensaje?`<div style="color:${c.text};font-size:.82rem;margin-top:.2rem">${h(al.mensaje)}</div>`:""}
-        ${al.fecha?`<div style="color:#888;font-size:.72rem;margin-top:.25rem">📅 ${al.fecha.split('-').reverse().join('/')}</div>`:""}
+        ${alertaCuerpo(al,c)}
       </div>
       <div style="display:flex;gap:.3rem;flex-shrink:0">
         <button class="bi" onclick="editarAlerta('${al.id}')">✏️</button>
@@ -962,7 +960,7 @@ function renderAct(){
         <option value="info" ${state.editAlertaAct.color==="info"?"selected":""}>🔵 Informativo</option>
       </select></label>
       <label class="s2">Título<input id="ala_titulo" value="${h(state.editAlertaAct.titulo||"")}" placeholder="Ej: Revisar preñez El Rincón"/></label>
-      <label class="s2">Mensaje / Detalle<input id="ala_mensaje" value="${h(state.editAlertaAct.mensaje||"")}" placeholder="Detalle del aviso..."/></label>
+      ${alertaDetallesForm("a")}
     </div>
     <div class="br">
       <button class="bp" onclick="guardarAlertaAct()">💾 Guardar alerta</button>
@@ -976,11 +974,9 @@ function renderAct(){
                   info:{bg:"#dbeafe",border:"#3b82f6",text:"#1e40af",icon:"🔵"}};
     const c=colors[al.color]||colors.atencion;
     return `
-    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.7rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
+    <div style="background:${c.bg};border-left:5px solid ${c.border};border-radius:6px;padding:.55rem .9rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;flex-wrap:wrap">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;color:${c.text};font-size:.92rem">${c.icon} ${h(al.titulo||"(sin título)")}</div>
-        ${al.mensaje?`<div style="color:${c.text};font-size:.82rem;margin-top:.2rem">${h(al.mensaje)}</div>`:""}
-        ${al.fecha?`<div style="color:#888;font-size:.72rem;margin-top:.25rem">📅 ${al.fecha.split('-').reverse().join('/')}</div>`:""}
+        ${alertaCuerpo(al,c)}
       </div>
       <div style="display:flex;gap:.3rem;flex-shrink:0">
         <button class="bi" onclick="editarAlertaAct('${al.id}')">✏️</button>
@@ -1130,6 +1126,23 @@ function pendMovDeltas(){ // registros de movimiento de trabajos de manga pendie
   return {map:out,n};
 }
 function proj(v,delta,pct){ if(!delta)return ""; const nv=v+delta; return `<span style="color:#888;font-size:.75em;font-weight:400" title="Si se aprueban los trabajos de manga pendientes"> (${pct?nv.toFixed(1)+"%":nv})</span>`; }
+// Stock abierto por ciclo (solo lectura, sale de los mismos movimientos que el resto del Stock). Vacas y Toros no se abren por ciclo.
+function stockPorCicloHtml(fil,f){
+  const EXC=["Vacas","Toros"]; const map={};
+  for(const m of fil){ if(!m||EXC.includes(m.cat))continue; const ci=String(m.ciclo||"").trim()||"(sin ciclo)"; const n=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); const a=(map[m.cat]=map[m.cat]||{}); const b=(a[m.campo]=a[m.campo]||{}); b[ci]=(b[ci]||0)+n; }
+  const cats=[...CATS.filter(c=>map[c]),...Object.keys(map).filter(c=>!CATS.includes(c))].filter(c=>Object.values(map[c]).some(x=>Object.values(x).some(v=>v!==0)));
+  const ab=state.stockCicloAb!==false;
+  const cel=v=>v===0||v===undefined?`<td style="color:#bbb;text-align:center">—</td>`:`<td style="text-align:center;font-weight:700;color:${v<0?"#b00020":"#2d4a1e"}">${v}</td>`;
+  return `<div class="card" style="border-top:4px solid #6a8ab0">
+  <h2 style="cursor:pointer;user-select:none;margin:0" onclick="setFStockCiclo()">${ab?"▼":"▶"} 📅 Stock por ciclo${f.hasta?" al "+f.hasta.split('-').reverse().join('/'):""}</h2>
+  ${!ab?"":`<p class="hint">Cuántos animales de cada categoría hay en cada campo, separados por el ciclo con el que se cargaron los movimientos. Vacas y Toros no se abren por ciclo. Es solo una vista: no cambia el stock ni el Productivo.</p>
+  ${cats.length?cats.map(cat=>{ const cm=map[cat]; const ciclos=[...new Set(Object.values(cm).flatMap(x=>Object.keys(x).filter(k=>x[k]!==0)))].sort((a,b)=>a==="(sin ciclo)"?1:b==="(sin ciclo)"?-1:a.localeCompare(b)); const cps=ordenarCampos(Object.keys(cm).filter(c=>ciclos.some(k=>cm[c][k])),c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0)); const tot=k=>cps.reduce((s,c)=>s+(cm[c][k]||0),0); const totC=c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0); const neg=cps.some(c=>ciclos.some(k=>(cm[c][k]||0)<0));
+    return `<h3 style="margin:.9rem 0 .3rem;color:#2d4a1e">${h(cat)} <span class="km" style="font-weight:400">— total ${cps.reduce((s,c)=>s+totC(c),0)}</span></h3><div class="tw"><table><thead><tr><th>Campo</th>${ciclos.map(k=>`<th style="text-align:center">${h(k)}</th>`).join("")}<th style="text-align:center">Total</th></tr></thead><tbody>
+    ${cps.map(c=>`<tr><td><strong>${h(c)}</strong></td>${ciclos.map(k=>cel(cm[c][k]||0)).join("")}<td style="text-align:center;font-weight:800">${totC(c)}</td></tr>`).join("")}
+    <tr style="background:#ede8dc;font-weight:700"><td>TOTAL</td>${ciclos.map(k=>cel(tot(k))).join("")}<td style="text-align:center;font-weight:800">${cps.reduce((s,c)=>s+totC(c),0)}</td></tr></tbody></table></div>${neg?`<div class="km" style="color:#b00020;margin-top:.2rem">⚠️ Un número negativo significa que salieron animales anotados con un ciclo distinto al que tenían cuando entraron (el total de la categoría igual es correcto). Se corrige editando el ciclo de ese movimiento.</div>`:""}`; }).join(""):`<p class="empty">Sin datos para ese filtro.</p>`}`}
+</div>`;
+}
+window.setFStockCiclo=function(){ state.stockCicloAb=state.stockCicloAb===false; render(); };
 function renderStock(){
   const f=state.filtStock; const clist=campos(); const PM=pendMovDeltas(); const pd=(campo,cat)=>(PM.map[campo]&&PM.map[campo][cat])||{ing:0,egr:0,muertes:0};
   const fil=Object.values(state.mov).filter(m=>{
@@ -1168,6 +1181,7 @@ function renderStock(){
   ${state.showCSV?`<pre class="csvpre">${h(csv)}</pre>`:""}
 </div>
 ${campos2.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:`
+${stockPorCicloHtml(fil,f)}
 ${(()=>{
   // ── RESUMEN GENERAL TOTAL ──
   const allCats={};
@@ -2891,6 +2905,25 @@ window.updPar=function(k,v){
   if(el)el.textContent=v+(k==="kgAnimal"?" kg":"%");
 };
 window.editMovBtn=function(id){state.editMov=state.mov[id];render();};
+// ── Alertas: desplegables (solo el título a la vista) y con varios detalles ──
+function alertaDetalles(al){ const m=Array.isArray(al&&al.mensajes)?al.mensajes:[]; const sb=Array.isArray(al&&al.subs)?al.subs:[]; const n=Math.max(m.length,sb.length); const l=[]; for(let i=0;i<n;i++){ const sub=String(sb[i]||"").trim(), txt=String(m[i]||"").trim(); if(sub||txt)l.push({sub,txt}); } return l.length?l:(al&&al.mensaje?[{sub:"",txt:al.mensaje}]:[]); }
+function alertaCuerpo(al,c){ const det=alertaDetalles(al); const ab=!!(state.alAbiertas&&state.alAbiertas[al.id]); const conSub=det.some(d=>d.sub);
+  const item=d=>`${d.sub?`<div style="font-weight:700">${h(d.sub)}</div>`:""}${d.txt?`<div style="white-space:pre-wrap">${h(d.txt)}</div>`:""}`;
+  return `<div onclick="alertaTog('${al.id}')" style="font-weight:700;color:${c.text};font-size:.92rem;cursor:pointer;user-select:none;display:flex;gap:.4rem;align-items:baseline"><span style="font-size:.75rem;width:.9rem;flex-shrink:0">${ab?"▼":"▶"}</span><span>${c.icon} ${h(al.titulo||"(sin título)")}${!ab&&det.length>1?` <span style="font-weight:400;font-size:.75rem;opacity:.75">(${det.length} ${conSub?"apartados":"detalles"})</span>`:""}</span></div>
+  ${ab?`<div style="margin:.3rem 0 0 1.3rem;color:${c.text};font-size:.84rem">${!det.length?`<div style="color:#888;font-size:.78rem">(sin detalle)</div>`:conSub?det.map(d=>`<div style="margin-bottom:.4rem;padding:.3rem .55rem;background:rgba(255,255,255,.55);border-radius:6px;border-left:3px solid ${c.border}">${item(d)}</div>`).join(""):det.length>1?`<ul style="margin:0;padding-left:1.1rem">${det.map(d=>`<li style="margin-bottom:.2rem;white-space:pre-wrap">${h(d.txt)}</li>`).join("")}</ul>`:item(det[0])}${al.fecha?`<div style="color:#888;font-size:.72rem;margin-top:.25rem">📅 ${al.fecha.split('-').reverse().join('/')}</div>`:""}</div>`:""}`; }
+window.alertaTog=function(id){ state.alAbiertas=state.alAbiertas||{}; state.alAbiertas[id]=!state.alAbiertas[id]; render(); };
+function alertaEd(k){ return k==="m"?state.editAlerta:state.editAlertaAct; }
+function alertaDetallesForm(k){ const ed=alertaEd(k); if(!ed._det){ const d=alertaDetalles(ed); ed.mensajes=d.map(x=>x.txt); ed.subs=d.map(x=>x.sub); if(!ed.mensajes.length){ ed.mensajes=[""]; ed.subs=[""]; } ed._det=true; }
+  const est="border:1.5px solid #c8c0b0;border-radius:6px;padding:.45rem;font-family:inherit;font-size:.9rem;box-sizing:border-box;width:100%";
+  return `<div class="s2" style="grid-column:1/-1"><div style="font-weight:700;font-size:.85rem;margin-bottom:.25rem">Detalle <span class="km" style="font-weight:400">— podés armar varios apartados; el subtítulo es opcional (ej: el campo) y abajo va el texto, en una o varias líneas</span></div>
+    ${ed.mensajes.map((m,i)=>`<div style="display:flex;gap:.4rem;align-items:flex-start;margin-bottom:.5rem;padding:.4rem;background:#fffaf0;border:1px solid #f0d9a8;border-radius:8px"><span style="padding-top:.5rem;color:#92400e;font-weight:700;min-width:1.2rem">${i+1}.</span><div style="flex:1;display:flex;flex-direction:column;gap:.3rem"><input value="${h((ed.subs||[])[i]||"")}" oninput="alertaSubSet('${k}',${i},this.value)" placeholder="Subtítulo (opcional) — ej: El Rincón" style="${est};font-weight:700"/><textarea rows="2" oninput="alertaDetSet('${k}',${i},this.value)" placeholder="Texto — ej: 2024/2025: 52 · 2025/2026: 133" style="${est};resize:vertical">${h(m)}</textarea></div>${ed.mensajes.length>1?`<button type="button" class="bi" title="Quitar este apartado" onclick="alertaDetQuitar('${k}',${i})">✖</button>`:""}</div>`).join("")}
+    <button type="button" class="bs" style="padding:.3rem .8rem;font-size:.82rem" onclick="alertaDetAgregar('${k}')">➕ Agregar otro apartado</button></div>`; }
+function alertaLeerForm(k){ const ed=alertaEd(k); const pf=k==="m"?"al_":"ala_"; const g=id=>{ const el=document.getElementById(pf+id); return el?el.value:null; }; const f=g("fecha"), c=g("color"), t=g("titulo"); if(f!==null)ed.fecha=f; if(c!==null)ed.color=c; if(t!==null)ed.titulo=t; }
+window.alertaDetSet=function(k,i,v){ const ed=alertaEd(k); if(ed&&Array.isArray(ed.mensajes))ed.mensajes[i]=v; };
+window.alertaSubSet=function(k,i,v){ const ed=alertaEd(k); if(ed){ ed.subs=ed.subs||[]; ed.subs[i]=v; } };
+window.alertaDetAgregar=function(k){ const ed=alertaEd(k); if(!ed)return; alertaLeerForm(k); ed.mensajes=[...(ed.mensajes||[]),""]; ed.subs=[...(ed.subs||[]),""]; render(); };
+window.alertaDetQuitar=function(k,i){ const ed=alertaEd(k); if(!ed)return; alertaLeerForm(k); ed.mensajes=(ed.mensajes||[]).filter((_,x)=>x!==i); ed.subs=(ed.subs||[]).filter((_,x)=>x!==i); if(!ed.mensajes.length){ ed.mensajes=[""]; ed.subs=[""]; } render(); };
+function alertaMensajesGuardar(k){ const ed=alertaEd(k); const m=Array.isArray(ed.mensajes)?ed.mensajes:[]; const sb=ed.subs||[]; const l=m.map((x,i)=>({sub:String(sb[i]||"").trim(),txt:String(x||"").trim()})).filter(d=>d.sub||d.txt); return {mensajes:l.map(d=>d.txt),subs:l.map(d=>d.sub),mensaje:l.map(d=>d.sub&&d.txt?d.sub+": "+d.txt:d.sub||d.txt).join(" · ")}; }
 window.abrirNuevaAlerta=function(){state.editAlerta={fecha:hoyISO(),color:"atencion",titulo:"",mensaje:""};render();};
 window.cancelarAlerta=function(){state.editAlerta=undefined;render();};
 window.editarAlerta=function(id){state.editAlerta={...state.alertas[id]};render();};
@@ -2903,10 +2936,10 @@ window.guardarAlerta=async function(){
   const fecha=document.getElementById("al_fecha").value;
   const color=document.getElementById("al_color").value;
   const titulo=document.getElementById("al_titulo").value.trim();
-  const mensaje=document.getElementById("al_mensaje").value.trim();
+  const {mensajes,subs,mensaje}=alertaMensajesGuardar("m");
   if(!titulo)return alert("Escribí un título para la alerta.");
   const id=state.editAlerta.id||uid();
-  await set(ref(db,`alertas/${id}`),{id,fecha,color,titulo,mensaje});
+  await set(ref(db,`alertas/${id}`),{id,fecha,color,titulo,mensaje,mensajes,subs});
   state.editAlerta=undefined; render();
   toast("✅ Alerta guardada");
 };
@@ -2923,10 +2956,10 @@ window.guardarAlertaAct=async function(){
   const fecha=document.getElementById("ala_fecha").value;
   const color=document.getElementById("ala_color").value;
   const titulo=document.getElementById("ala_titulo").value.trim();
-  const mensaje=document.getElementById("ala_mensaje").value.trim();
+  const {mensajes,subs,mensaje}=alertaMensajesGuardar("a");
   if(!titulo)return alert("Escribí un título para la alerta.");
   const id=state.editAlertaAct.id||uid();
-  await set(ref(db,`alertasAct/${id}`),{id,fecha,color,titulo,mensaje});
+  await set(ref(db,`alertasAct/${id}`),{id,fecha,color,titulo,mensaje,mensajes,subs});
   state.editAlertaAct=undefined; render();
   toast("✅ Alerta guardada");
 };
