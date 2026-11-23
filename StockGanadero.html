@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.23-b";
+window.APP_VERSION="2026.11.23-c";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -1132,17 +1132,23 @@ function stockPorCicloHtml(fil,f){
   for(const m of fil){ if(!m||EXC.includes(m.cat))continue; const ci=String(m.ciclo||"").trim()||"(sin ciclo)"; const n=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); const a=(map[m.cat]=map[m.cat]||{}); const b=(a[m.campo]=a[m.campo]||{}); b[ci]=(b[ci]||0)+n; }
   const cats=[...CATS.filter(c=>map[c]),...Object.keys(map).filter(c=>!CATS.includes(c))].filter(c=>Object.values(map[c]).some(x=>Object.values(x).some(v=>v!==0)));
   const ab=state.stockCicloAb!==false;
+  const ordC=(a,b)=>a==="(sin ciclo)"?1:b==="(sin ciclo)"?-1:a.localeCompare(b);
+  const todosCiclos=[...new Set(cats.flatMap(c=>Object.values(map[c]).flatMap(x=>Object.keys(x).filter(k=>x[k]!==0))))].sort(ordC);
+  const sel=(state.stockCiclosSel||[]).filter(k=>todosCiclos.includes(k)); const ver=k=>!sel.length||sel.includes(k);
   const cel=v=>v===0||v===undefined?`<td style="color:#bbb;text-align:center">—</td>`:`<td style="text-align:center;font-weight:700;color:${v<0?"#b00020":"#2d4a1e"}">${v}</td>`;
   return `<div class="card" style="border-top:4px solid #6a8ab0">
   <h2 style="cursor:pointer;user-select:none;margin:0" onclick="setFStockCiclo()">${ab?"▼":"▶"} 📅 Stock por ciclo${f.hasta?" al "+f.hasta.split('-').reverse().join('/'):""}</h2>
   ${!ab?"":`<p class="hint">Cuántos animales de cada categoría hay en cada campo, separados por el ciclo con el que se cargaron los movimientos. Vacas y Toros no se abren por ciclo. Es solo una vista: no cambia el stock ni el Productivo.</p>
-  ${cats.length?cats.map(cat=>{ const cm=map[cat]; const ciclos=[...new Set(Object.values(cm).flatMap(x=>Object.keys(x).filter(k=>x[k]!==0)))].sort((a,b)=>a==="(sin ciclo)"?1:b==="(sin ciclo)"?-1:a.localeCompare(b)); const cps=ordenarCampos(Object.keys(cm).filter(c=>ciclos.some(k=>cm[c][k])),c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0)); const tot=k=>cps.reduce((s,c)=>s+(cm[c][k]||0),0); const totC=c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0); const neg=cps.some(c=>ciclos.some(k=>(cm[c][k]||0)<0));
+  ${todosCiclos.length>1?`<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin:.3rem 0 .2rem;padding:.45rem .6rem;background:#eef3f8;border:1.5px solid #6a8ab0;border-radius:8px"><strong style="font-size:.85rem">Ciclos a mostrar:</strong>${todosCiclos.map(k=>`<button type="button" class="${sel.includes(k)?"bp":"bs"}" style="padding:.25rem .7rem;font-size:.85rem" onclick="setFStockCicloSel('${h(k).replace(/'/g,"\\'")}')">${sel.includes(k)?"✔ ":""}${h(k)}</button>`).join("")}${sel.length?`<button type="button" class="bs" style="padding:.25rem .7rem;font-size:.85rem" onclick="setFStockCicloSel('')">Ver todos</button><span class="km">Los totales cuentan solo los ciclos marcados.</span>`:`<span class="km">Ninguno marcado = se ven todos. Tocá los que quieras ver.</span>`}</div>`:""}
+  ${cats.length?cats.map(cat=>{ const cm=map[cat]; const ciclos=[...new Set(Object.values(cm).flatMap(x=>Object.keys(x).filter(k=>x[k]!==0)))].filter(ver).sort(ordC); if(!ciclos.length)return ""; const cps=ordenarCampos(Object.keys(cm).filter(c=>ciclos.some(k=>cm[c][k])),c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0)); const tot=k=>cps.reduce((s,c)=>s+(cm[c][k]||0),0); const totC=c=>ciclos.reduce((s,k)=>s+(cm[c][k]||0),0); const neg=cps.some(c=>ciclos.some(k=>(cm[c][k]||0)<0));
     return `<h3 style="margin:.9rem 0 .3rem;color:#2d4a1e">${h(cat)} <span class="km" style="font-weight:400">— total ${cps.reduce((s,c)=>s+totC(c),0)}</span></h3><div class="tw"><table><thead><tr><th>Campo</th>${ciclos.map(k=>`<th style="text-align:center">${h(k)}</th>`).join("")}<th style="text-align:center">Total</th></tr></thead><tbody>
     ${cps.map(c=>`<tr><td><strong>${h(c)}</strong></td>${ciclos.map(k=>cel(cm[c][k]||0)).join("")}<td style="text-align:center;font-weight:800">${totC(c)}</td></tr>`).join("")}
     <tr style="background:#ede8dc;font-weight:700"><td>TOTAL</td>${ciclos.map(k=>cel(tot(k))).join("")}<td style="text-align:center;font-weight:800">${cps.reduce((s,c)=>s+totC(c),0)}</td></tr></tbody></table></div>${neg?`<div class="km" style="color:#b00020;margin-top:.2rem">⚠️ Un número negativo significa que salieron animales anotados con un ciclo distinto al que tenían cuando entraron (el total de la categoría igual es correcto). Se corrige editando el ciclo de ese movimiento.</div>`:""}`; }).join(""):`<p class="empty">Sin datos para ese filtro.</p>`}`}
 </div>`;
 }
 window.setFStockCiclo=function(){ state.stockCicloAb=state.stockCicloAb===false; render(); };
+window.setFStockCicloSel=function(k){ if(!k){ state.stockCiclosSel=[]; } else { const s0=state.stockCiclosSel||[]; state.stockCiclosSel=s0.includes(k)?s0.filter(x=>x!==k):[...s0,k]; } try{ localStorage.setItem("sg_stockCiclos",JSON.stringify(state.stockCiclosSel)); }catch(e){} render(); };
+try{ state.stockCiclosSel=JSON.parse(localStorage.getItem("sg_stockCiclos")||"[]"); }catch(e){}
 function renderStock(){
   const f=state.filtStock; const clist=campos(); const PM=pendMovDeltas(); const pd=(campo,cat)=>(PM.map[campo]&&PM.map[campo][cat])||{ing:0,egr:0,muertes:0};
   const fil=Object.values(state.mov).filter(m=>{
