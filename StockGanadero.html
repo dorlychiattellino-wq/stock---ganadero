@@ -114,7 +114,7 @@ pre.csvpre{background:#1a1a1a;color:#a0e060;padding:.9rem;border-radius:6px;font
 
 <script>
 // Guardar la app en el dispositivo para poder abrirla sin señal (requiere subir sw.js junto al HTML)
-window.APP_VERSION="2026.11.23-e";
+window.APP_VERSION="2026.11.24-a";
 window.actualizarApp=async function(){
   try{ if("serviceWorker" in navigator){ const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs)await r.unregister(); } }catch(e){}
   try{ if(window.caches){ const ks=await caches.keys(); for(const k of ks)await caches.delete(k); } }catch(e){}
@@ -317,6 +317,8 @@ let state = {
   senasaExtra: {},      // {id: {campo, cat, cant, obs}} otras especies, persistidas
   senasaObs: {},        // {id: {campo, cat, obs}} observaciones por categoria bovina
   recordatorios: {},    // {id: {titulo, icono, desde, hasta, detalle}}
+  stockComp: {},        // {clave: {campo, cat, ciclo, real, senasa, obs, manual}} recuento real y stock SENASA cargados a mano, para comparar con el de la app
+  stockCompMeta: {},    // {fechaReal, fechaSenasa}
   editRecordatorio: undefined,
   recSenAbierto: false,
   popupRecCerrado: false,
@@ -411,6 +413,10 @@ onValue(ref(db,"senasaObs"), snap => {
   state.senasaObs = snap.val() || {};
   render();
 });
+// Comparación de stock: mientras se está tipeando en la tabla no se redibuja (se perdería el casillero activo); se redibuja al salir
+function stockCompEditando(){ const a=document.activeElement; return !!(a&&a.classList&&a.classList.contains("sc-inp")); }
+onValue(ref(db,"stockComp"), snap => { state.stockComp = snap.val() || {}; if(!stockCompEditando())render(); });
+onValue(ref(db,"stockCompMeta"), snap => { state.stockCompMeta = snap.val() || {}; if(!stockCompEditando())render(); });
 onValue(ref(db,"recordatorios"), snap => {
   state.recordatorios = snap.val() || {};
   renovarRecordatoriosVencidos();
@@ -656,6 +662,8 @@ function render(){
   // Preservar lo tipeado en login/setup/alta de usuario si un dato de Firebase llega en el medio
   const preserveIds=["lg_nombre","lg_clave","su_nombre","su_clave","su_clave2","nu_nombre","nu_clave",
     ...Array.from(document.querySelectorAll('input[id^="bl_"],input[id^="pr_"],input[id^="pp_"],textarea[id^="pp_"],input[id^="an_"],select[id^="an_"],input[id^="nu_"],select[id^="nu_"],input[id^="pe_"],input[id^="ev_"],select[id^="ev_"],input[id^="ma_"],select[id^="ma_"],textarea[id^="tr_"],input[id^="tr_"],textarea[id^="mgrp"],input[id^="mg_"],select[id^="mg_"],input[id^="mo_"],textarea[id^="cp_"],input[id^="cp_"],select[id^="cp_"],input[id^="pr_"],select[id^="pr_"]')).map(e=>e.id)];
+  // Comparación de stock: si se está tipeando en la tabla, se recuerda el casillero para devolverle el foco y lo tipeado después de redibujar
+  let _sc=null; { const ae=document.activeElement; if(ae&&ae.classList&&ae.classList.contains("sc-inp")){ _sc={k:ae.dataset.k,f:ae.dataset.f,val:ae.value}; try{ _sc.a=ae.selectionStart; _sc.b=ae.selectionEnd; }catch(e){} } }
   const saved={}; let focusId=null;
   for(const id of preserveIds){ if(state._noPreservar&&/^(tr_(pre|cut|seg|dsc|dest)|ce_)/.test(id))continue; const el=document.getElementById(id);if(el){saved[id]=el.value;if(document.activeElement===el)focusId=id;}}
   // ¿Hay algun administrador dado de alta? Si no, pantalla de configuracion inicial
@@ -672,6 +680,7 @@ function render(){
     if(_nav){ if(_navX!==null)_nav.scrollLeft=_navX; const b=_nav.querySelector("button.active"); if(b){ const l=b.offsetLeft-_nav.offsetLeft, r=l+b.offsetWidth; if(l<_nav.scrollLeft)_nav.scrollLeft=Math.max(0,l-20); else if(r>_nav.scrollLeft+_nav.clientWidth)_nav.scrollLeft=r-_nav.clientWidth+20; } }
     attachEvents();
     aplicarModoLectura();
+    if(_sc){ const el=[...document.querySelectorAll("input.sc-inp")].find(x=>x.dataset.k===_sc.k&&x.dataset.f===_sc.f); if(el){ el.value=_sc.val; el.focus(); try{ if(_sc.a!==undefined&&_sc.a!==null)el.setSelectionRange(_sc.a,_sc.b); }catch(e){} } }
   }
   for(const id of Object.keys(saved)){const el=document.getElementById(id);if(el)el.value=saved[id];}
   if(focusId){const el=document.getElementById(focusId);if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
@@ -1126,6 +1135,80 @@ function pendMovDeltas(){ // registros de movimiento de trabajos de manga pendie
   return {map:out,n};
 }
 function proj(v,delta,pct){ if(!delta)return ""; const nv=v+delta; return `<span style="color:#888;font-size:.75em;font-weight:400" title="Si se aprueban los trabajos de manga pendientes"> (${pct?nv.toFixed(1)+"%":nv})</span>`; }
+// ══════════ COMPARACIÓN DE STOCK: Real (recuento) · Oficina (app) · SENASA ══════════
+// Oficina sale sola de los movimientos (igual que el resto del Stock). Real y SENASA se cargan a mano. No modifica stock, movimientos ni Productivo.
+const SC_SIN_CICLO=["Vacas","Toros"];
+function stockCompKey(campo,cat,ciclo){ return claveFB(campo+"__"+cat+"__"+(ciclo||"-")); }
+function stockCompFilas(fil,f){
+  const filas={};
+  for(const m of fil){ if(!m||!m.campo||!m.cat)continue; const ci=SC_SIN_CICLO.includes(m.cat)?"":(String(m.ciclo||"").trim()||"(sin ciclo)"); const k=stockCompKey(m.campo,m.cat,ci); const r=(filas[k]=filas[k]||{k,campo:m.campo,cat:m.cat,ciclo:ci,of:0}); r.of+=(m.tipo==="ingreso"?1:-1)*(+m.cant||0); }
+  for(const x of Object.values(state.stockComp||{})){ if(!x||!x.campo||!x.cat)continue; if(f.campo&&x.campo!==f.campo)continue; if(f.cat&&x.cat!==f.cat)continue; const k=stockCompKey(x.campo,x.cat,x.ciclo||""); if(!filas[k])filas[k]={k,campo:x.campo,cat:x.cat,ciclo:x.ciclo||"",of:0}; }
+  const num=v=>v===null||v===undefined||v===""||isNaN(+v)?null:+v;
+  const l=Object.values(filas).map(r=>{ const x=(state.stockComp||{})[r.k]||{}; return {...r,real:num(x.real),sen:num(x.senasa),obs:x.obs||"",manual:!!x.manual}; }).filter(r=>r.of!==0||r.real!==null||r.sen!==null||r.manual||r.obs);
+  const ic=c=>{ const i=CATS.indexOf(c); return i<0?99:i; };
+  l.sort((a,b)=>a.campo.localeCompare(b.campo)||ic(a.cat)-ic(b.cat)||String(a.ciclo).localeCompare(String(b.ciclo)));
+  return l;
+}
+function stockCompEstado(r){ const v=[r.real,r.of,r.sen]; if(r.real===null&&r.sen===null)return "sin"; const ok=(r.real===null||r.real===r.of)&&(r.sen===null||r.sen===r.of); return ok?(r.real!==null&&r.sen!==null?"ok":"okp"):"dif"; }
+function stockCompDif(a,b){ if(a===null||b===null)return `<span style="color:#bbb">—</span>`; const d=a-b; return d===0?`<span style="color:#2d7a2d;font-weight:700">0 ✔</span>`:`<span style="color:#b00020;font-weight:800">${d>0?"+":""}${d}</span>`; }
+function stockCompCeldas(r){ return `<td style="text-align:center">${stockCompDif(r.real,r.of)}</td><td style="text-align:center">${stockCompDif(r.sen,r.of)}</td><td style="text-align:center">${stockCompDif(r.real,r.sen)}</td>`; }
+function stockCompHtml(fil,f){
+  const adm=esAdmin(); const ab=state.stockCompAb!==false; const todas=stockCompFilas(fil,f); const solo=!!state.stockCompSolo;
+  const filas=solo?todas.filter(r=>stockCompEstado(r)==="dif"):todas; const nDif=todas.filter(r=>stockCompEstado(r)==="dif").length; const nSin=todas.filter(r=>stockCompEstado(r)==="sin").length;
+  const sum=(l,c)=>{ const v=l.map(r=>r[c]).filter(x=>x!==null); return v.length?v.reduce((a,b)=>a+b,0):null; }; const fmt=v=>v===null?"—":v;
+  const meta=state.stockCompMeta||{}; const cps=ordenarCampos([...new Set(filas.map(r=>r.campo))],c=>filas.filter(r=>r.campo===c).reduce((s,r)=>s+r.of,0));
+  const est="width:86px;text-align:center;font-weight:700;padding:.3rem;border:1.5px solid #c8c0b0;border-radius:6px;font-size:.95rem";
+  const inp=(r,i,campoDato,val,color)=>adm?`<input type="number" class="sc-inp" data-i="${i}" data-k="${h(r.k)}" data-campo="${h(r.campo)}" data-cat="${h(r.cat)}" data-ciclo="${h(r.ciclo)}" data-f="${campoDato}" value="${val===null?"":val}" placeholder="—" onchange="stockCompSet(this)" style="${est};background:${color}"/>`:`<strong>${fmt(val)}</strong>`;
+  let i=0;
+  return `<div class="card" style="border-top:4px solid #b06a2a">
+  <h2 style="cursor:pointer;user-select:none;margin:0" onclick="setFStockCompAb()">${ab?"▼":"▶"} ⚖️ Comparación de stock: Real · Oficina · SENASA ${nDif?`<span style="background:#b00020;color:#fff;border-radius:10px;padding:.1rem .6rem;font-size:.8rem;vertical-align:middle">${nDif} con diferencia</span>`:todas.length&&!nSin?`<span style="background:#2d7a2d;color:#fff;border-radius:10px;padding:.1rem .6rem;font-size:.8rem;vertical-align:middle">todo coincide</span>`:""}</h2>
+  ${!ab?"":`<p class="hint"><strong>Oficina</strong> es el stock de esta app${f.hasta?" al "+f.hasta.split("-").reverse().join("/"):" (actual)"} y se calcula solo${f.hasta?"":"; para compararlo con un recuento de otro día, usá el filtro \"Stock al (fecha)\" de arriba"}. <strong>Real</strong> (recuento en el campo) y <strong>SENASA</strong> se cargan a mano. Vacas y Toros van sin ciclo. Dejá vacío lo que no contaste: vacío no es lo mismo que 0. Esta tabla no modifica el stock ni el Productivo.</p>
+  <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end;margin:.3rem 0 .6rem;padding:.5rem .7rem;background:#fbf3e6;border:1.5px solid #d9b98a;border-radius:8px">
+    <label style="display:flex;flex-direction:column;font-weight:700;font-size:.82rem">Fecha del recuento real${adm?`<input type="date" value="${h(meta.fechaReal||"")}" onchange="stockCompMetaSet('fechaReal',this.value)"/>`:`<span style="font-weight:400">${meta.fechaReal?fmtF(meta.fechaReal):"—"}</span>`}</label>
+    <label style="display:flex;flex-direction:column;font-weight:700;font-size:.82rem">Fecha del stock SENASA${adm?`<input type="date" value="${h(meta.fechaSenasa||"")}" onchange="stockCompMetaSet('fechaSenasa',this.value)"/>`:`<span style="font-weight:400">${meta.fechaSenasa?fmtF(meta.fechaSenasa):"—"}</span>`}</label>
+    <button class="${solo?"bp":"bs"}" onclick="setFStockCompSolo()">${solo?"✔ Viendo solo diferencias":"Ver solo las diferencias"}${nDif?" ("+nDif+")":""}</button>
+    <button class="bs" onclick="stockCompCSV()">⬇️ CSV</button>
+  </div>
+  ${adm?`<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.6rem"><span class="km" style="flex-basis:100%">¿En el recuento o en SENASA aparece algo que la app no tiene (stock 0)? Agregá la fila:</span>
+    <label style="display:flex;flex-direction:column;font-size:.82rem;font-weight:700">Campo<select id="sc_n_campo">${opts(campos(),f.campo||"","-- campo --")}</select></label>
+    <label style="display:flex;flex-direction:column;font-size:.82rem;font-weight:700">Categoría<select id="sc_n_cat">${opts(CATS,f.cat||"","-- categoría --")}</select></label>
+    <label style="display:flex;flex-direction:column;font-size:.82rem;font-weight:700">Ciclo <span class="km" style="font-weight:400">(no para Vacas/Toros)</span><select id="sc_n_ciclo">${opts(ciclos(),"","-- ciclo --")}</select></label>
+    <button class="bs" onclick="stockCompAgregar()">➕ Agregar fila</button></div>`:""}
+  ${!filas.length?`<p class="empty">${solo?"No hay diferencias entre lo cargado. 🎉":"Sin datos para ese filtro."}</p>`:cps.map(campo=>{ const li=filas.filter(r=>r.campo===campo); const lt=todas.filter(r=>r.campo===campo); /* los totales son siempre del campo entero, aunque se vean solo las diferencias */ const tR=sum(lt,"real"), tS=sum(lt,"sen"), tO=lt.reduce((s,r)=>s+r.of,0); const compR=lt.every(r=>r.real!==null), compS=lt.every(r=>r.sen!==null);
+    return `<h3 style="margin:.9rem 0 .3rem;color:#2d4a1e">🏡 ${h(campo)}</h3><div class="tw"><table style="min-width:820px"><thead><tr><th>Categoría</th><th>Ciclo</th><th style="text-align:center;background:#7a4a10">Real</th><th style="text-align:center">Oficina</th><th style="text-align:center;background:#1e4a7a">SENASA</th><th style="text-align:center">Real − Oficina</th><th style="text-align:center">SENASA − Oficina</th><th style="text-align:center">Real − SENASA</th><th>Observación</th></tr></thead><tbody>
+    ${li.map(r=>{ const e=stockCompEstado(r); const n=i++; return `<tr id="scr_${n}" data-of="${r.of}" style="background:${e==="dif"?"#fdecea":e==="ok"?"#edf7ea":""}"><td><strong>${h(r.cat)}</strong></td><td>${r.ciclo?h(r.ciclo):`<span style="color:#bbb">—</span>`}</td><td style="text-align:center">${inp(r,n,"real",r.real,"#fff8ee")}</td><td style="text-align:center;font-weight:800;font-size:1rem">${r.of}</td><td style="text-align:center">${inp(r,n,"senasa",r.sen,"#eef4fb")}</td>${stockCompCeldas(r)}<td>${adm?`<input class="sc-inp" data-i="${n}" data-k="${h(r.k)}" data-campo="${h(r.campo)}" data-cat="${h(r.cat)}" data-ciclo="${h(r.ciclo)}" data-f="obs" value="${h(r.obs)}" placeholder="Nota (opcional)" onchange="stockCompSet(this)" style="width:100%;min-width:150px;padding:.3rem;border:1.5px solid #c8c0b0;border-radius:6px;font-size:.85rem;box-sizing:border-box"/>${r.of===0?` <button class="bi" title="Quitar esta fila (la app no tiene stock acá)" onclick="stockCompQuitar('${h(r.k).replace(/'/g,"\\'")}')">🗑️</button>`:""}`:h(r.obs)}</td></tr>`; }).join("")}
+    <tr style="background:#ede8dc;font-weight:700"><td colspan="2">TOTAL ${h(campo)}</td><td style="text-align:center">${fmt(tR)}${tR!==null&&!compR?` <span class="km" title="Faltan filas por cargar">*</span>`:""}</td><td style="text-align:center">${tO}</td><td style="text-align:center">${fmt(tS)}${tS!==null&&!compS?` <span class="km" title="Faltan filas por cargar">*</span>`:""}</td><td style="text-align:center">${compR?stockCompDif(tR,tO):`<span style="color:#bbb">—</span>`}</td><td style="text-align:center">${compS?stockCompDif(tS,tO):`<span style="color:#bbb">—</span>`}</td><td style="text-align:center">${compR&&compS?stockCompDif(tR,tS):`<span style="color:#bbb">—</span>`}</td><td class="km">${(tR!==null&&!compR)||(tS!==null&&!compS)?"* total parcial: hay filas sin cargar":""}</td></tr>
+    </tbody></table></div>`; }).join("")}
+  ${filas.length>0&&cps.length>1?(()=>{ const tR=sum(todas,"real"), tS=sum(todas,"sen"), tO=todas.reduce((s,r)=>s+r.of,0); const cR=todas.every(r=>r.real!==null), cS=todas.every(r=>r.sen!==null); return `<div style="margin-top:.8rem;padding:.6rem .8rem;background:#2d4a1e;color:#fff;border-radius:8px;display:flex;gap:1.2rem;flex-wrap:wrap;font-weight:700"><span>TOTAL GENERAL</span><span>Real: ${fmt(tR)}${tR!==null&&!cR?" (parcial)":""}</span><span>Oficina: ${tO}</span><span>SENASA: ${fmt(tS)}${tS!==null&&!cS?" (parcial)":""}</span></div>`; })():""}`}
+</div>`;
+}
+window.setFStockCompAb=function(){ state.stockCompAb=state.stockCompAb===false; render(); };
+window.setFStockCompSolo=function(){ state.stockCompSolo=!state.stockCompSolo; render(); };
+async function stockCompGuardar(k,base,cambios){ const prev=(state.stockComp||{})[k]||{}; const n=sinUndef({...prev,campo:base.campo,cat:base.cat,ciclo:base.ciclo||"",...cambios,actualizado:hoyISO(),por:(state.sesion&&state.sesion.nombre)||""});
+  const vacio=(n.real===null||n.real===undefined)&&(n.senasa===null||n.senasa===undefined)&&!n.obs&&!n.manual; state.stockComp=state.stockComp||{};
+  if(vacio){ delete state.stockComp[k]; await remove(ref(db,"stockComp/"+k)); } else { for(const c of ["real","senasa"]){ if(n[c]===null||n[c]===undefined)delete n[c]; } state.stockComp[k]=n; await set(ref(db,"stockComp/"+k),n); } }
+window.stockCompSet=function(el){
+  if(!esAdmin())return; const d=el.dataset; const c=d.f; let v;
+  if(c==="obs")v=el.value.trim(); else { const t=el.value.trim(); if(t===""){ v=null; } else { v=Math.round(+t); if(isNaN(v)||v<0){ alert("Tiene que ser un número entero, 0 o más. Dejalo vacío si no lo contaste."); el.value=""; v=null; } else el.value=v; } }
+  const base={campo:d.campo,cat:d.cat,ciclo:d.ciclo}, clave=d.k;
+  setTimeout(()=>stockCompGuardar(clave,base,{[c]:v}),0); // después de que el foco pasó al casillero siguiente
+  // actualiza las diferencias de esa fila en el momento, sin redibujar la pantalla (para poder seguir tipeando con Tab)
+  const tr=document.getElementById("scr_"+d.i); if(tr){ const g=f2=>{ const e=tr.querySelector('input[data-f="'+f2+'"]'); const t=e?e.value.trim():""; return t===""||isNaN(+t)?null:+t; }; const r={real:g("real"),sen:g("senasa"),of:+tr.dataset.of||0}; const tds=tr.children; tds[5].innerHTML=stockCompDif(r.real,r.of); tds[6].innerHTML=stockCompDif(r.sen,r.of); tds[7].innerHTML=stockCompDif(r.real,r.sen); const e=stockCompEstado(r); tr.style.background=e==="dif"?"#fdecea":e==="ok"?"#edf7ea":""; }
+};
+document.addEventListener("focusout",e=>{ if(e.target&&e.target.classList&&e.target.classList.contains("sc-inp"))setTimeout(()=>{ if(!stockCompEditando()&&state.tab===4)render(); },200); });
+window.stockCompMetaSet=async function(c,v){ if(!esAdmin())return; state.stockCompMeta={...(state.stockCompMeta||{}),[c]:v||""}; await set(ref(db,"stockCompMeta"),state.stockCompMeta); };
+window.stockCompAgregar=async function(){
+  if(!esAdmin())return; const g=id=>{ const e=document.getElementById(id); return e?e.value:""; }; const campo=g("sc_n_campo"), cat=g("sc_n_cat"); let ciclo=g("sc_n_ciclo");
+  if(!campo||!cat)return alert("Elegí el campo y la categoría."); if(SC_SIN_CICLO.includes(cat))ciclo=""; else if(!ciclo)return alert("Elegí el ciclo (solo Vacas y Toros van sin ciclo).");
+  const k=stockCompKey(campo,cat,ciclo); await stockCompGuardar(k,{campo,cat,ciclo},{manual:true}); state.stockCompSolo=false; toast("Fila agregada: "+campo+" · "+cat+(ciclo?" · "+ciclo:"")); render();
+};
+window.stockCompQuitar=async function(k){ if(!esAdmin())return; const x=(state.stockComp||{})[k]; if(!x)return; if(!confirm("¿Quitar la fila "+x.campo+" · "+x.cat+(x.ciclo?" · "+x.ciclo:"")+" con lo que tenga cargado?"))return; delete state.stockComp[k]; await remove(ref(db,"stockComp/"+k)); render(); };
+window.stockCompCSV=function(){
+  const f=state.filtStock; const fil=Object.values(state.mov).filter(m=>{ if(f.hasta&&m.fecha>f.hasta)return false; if(f.campo&&m.campo!==f.campo)return false; if(f.cat&&m.cat!==f.cat)return false; return true; });
+  const d=(a,b)=>a===null||b===null?"":a-b; const q=x=>'"'+String(x===null||x===undefined?"":x).replace(/"/g,'""')+'"';
+  const lin=[["Campo","Categoria","Ciclo","Real","Oficina","SENASA","Real-Oficina","SENASA-Oficina","Real-SENASA","Observacion"],...stockCompFilas(fil,f).map(r=>[r.campo,r.cat,r.ciclo,r.real,r.of,r.sen,d(r.real,r.of),d(r.sen,r.of),d(r.real,r.sen),r.obs])].map(l=>l.map(q).join(";")).join("\r\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\ufeff"+lin],{type:"text/csv;charset=utf-8"})); a.download="Comparacion_stock_"+(f.hasta||hoyISO())+".csv"; a.click();
+};
 // Stock abierto por ciclo (solo lectura, sale de los mismos movimientos que el resto del Stock). Vacas y Toros no se abren por ciclo.
 function stockPorCicloHtml(fil,f){
   const EXC=["Vacas","Toros"]; const map={};
@@ -1190,6 +1273,7 @@ function renderStock(){
 </div>
 ${campos2.length===0?`<div class="card"><p class="empty">Sin datos.</p></div>`:`
 ${stockPorCicloHtml(fil,f)}
+${stockCompHtml(fil,f)}
 ${(()=>{
   // ── RESUMEN GENERAL TOTAL ──
   const allCats={};
@@ -2354,6 +2438,8 @@ async function restaurarBackup(file){
       if(data.senasaExtra) await set(ref(db,"senasaExtra"),data.senasaExtra);
       if(data.senasaObs) await set(ref(db,"senasaObs"),data.senasaObs);
       if(data.recordatorios) await set(ref(db,"recordatorios"),data.recordatorios);
+      if(data.stockComp) await set(ref(db,"stockComp"),data.stockComp);
+      if(data.stockCompMeta) await set(ref(db,"stockCompMeta"),data.stockCompMeta);
       if(data.animales) await set(ref(db,"animales"),data.animales);
       if(data.pesadas) await set(ref(db,"pesadas"),data.pesadas);
       if(data.eventos) await set(ref(db,"eventos"),data.eventos);
@@ -2370,7 +2456,7 @@ async function restaurarBackup(file){
   reader.readAsText(file);
 }
 function exportBackup(){
-  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,presupuestos:state.presu,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios,guiaAct:state.guiaAct||null};
+  const data={version:"3.1",fecha:new Date().toISOString(),animales:state.animales,pesadas:state.pesadas,eventos:state.eventos,mangaSesiones:state.mangaSesiones,mangaCatalogo:state.mangaCatalogo,origenes:state.origenes,presupuestos:state.presu,mov:state.mov,act:state.act,par:state.par,campos:state.camposList,alertas:state.alertas,alertasAct:state.alertasAct,toros:state.toros,iatf:state.iatf,actividadesCustom:state.actividadesCustom,actBaseOff:state.actBaseOff,ventasPlan:state.ventasPlan,usuarios:state.usuarios,senasaExtra:state.senasaExtra,senasaObs:state.senasaObs,recordatorios:state.recordatorios,guiaAct:state.guiaAct||null,stockComp:state.stockComp||null,stockCompMeta:state.stockCompMeta||null};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
   a.download="StockGanadero_backup_"+hoyISO()+".json";a.click();
